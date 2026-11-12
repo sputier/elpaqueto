@@ -39,7 +39,7 @@ Every NuGet request carries Basic credentials, and a restore can issue hundreds 
 | Windows 11 workstation | about 86 ms |
 | Linux container (`mcr.microsoft.com/dotnet/sdk:10.0`, 8 CPUs) | about 129 ms |
 
-Limiting the amount of hashing per request (a verification cache) and the rate of failed attempts (throttling) is the job of later changes. Until they land, the cost is the only lever: it is configurable down to 100000 iterations for small hosts.
+The amount of hashing is limited by the [verification cache](authentication.md#verification-cache), which skips the hash for a recently verified password, and by [sign-in throttling](throttling.md), which refuses failed attempts beyond a limit before hashing and bounds the number of hashes running at once. The cost itself is configurable down to 100000 iterations for small hosts.
 
 ## What is not logged
 

@@ -19,6 +19,10 @@ ElPaqueto does not terminate TLS itself in the recommended setup. It listens on 
 
 Keep `Security:Transport:RequireHttps` at its default (`true`).
 
+## Response headers
+
+ElPaqueto sets `X-Content-Type-Options`, `Referrer-Policy`, `X-Frame-Options`, `Content-Security-Policy` and, for pages and errors, `Cache-Control` itself. Do not add them again in the proxy: two `Content-Security-Policy` headers both apply, so a second, stricter one breaks the web UI, and duplicated single-value headers are ambiguous. `Strict-Transport-Security` is off in ElPaqueto by default (`Security:Hsts`): send it from the proxy **or** enable it in ElPaqueto, not both. Do not let the proxy cache responses to requests that carry `Authorization` or `X-NuGet-ApiKey`.
+
 ## Example: proxy in the same Docker Compose project
 
 The proxy and ElPaqueto share a user-defined network with a fixed subnet, so the trusted network is known in advance. Only the proxy publishes a port; ElPaqueto is not reachable from outside the network. The example uses the documentation range `198.51.100.0/24`; choose a private subnet that is free on your Docker host.

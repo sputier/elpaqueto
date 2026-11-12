@@ -164,6 +164,23 @@ public sealed class SecurityConfigurationHostTests : IDisposable
     }
 
     [Fact]
+    public void ThrottlingSettings_AreBoundFromConfiguration()
+    {
+        using var host = BuildHost(out _, new Dictionary<string, string?>
+        {
+            ["Security:Throttling:PairFailureLimit"] = "3",
+            ["Security:Throttling:PairWindow"] = "00:30:00",
+            ["Security:Throttling:MaxConcurrentVerifications"] = "2",
+        });
+
+        Assert.True(host.ValidateElPaquetoSecurityOptions());
+        var throttling = host.Services.GetRequiredService<IOptions<ElPaquetoSecurityOptions>>().Value.Throttling;
+        Assert.Equal(3, throttling.PairFailureLimit);
+        Assert.Equal(TimeSpan.FromMinutes(30), throttling.PairWindow);
+        Assert.Equal(2, throttling.EffectiveMaxConcurrentVerifications);
+    }
+
+    [Fact]
     public void LastUsedUpdateInterval_IsBoundFromConfiguration()
     {
         using var host = BuildHost(out _, new Dictionary<string, string?>
@@ -200,6 +217,8 @@ public sealed class SecurityConfigurationHostTests : IDisposable
     [InlineData("Security:PublicBaseUrl", "nuget.example.test", "Security:PublicBaseUrl")]
     [InlineData("Security:ReverseProxy", "198.51.100.0/24", "Security:ReverseProxy is a section")]
     [InlineData("Security:Transport", "false", "Security:Transport is a section")]
+    [InlineData("Security:Throttling", "5", "Security:Throttling is a section")]
+    [InlineData("Security:Throttling:PairFailureLimit", "0", "Security:Throttling:PairFailureLimit")]
     [InlineData("Security:ReverseProxy:KnownProxies", "198.51.100.1", "Security:ReverseProxy:KnownProxies is a list")]
     [InlineData("Security:ReverseProxy:KnownNetworks", "198.51.100.0/24", "Security:ReverseProxy:KnownNetworks is a list")]
     public void InvalidProxyOrTransportSetting_FailsAndNamesTheSetting(string key, string value, string expected)
@@ -208,6 +227,41 @@ public sealed class SecurityConfigurationHostTests : IDisposable
 
         Assert.False(host.ValidateElPaquetoSecurityOptions());
         Assert.Contains(logs.Messages, m => m.Contains(expected, StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("Security:Cors:AllowedOrigins:0", "*", "Security:Cors:AllowedOrigins:0")]
+    [InlineData("Security:Cors:AllowedMethods:0", "PATCH", "Security:Cors:AllowedMethods:0")]
+    [InlineData("Security:Cors:AllowedHeaders:0", "*", "Security:Cors:AllowedHeaders:0")]
+    [InlineData("Security:Cors", "https://ui.example.test", "Security:Cors is a section")]
+    [InlineData("Security:Cors:AllowedOrigins", "https://ui.example.test", "Security:Cors:AllowedOrigins is a list")]
+    [InlineData("Security:Cors:AllowedMethods", "GET", "Security:Cors:AllowedMethods is a list")]
+    [InlineData("Security:Cors:AllowedHeaders", "Authorization", "Security:Cors:AllowedHeaders is a list")]
+    [InlineData("Security:Hsts", "true", "Security:Hsts is a section")]
+    [InlineData("Security:Hsts:MaxAgeSeconds", "63072001", "Security:Hsts:MaxAgeSeconds")]
+    public void InvalidCorsOrHstsSetting_FailsAndNamesTheSetting(string key, string value, string expected)
+    {
+        using var host = BuildHost(out var logs, new Dictionary<string, string?> { [key] = value });
+
+        Assert.False(host.ValidateElPaquetoSecurityOptions());
+        Assert.Contains(logs.Messages, m => m.Contains(expected, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ValidCorsAndHstsSettings_PassValidation()
+    {
+        using var host = BuildHost(out var logs, new Dictionary<string, string?>
+        {
+            ["Security:Cors:AllowedOrigins:0"] = "https://ui.example.test",
+            ["Security:Cors:AllowedMethods:0"] = "GET",
+            ["Security:Cors:AllowedHeaders:0"] = "Authorization",
+            ["Security:Hsts:Enabled"] = "true",
+            ["Security:Hsts:MaxAgeSeconds"] = "86400",
+            ["Security:Hsts:IncludeSubDomains"] = "true",
+        });
+
+        Assert.True(host.ValidateElPaquetoSecurityOptions());
+        Assert.Empty(logs.Messages);
     }
 
     [Fact]

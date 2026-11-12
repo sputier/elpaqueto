@@ -1,6 +1,5 @@
 using ElPaqueto.Core;
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Cors.Infrastructure;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.Options;
@@ -8,12 +7,10 @@ using Microsoft.Extensions.Options;
 namespace ElPaqueto;
 
 public class ConfigureElPaquetoServer
-    : IConfigureOptions<CorsOptions>
-    , IConfigureOptions<FormOptions>
+    : IConfigureOptions<FormOptions>
     , IConfigureOptions<ForwardedHeadersOptions>
     , IConfigureOptions<IISServerOptions>
 {
-    public const string CorsPolicy = "AllowAll";
     private readonly ElPaquetoOptions _elPaquetoOptions;
 
     public ConfigureElPaquetoServer(IOptions<ElPaquetoOptions> elPaquetoOptions)
@@ -21,16 +18,6 @@ public class ConfigureElPaquetoServer
         _elPaquetoOptions = elPaquetoOptions.Value;
     }
 
-
-    public void Configure(CorsOptions options)
-    {
-        // TODO: Consider disabling this on production builds.
-        options.AddPolicy(
-            CorsPolicy,
-            builder => builder.AllowAnyOrigin()
-                .AllowAnyMethod()
-                .AllowAnyHeader());
-    }
 
     public void Configure(FormOptions options)
     {

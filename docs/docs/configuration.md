@@ -400,7 +400,7 @@ This can be useful if you are hosting a private feed and need to host large pack
 
 On the application's statistics page the currently used services and overall package and version counts are listed.
 You can hide or show this page by modifying the `EnableStatisticsPage` configuration.
-If you set `ListConfiguredServices` to `false` the currently used services for database and storage (such as `Sqlite`) are omitted on the stats page:
+If you set `ListConfiguredServices` to `false` the currently used services for database and storage (such as `Sqlite`) are omitted on the stats page. The shipped `appsettings.json` sets it to `false`:
 
 ```json
 {
