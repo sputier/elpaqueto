@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Download the pinned third-party tools used by the hygiene checks.
+"""Download the pinned third-party tools used by the hygiene checks and the
+Docker workflow (image vulnerability scan).
 
 Each archive is downloaded from the tool's GitHub release, verified against
 the SHA-256 recorded below (taken from the release's checksum file), then
@@ -38,6 +39,14 @@ TOOLS = {
         "assets": {
             "linux-x64": ("linux_x64.tar.gz", "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"),
             "windows-x64": ("windows_x64.zip", "d29144deff3a68aa93ced33dddf84b7fdc26070add4aa0f4513094c8332afc4e"),
+        },
+    },
+    "trivy": {
+        "version": "0.76.1",
+        "url": "https://github.com/aquasecurity/trivy/releases/download/v{version}/trivy_{version}_{asset}",
+        "assets": {
+            "linux-x64": ("Linux-64bit.tar.gz", "c7cbe3137fb8a48a17574bede3dd6beb16742d1e9772929940fc90082c39d9c0"),
+            "windows-x64": ("windows-64bit.zip", "1051f49cb22d5284f43425f72aad9cda63ca12ceb92e7caa06903490c82dc9bf"),
         },
     },
 }

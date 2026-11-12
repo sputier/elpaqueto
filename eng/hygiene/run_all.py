@@ -41,6 +41,7 @@ def main() -> int:
         ("workflows", [python, str(HERE / "check_workflows.py")]),
         ("project-layout", [python, str(HERE / "check_project_layout.py")]),
         ("forbidden-files", [python, str(HERE / "check_forbidden_files.py")]),
+        ("trivyignore", [python, str(HERE / "check_trivyignore.py")]),
         ("content", [python, str(HERE / "check_content.py")]),
         ("secrets", [python, str(HERE / "check_secrets.py"), args.range]),
         ("commits", [python, str(HERE / "check_commits.py"), args.range]),
