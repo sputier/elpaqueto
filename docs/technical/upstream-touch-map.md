@@ -21,7 +21,7 @@ differs only by the rename is therefore not listed.
 | | |
 |---|---|
 | Upstream baseline | `02b6706` (see section 2 of [Porting upstream changes](../upstream-porting.md#2-baseline-record)) |
-| ElPaqueto revision compared | `82ddb90` on `develop`, 2026-11-12 |
+| ElPaqueto revision compared | `develop` of 2026-11-12 with the documentation and branding changes of #48 to #53 |
 | Line endings | CR at end of line ignored (`--ignore-cr-at-eol`) |
 | Renames | not detected (`--no-renames`): a moved file shows as deleted plus added |
 
@@ -98,7 +98,7 @@ are unchanged.
 
 ## Modified inherited files
 
-43 inherited files differ from the mapped upstream baseline (outside `docs/`
+48 inherited files differ from the mapped upstream baseline (outside `docs/`
 and `deployment templates/`). Change size is insertions/deletions against the
 mapped baseline.
 
@@ -121,6 +121,11 @@ mapped baseline.
 | `src/ElPaqueto.Web/ElPaquetoUrlGenerator.cs` | +1/-1 | Manifest download URL uses the manifest route (#19) |
 | `src/ElPaqueto.Web/Extensions/IServiceCollectionExtensions.cs` | +0/-1 | `using` of the deleted inherited authentication namespace removed (#17) |
 | `src/ElPaqueto.Web/ElPaqueto.Web.csproj` | +1/-1 | .NET 10 (#1) |
+| `src/ElPaqueto.Web/Pages/Shared/_Layout.cshtml` | +13/-3 | ElPaqueto logo, favicon set, documentation link and BaGetter credit (#53) |
+| `src/ElPaqueto.Web/Pages/Index.cshtml` | +2/-2 | Help links to the ElPaqueto documentation and issues instead of upstream (#53) |
+| `src/ElPaqueto.Web/Pages/Package.cshtml` | +1/-1 | Same, on the "package not found" page (#53) |
+| `src/ElPaqueto.Web/wwwroot/css/site.css` | +39/-0 | Header logo and footer link styles, appended at the end of the file (#53) |
+| `src/ElPaqueto.Web/wwwroot/favicon.ico` | binary | ElPaqueto favicon (#53); keep the ElPaqueto file on conflict |
 
 ### Core, storage and database providers
 
@@ -168,11 +173,11 @@ mapped baseline.
 | `.devcontainer/devcontainer.json` | +1/-1 | .NET 10 SDK image (#1) |
 | `.dockerignore` | +24/-30 | Build context turned into an allow-list (#44) |
 | `.editorconfig` | +25/-0 | Strict analyzer rules for ElPaqueto-authored code (#9); EF Core migrations marked as generated (#15) |
-| `.gitattributes` | +13/-0 | LF for ElPaqueto-authored files (#9); byte-exact port script fixtures (#13); LF for container files (#44) |
-| `.gitignore` | +5/-0 | Legacy `bagetter.db` files still ignored after the rename (#58); Compose secrets folder (#45) |
+| `.gitattributes` | +14/-0 | LF for ElPaqueto-authored files (#9); byte-exact port script fixtures (#13); LF for container files (#44); `.ico` as binary (#53) |
+| `.gitignore` | +9/-0 | Legacy `bagetter.db` files still ignored after the rename (#58); Compose secrets folder (#45); `auth.db` created when running from source (#50) |
 | `.github/PULL_REQUEST_TEMPLATE.md` | +24/-4 | Rewritten pull request template (#8) |
-| `CONTRIBUTING.md` | +166/-9 | Rewritten contributing guide (#8): prerequisites (#1), CI (#2, #3), code-quality baseline (#9), repository layout (#11), container checks (#46) |
-| `readme.md` | +16/-4 | Development status and Docker build (#44); .NET 10 prerequisites (#1); security policy and third-party notices (#7); authentication and authorization (#17, #24); upgrading from BaGetter (#59, #93) |
+| `CONTRIBUTING.md` | +173/-9 | Rewritten contributing guide (#8): prerequisites (#1), CI (#2, #3), code-quality baseline (#9), repository layout (#11), container checks (#46), running from source with a first administrator, technical documentation and logo use (#50, #53) |
+| `readme.md` | +80/-56 | Rewritten for ElPaqueto (#48): features, status, quick start, production, documentation, origin and licence; logo banner (#53) |
 | `LICENSE` | +2/-1 | ElPaqueto copyright line added (#7); the upstream copyright line is kept as is (#58), see the limits above |
 
 ## Deleted inherited files
@@ -198,7 +203,7 @@ the tree, excluded from the build (#1, #55).
 
 ## ElPaqueto-only areas
 
-227 files exist only in ElPaqueto. Upstream patches never touch them, but they
+258 files exist only in ElPaqueto. Upstream patches never touch them, but they
 are where ported behaviour may need to be re-implemented:
 
 - `src/ElPaqueto.Security/**` and `tests/ElPaqueto.Security.Tests/**`:
@@ -216,5 +221,7 @@ are where ported behaviour may need to be re-implemented:
 - `docs/user/**`, `docs/technical/**`, `docs/adr/**`, `docs/maintainers/**`,
   `docs/upstream-porting.md`.
 - `samples/reverse-proxy/**`, `docker-compose.example.yml`.
+- `assets/branding/**` (the logo) and the web UI images in
+  `src/ElPaqueto.Web/wwwroot/images/elpaqueto-*.png`.
 - Root files: `SECURITY.md`, `THIRD-PARTY-NOTICES.md`, `.gitleaksignore`,
   `.trivyignore`.
