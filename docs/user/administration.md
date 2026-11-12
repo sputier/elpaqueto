@@ -1,6 +1,6 @@
 # Administration from the command line
 
-ElPaqueto has no web administration interface. Users are managed with the `admin` commands of the server binary, run against the same configuration and data as the server.
+ElPaqueto has no web administration interface. Users are created and managed with the `admin` commands of the server binary, run against the same configuration and data as the server.
 
 ElPaqueto ships **without any account and without any default password**. The first administrator is created with [`admin bootstrap`](#first-administrator).
 
@@ -14,7 +14,7 @@ The commands:
 - never create or migrate the package database, never start the web server and never bind a port, so they can run next to a running server;
 - never print or log passwords or password hashes.
 
-Changes are written to the security database at once. They apply to a running server on the same data without a restart.
+Changes are committed to the security database at once; no restart is needed.
 
 ## Running the commands
 
@@ -116,7 +116,99 @@ After the bootstrap, remove the secret from the service and delete the file: the
 
 ### Recovery
 
-`admin bootstrap` never replaces an existing administrator, even a disabled one. This version has no command yet to re-enable a user or reset a password: keep a backup of the security database (see [Security database](../technical/security-database.md)) and restore it if the only administrator becomes unusable.
+`admin bootstrap` never replaces an existing administrator, even a disabled one. To recover access, use the user commands below from the server's shell:
+
+- the only administrator was disabled: `admin user enable <name>`;
+- its password is lost: `admin user reset-password <name>`;
+- another administrator is needed: `admin user create <name> --permissions administrator`.
+
+## Managing users
+
+All commands below follow the conventions above (password sources, exit codes, output streams). User names are matched ignoring case.
+
+| Command | Effect |
+| --- | --- |
+| `admin user create <username> --permissions <list> [password source]` | Creates an active user. Exit code 3 if the name exists (ignoring case). |
+| `admin user list [--format text\|json] [--include-disabled]` | Lists the active users, or every user with `--include-disabled`, ordered by name. |
+| `admin user show <username> [--format text\|json]` | Shows one user. |
+| `admin user disable <username>` | Disables the user. Already disabled: exit code 0 with a notice. |
+| `admin user enable <username>` | Enables the user. Already enabled: exit code 0 with a notice. |
+| `admin user set-permissions <username> --permissions <list>` | Replaces the permission set. The same set: exit code 0 with a notice. |
+| `admin user reset-password <username> [password source]` | Sets a new password and its change date. A disabled user stays disabled. |
+
+`show`, `disable`, `enable`, `set-permissions` and `reset-password` exit with code 4 when the user does not exist (`reset-password` checks this before asking for the password). Every change updates the user's `updatedAt` date; a command that changes nothing leaves it as it was.
+
+`reset-password` changes only the password. It does not affect other credentials of the user; if the account may be compromised, also review them.
+
+### Permissions
+
+`--permissions` takes a comma-separated, case-insensitive list. Each entry is a permission or a preset, and the result is their union:
+
+| Entry | Grants |
+| --- | --- |
+| `read` | Browse and download packages. |
+| `publish` | Publish packages. |
+| `admin` | Administer the server. |
+| `reader` | `read` |
+| `publisher` | `read`, `publish` |
+| `administrator` | `read`, `publish`, `admin` |
+
+The permissions are independent: `admin` does not imply `read` or `publish`. An unknown entry is a usage error (exit code 2) that lists the valid values. An empty list is refused: use `disable` to remove all access.
+
+### Last active administrator
+
+`disable` and `set-permissions` refuse (exit code 3, nothing changed) a change that would leave no **active** user holding `admin`. With two active administrators, one of them can be disabled or demoted. The check and the change happen in one database write transaction, so two concurrent commands cannot each remove "the other" last administrator.
+
+### No deletion
+
+Users cannot be deleted. Deleting a user would leave dangling references to it; disabling removes its access and keeps its history. Disable users who must no longer have access.
+
+### Examples
+
+```bash
+# A user for a CI pipeline, password from a file.
+dotnet ElPaqueto.dll admin user create ci --permissions publisher --password-file ./ci_password
+
+# A read-only user, password prompted for.
+dotnet ElPaqueto.dll admin user create alice --permissions reader
+
+# Give alice publish rights too, then list everybody as JSON.
+dotnet ElPaqueto.dll admin user set-permissions alice --permissions read,publish
+dotnet ElPaqueto.dll admin user list --include-disabled --format json
+
+# Remove access.
+dotnet ElPaqueto.dll admin user disable alice
+
+# In Docker Compose.
+docker compose run --rm elpaqueto admin user reset-password ci --password-file /run/secrets/ci_password
+```
+
+### JSON output
+
+`list --format json` writes one object with a `users` array; `show --format json` writes one user object. The shape is stable:
+
+```json
+{
+  "users": [
+    {
+      "id": "6f1c2a0e-8d1b-4c63-9a55-0d4f3c2b1a90",
+      "userName": "ci",
+      "isActive": true,
+      "permissions": ["read", "publish"],
+      "createdAt": "2026-11-12T08:30:00.0000000Z",
+      "updatedAt": "2026-11-12T08:30:00.0000000Z",
+      "passwordChangedAt": "2026-11-12T08:30:00.0000000Z"
+    }
+  ]
+}
+```
+
+- `id`: the user identifier (GUID).
+- `permissions`: always in the order `read`, `publish`, `admin`; only the granted ones.
+- Dates are UTC, ISO 8601, with seven fractional digits and a `Z` suffix.
+- The output never contains a password hash.
+
+Log lines from the console logger also go to standard output: keep the default log level (`Warning`) or send logs elsewhere when a script parses the JSON.
 
 ## Exit codes
 

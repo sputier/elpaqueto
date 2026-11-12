@@ -28,6 +28,12 @@ The `admin` commands declare no options to McMaster. Each group and command uses
 
 A deferred transaction would not be enough: two processes could both read "no administrator" and the second one would fail with `SQLITE_BUSY` on its write, or, without any transaction, both would succeed. `BootstrapCommandTests.TwoConcurrentBootstraps_ExactlyOneSucceeds` stalls the administrator check with a command interceptor to make the race certain; it fails with both variants. `AdminCommandProcessTests` repeats the check with two real processes.
 
+## User changes
+
+`UserService.ChangeAsync` serves `disable`, `enable`, `set-permissions` and `reset-password`. Inside one `BEGIN IMMEDIATE` transaction it loads the user, applies the change, and, when the user was an active administrator and no longer is, counts the *other* active users holding `Admin`; if there is none it rolls back and reports `LastActiveAdministrator` (exit code 3). A no-op (already in the requested state) writes nothing and keeps `UpdatedAt` and `ConcurrencyStamp`. Every write sets `UpdatedAt`; the context regenerates `ConcurrencyStamp`. Because the read and the write share the write lock, a concurrent writer cannot interleave; a `DbUpdateConcurrencyException` is still mapped to exit code 1 with a "retry" message. `UserCommandTests.TwoConcurrentDisables_OfTheOnlyTwoActiveAdministrators_LeaveOneActive` stalls the count query to force the race; without the transaction both disables succeed and the test fails.
+
+JSON output is written field by field with `Utf8JsonWriter` from `UserSummary`, a record without a password hash, so no serializer setting can add one.
+
 ## Logging
 
 State-changing operations log one structured event through `UserAdministrationLog` (`LoggerMessage` source generator, category `ElPaqueto.Security.Administration`):
@@ -36,6 +42,13 @@ State-changing operations log one structured event through `UserAdministrationLo
 | --- | --- | --- | --- |
 | 2001 | `AdministratorBootstrapped` | Information | `UserName`, `UserId` |
 | 2002 | `BootstrapRefused` | Information | `UserName`, `Reason` |
+| 2003 | `UserCreated` | Information | `UserName`, `UserId`, `Permissions` |
+| 2004 | `UserDisabled` | Information | `UserName`, `UserId` |
+| 2005 | `UserEnabled` | Information | `UserName`, `UserId` |
+| 2006 | `UserPermissionsChanged` | Information | `UserName`, `UserId`, `OldPermissions`, `NewPermissions` |
+| 2007 | `UserPasswordReset` | Information | `UserName`, `UserId` |
+| 2008 | `LastActiveAdministratorProtected` | Information | `UserName` |
+| 2009 | `ConcurrentChangeRejected` | Warning | `UserName` |
 | 2099 | `AdminCommandFailed` | Error | `Command`, exception |
 
 Passwords and hashes are never fields. EF Core does not log parameter values (sensitive data logging stays off). A sentinel test captures every log at `Trace` level and every output stream and asserts that neither the password nor the stored hash appears.
@@ -43,5 +56,5 @@ Passwords and hashes are never fields. EF Core does not log parameter values (se
 ## Tests
 
 - `tests/ElPaqueto.Security.Tests/Cli/AdminCli.cs` runs the command tree in process over a real SQLite file, with a string-backed `IConsole`, a fake prompt and captured logs.
-- `BootstrapCommandTests` covers the acceptance criteria and the abuse cases (password options, misplaced values, invalid names, oversized or non-UTF-8 password files, concurrency).
+- `BootstrapCommandTests` and `UserCommandTests` cover the acceptance criteria and the abuse cases (password options, misplaced values, invalid names, oversized or non-UTF-8 password files, concurrency).
 - `AdminCommandProcessTests` runs the built `ElPaqueto.dll` with real standard input (`HostProcess` always redirects and closes it), checks exit codes, that no package database file is created and that no port is bound (the port the server would use is held by the test, so a Kestrel start would fail the command), and that a bootstrap succeeds while the server runs on the same data.
