@@ -13,7 +13,7 @@ If `dotnet` reports `A compatible .NET SDK was not found`, the installed SDK doe
 ## Run from source
 
 1. Clone the repository
-2. Navigate to `src/BaGetter`
+2. Navigate to `src/ElPaqueto`
 3. Start the service with `dotnet run`
 4. Open the URL `http://localhost:5000/v3/index.json` in your browser
 

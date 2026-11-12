@@ -2,9 +2,9 @@
 
   <!-- Package properties -->
   <PropertyGroup>
-    <Authors>Community https://github.com/bagetter/BaGetter; Loic Sharma</Authors>
-    <Copyright>Copyright (c) BaGetter $([System.DateTime]::Now.ToString(yyyy))</Copyright>
-    <Product>BaGetter</Product>
+    <Authors>ElPaqueto contributors; based on BaGetter (https://github.com/bagetter/BaGetter) by the BaGetter community and Loic Sharma</Authors>
+    <Copyright>Copyright (c) ElPaqueto contributors $([System.DateTime]::Now.ToString(yyyy)). Portions Copyright (c) 2023 BaGetter and its contributors, MIT licence.</Copyright>
+    <Product>ElPaqueto</Product>
 
     <PackageIcon>packageIcon.png</PackageIcon>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
