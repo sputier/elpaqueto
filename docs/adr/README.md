@@ -13,6 +13,7 @@ documentation is built or published.
 | ADR | Title | Status |
 |---|---|---|
 | [0001](0001-project-identity-and-rebranding-scope.md) | Project identity and rebranding scope | Accepted |
+| [0002](0002-authentication-architecture.md) | Authentication and authorization architecture | Accepted |
 
 ## Writing a new ADR
 
