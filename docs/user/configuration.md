@@ -60,12 +60,16 @@ Which reverse proxies are trusted to report the client's address, the original s
 
 When neither list is set, only loopback (`127.0.0.0/8` and `::1`) is trusted. Setting either list **replaces** that default: add `127.0.0.1` and `::1` yourself if a proxy on the same machine also connects. There is no setting that trusts every address, and networks that cover every address (`0.0.0.0/0`, `::/0`, or an IPv6 network containing all IPv4-mapped addresses such as `::ffff:0:0/96`) are rejected.
 
+Addresses must be written in full: four decimal octets for IPv4 (`127.1` or hexadecimal forms are rejected), IPv6 without a zone id (`%eth0`) and not in IPv4-mapped form (`::ffff:192.0.2.10`; write `192.0.2.10`, which also matches clients of a dual-stack listener).
+
 Lists are set with one key per entry:
 
 ```bash
 export Security__ReverseProxy__KnownNetworks__0="198.51.100.0/24"
 export Security__ReverseProxy__KnownProxies__0="192.0.2.10"
 ```
+
+Entries are merged by index across configuration sources: an environment variable `..__0` replaces entry 0 of `appsettings.json` but keeps its entry 1. Set the whole list in a single source so that no stale proxy stays trusted.
 
 Setting the list itself as a single value (`Security__ReverseProxy__KnownNetworks=198.51.100.0/24`) is rejected at startup, because it would otherwise be silently ignored.
 
@@ -98,6 +102,8 @@ The scheme and the client address are the ones left after trusted forwarded head
 A remote plain-HTTP request is answered with status `403` and the plain-text body `HTTPS is required.`, before any authentication, whatever its route and whether or not it carries credentials (`Authorization` or `X-NuGet-ApiKey`). The answer has no `WWW-Authenticate` header, so clients are never invited to send credentials over plain HTTP, and it is never a redirect: a client that already sent credentials over HTTP would send them again.
 
 Requests from loopback (`127.0.0.0/8`, `::1`) and over non-IP transports (Unix sockets, named pipes) are allowed over plain HTTP, for local development, the container health check and local tests. Note that with Docker port publishing, a request from the Docker host reaches the container from the bridge gateway address, not from loopback.
+
+Health probes from other machines (an orchestrator, a load balancer, an uptime monitor) are remote requests too: send them through the HTTPS endpoint or the reverse proxy, or run them from inside the container or host, otherwise they get `403`.
 
 `false` disables the check and logs a warning at startup. Use it only on an isolated test network.
 

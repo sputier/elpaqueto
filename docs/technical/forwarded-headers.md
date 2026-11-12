@@ -23,7 +23,7 @@ The pipeline starts with `UseElPaquetoForwardedHeaders` (`src/ElPaqueto.Security
 
 2. **`TransportSecurityMiddleware`**, which:
    - rejects the request with `403`, plain text `HTTPS is required.`, `Cache-Control: no-store`, no `WWW-Authenticate` and no `Location`, when HTTPS is required, the scheme is not `https` and the client address is not loopback. Both values are the ones left by step 1, so only a trusted proxy can make a request count as HTTPS or as coming from another address. A loopback proxy relaying a remote client counts as remote. A connection without an IP address (Unix socket, named pipe, in-process test server) counts as local;
-   - then, when `Security:PublicBaseUrl` is set, overwrites `Request.Scheme` and `Request.Host` with its values. The check comes first on purpose: otherwise every request would look like HTTPS.
+   - then, when `Security:PublicBaseUrl` is set, overwrites `Request.Scheme` and `Request.Host` with its values, without the default port (generated URLs carry an international host in its punycode form). The check comes first on purpose: otherwise every request would look like HTTPS.
 
 Because the request itself is rewritten, every URL that `ElPaquetoUrlGenerator` produces uses the public base URL, including the two it concatenates by hand from `Request.Scheme`, `Request.Host` and `Request.PathBase`. That inherited file is not changed for this.
 
@@ -35,6 +35,8 @@ The HTTPS decision is made before authentication and before routing, so credenti
 - **All remote plain-HTTP requests are refused, not only those with credentials.** An anonymous request would otherwise get a 401 challenge over HTTP and the client would answer it with credentials, in clear text.
 - **Loopback only by default.** Trusting all private ranges by default would let any host on a shared private network forge its address and scheme. A deployment with a proxy elsewhere must name it; until it does, remote requests fail closed with 403, and a warning (logged once per process) names the address whose forwarded headers were ignored.
 - **No trust-everyone switch.** Catch-all networks (`0.0.0.0/0`, `::/0`, and IPv6 networks containing every IPv4-mapped address) are rejected at startup. The IPv4-mapped check compares address bits directly, because `System.Net.IPNetwork.Contains` does not report IPv4-mapped addresses reliably.
+- **Strict address forms.** Trusted addresses and networks must use plain dotted-decimal IPv4 or IPv6 without zone id or IPv4-mapped form. `IPAddress.TryParse` accepts shorthand such as `127.1`, hexadecimal octets and zone ids; those entries would be misread or never match a connection, so they are rejected rather than silently trusting nothing.
+- **Same-host proxy without `X-Forwarded-For`.** A trusted loopback proxy that does not send `X-Forwarded-For` makes every request look local, so the HTTPS check cannot apply. This is documented for operators; the server cannot detect it.
 - **Public base URL optional.** It is not mandatory in this version; a startup warning is logged when it is missing and the server listens beyond loopback. Its value must be an absolute `https` URL with no path (the path prefix stays with `PathBase`), query, fragment or user information.
 
 ## Not covered here

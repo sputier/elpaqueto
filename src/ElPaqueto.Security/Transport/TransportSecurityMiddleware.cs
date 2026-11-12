@@ -49,8 +49,10 @@ internal sealed partial class TransportSecurityMiddleware
         if (publicBaseUri is not null)
         {
             _publicScheme = publicBaseUri.Scheme;
-            // Authority omits the default port, so URLs read https://host/, not https://host:443/.
-            _publicHost = new HostString(publicBaseUri.Authority);
+            // The ASCII (punycode) host, and no port when it is the default: https://host/, not https://host:443/.
+            _publicHost = publicBaseUri.IsDefaultPort
+                ? new HostString(publicBaseUri.IdnHost)
+                : new HostString(publicBaseUri.IdnHost, publicBaseUri.Port);
         }
     }
 

@@ -124,7 +124,7 @@ public sealed class SecurityReverseProxyOptions : IValidatableObject
         address = IPAddress.None;
 
         if (string.IsNullOrWhiteSpace(value)
-            || !(value.Contains('.', StringComparison.Ordinal) || value.Contains(':', StringComparison.Ordinal))
+            || !HasCanonicalAddressForm(value.Trim())
             || !IPAddress.TryParse(value.Trim(), out var parsed))
         {
             return false;
@@ -137,6 +137,29 @@ public sealed class SecurityReverseProxyOptions : IValidatableObject
 
         address = parsed;
         return true;
+    }
+
+    /// <summary>
+    /// Accepts only the plain written forms: four dotted decimal octets for IPv4, or IPv6 without a
+    /// zone id and not IPv4-mapped. Shorthand (<c>127.1</c>), hexadecimal octets, zone ids and
+    /// IPv4-mapped forms are parsed by <see cref="IPAddress"/> but would either be misread or never
+    /// match a connection address, so they are rejected instead of silently trusting nothing.
+    /// </summary>
+    private static bool HasCanonicalAddressForm(string value)
+    {
+        if (value.Contains('%', StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        if (value.Contains(':', StringComparison.Ordinal))
+        {
+            return !value.StartsWith("::ffff:", StringComparison.OrdinalIgnoreCase);
+        }
+
+        var octets = value.Split('.');
+        return octets.Length == 4
+            && octets.All(o => o.Length is >= 1 and <= 3 && o.All(char.IsAsciiDigit));
     }
 
     /// <summary>
@@ -155,8 +178,8 @@ public sealed class SecurityReverseProxyOptions : IValidatableObject
         var slash = trimmed.IndexOf('/', StringComparison.Ordinal);
         var address = trimmed[..slash];
 
-        // Same rule as for proxies: no shorthand such as "10/8".
-        if (!(address.Contains('.', StringComparison.Ordinal) || address.Contains(':', StringComparison.Ordinal)))
+        // Same rule as for proxies: no shorthand such as "10/8", no zone id, no IPv4-mapped form.
+        if (!HasCanonicalAddressForm(address))
         {
             return false;
         }

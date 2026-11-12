@@ -53,6 +53,11 @@ public class TransportSecurityTests
     [InlineData("0.0.0.0")]
     [InlineData("::")]
     [InlineData("256.0.0.1")]
+    [InlineData("127.1")]
+    [InlineData("0x7f.0.0.1")]
+    [InlineData("fe80::1%eth0")]
+    [InlineData("::ffff:198.51.100.1")]
+    [InlineData("::ffff:0.0.0.0")]
     public void InvalidProxy_IsRejected(string proxy)
     {
         var result = Validator.Validate(name: null, WithProxy(proxies: [proxy]));
@@ -67,7 +72,6 @@ public class TransportSecurityTests
     [InlineData("192.0.2.20/32")]
     [InlineData("2001:db8::/32")]
     [InlineData("::1/128")]
-    [InlineData("::ffff:198.51.100.0/120")]
     public void ValidNetwork_IsAccepted(string network)
     {
         Assert.True(Validator.Validate(name: null, WithProxy(networks: [network])).Succeeded);
@@ -81,6 +85,9 @@ public class TransportSecurityTests
     [InlineData("198.51.100.0/33")]
     [InlineData("198.51.100.0/-1")]
     [InlineData("example.test/8")]
+    [InlineData("198.51/16")]
+    [InlineData("fe80::%eth0/64")]
+    [InlineData("::ffff:198.51.100.0/120")]
     public void MalformedNetwork_IsRejected(string network)
     {
         var result = Validator.Validate(name: null, WithProxy(networks: [network]));
@@ -92,7 +99,6 @@ public class TransportSecurityTests
     [Theory]
     [InlineData("0.0.0.0/0")]
     [InlineData("::/0")]
-    [InlineData("::ffff:0:0/96")]
     [InlineData("::/64")]
     [InlineData("::/80")]
     public void CatchAllNetwork_IsRejected(string network)
@@ -320,6 +326,44 @@ public class TransportSecurityTests
         Assert.NotNull(seen);
         Assert.Equal("https", seen.Scheme);
         Assert.Equal("nuget.example.test:8443", seen.Host.Value);
+    }
+
+    [Fact]
+    public async Task Middleware_RequireHttpsDisabled_LetsRemotePlainHttpThrough()
+    {
+        var nextCalled = false;
+        var middleware = CreateMiddleware(
+            new ElPaquetoSecurityOptions { Transport = new SecurityTransportOptions { RequireHttps = false } },
+            _ =>
+            {
+                nextCalled = true;
+                return Task.CompletedTask;
+            });
+        var context = CreateContext("http", "203.0.113.10");
+
+        await middleware.InvokeAsync(context);
+
+        Assert.True(nextCalled);
+        Assert.Equal(StatusCodes.Status200OK, context.Response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Middleware_InternationalPublicHost_UsesTheAsciiForm()
+    {
+        HttpRequest? seen = null;
+        var middleware = CreateMiddleware(
+            new ElPaquetoSecurityOptions { PublicBaseUrl = "https://bücher.example.test" },
+            context =>
+            {
+                seen = context.Request;
+                return Task.CompletedTask;
+            });
+
+        await middleware.InvokeAsync(CreateContext("http", "127.0.0.1"));
+
+        Assert.NotNull(seen);
+        // Generated URLs use ToUriComponent, which must give the ASCII form.
+        Assert.Equal("xn--bcher-kva.example.test", seen.Host.ToUriComponent());
     }
 
     [Fact]
