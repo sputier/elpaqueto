@@ -14,7 +14,7 @@ The commands:
 - never create or migrate the package database, never start the web server and never bind a port, so they can run next to a running server;
 - never print or log passwords or password hashes.
 
-Changes are committed to the security database at once; no restart is needed.
+Changes are committed to the security database at once; no restart is needed. The server reads the user on every request, so a disabled user, a reset password or new permissions take effect on the next request.
 
 ## Running the commands
 
