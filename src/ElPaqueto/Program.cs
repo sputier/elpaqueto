@@ -1,6 +1,7 @@
 using System;
 using System.Threading.Tasks;
 using ElPaqueto.Core;
+using ElPaqueto.Security;
 using ElPaqueto.Web;
 using McMaster.Extensions.CommandLineUtils;
 using Microsoft.AspNetCore.Hosting;
@@ -15,8 +16,11 @@ public class Program
     public static async Task Main(string[] args)
     {
         var host = CreateHostBuilder(args).Build();
-        if (!host.ValidateStartupOptions())
+        var configurationIsValid = host.ValidateStartupOptions();
+        configurationIsValid &= host.ValidateElPaquetoSecurityOptions();
+        if (!configurationIsValid)
         {
+            Environment.ExitCode = 1;
             return;
         }
 
