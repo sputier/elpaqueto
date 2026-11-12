@@ -101,7 +101,7 @@ public class AuditLoggingIntegrationTests : IDisposable
         // Throttling: five failures from one client trip it; the sixth attempt is refused unverified.
         for (var i = 0; i < 5; i++)
         {
-            Assert.Equal(401, await StatusAsync("198.51.100.77", Basic(UserName, _password + "-wrong")));
+            Assert.Equal(401, await StatusAsync("198.51.100.77", Basic(UserName, _password + "-wrong-" + i)));
         }
 
         Assert.Equal(429, await StatusAsync("198.51.100.77", Basic(UserName, _password)));

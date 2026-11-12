@@ -82,6 +82,7 @@ public static class ElPaquetoSecurityApplicationExtensions
         // The scheme and policy names are the ones the inherited controllers already reference, so that
         // no controller has to change (ADR 0002, decision 3).
         services.AddSingleton<VerificationCache>();
+        services.AddSingleton<VerificationTiming>();
         services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton<ILoginThrottle, LoginThrottle>();
         services

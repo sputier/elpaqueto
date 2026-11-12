@@ -37,8 +37,8 @@ Common properties: `ClientAddress` is the connection's remote address **after tr
 | Id | Name | Level | Properties | Emitted when |
 | --- | --- | --- | --- | --- |
 | 1001 | `AuthenticationSucceeded` | Debug | `UserId`, `Method` (`password`, `api_key`), `KeyId`, `ClientAddress` | A password or an API key is accepted. |
-| 1002 | `AuthenticationFailed` | Warning; Debug for `malformed` | `Method` (`password`), `Reason`, `UserName` (see [user names](#user-names-in-logs)), `ClientAddress` | A Basic header with a password (not an API key) is refused. |
-| 1003 | `ApiKeyRejected` | Warning when the value has the token format; Debug otherwise | `Reason`, `KeyId`, `CredentialSource` (`x-nuget-apikey`, `basic-password`), `ClientAddress` | An API key is refused, from the header or as a Basic password. |
+| 1002 | `AuthenticationFailed` | Warning; Debug for `malformed` and for a [repetition](throttling.md#repeated-identical-attempts) of a failure already counted | `Method` (`password`), `Reason`, `UserName` (see [user names](#user-names-in-logs)), `ClientAddress` | A Basic header with a password (not an API key) is refused. |
+| 1003 | `ApiKeyRejected` | Warning when the value has the token format, the first time from a client in the throttling window; Debug otherwise | `Reason`, `KeyId`, `CredentialSource` (`x-nuget-apikey`, `basic-password`), `ClientAddress` | An API key is refused, from the header or as a Basic password. |
 | 1004 | `AuthenticationThrottled` | Debug | `Method`, `StatusCode` (429 or 503), `ClientAddress`, `RetryAfterSeconds` | An attempt is refused by throttling or for lack of verification capacity, without checking its credential. |
 
 `AuthenticationFailed` reasons: `malformed` (the header cannot be decoded into a user name and a password: refused before throttling, hence Debug), `unknown_user` (no such user, including invalid user names), `disabled` (the user exists but is disabled), `bad_password` (active user, wrong password).
@@ -64,7 +64,7 @@ Reasons: `unmapped_endpoint`, `route_mismatch`, `method_not_allowed`, `api_key_h
 
 | Id | Name | Level | Properties | Emitted when |
 | --- | --- | --- | --- | --- |
-| 1801 | `ThrottleTripped` | Warning | `Scope` (`Client`, `Network`, `Pair`, `Account`), `Client`, `Seconds` | A failure counter trips. Once per trip, never per refused attempt. `Client` is the IPv4 address, the IPv6 /64, or the IPv6 /48 for `Network`; never the user name. |
+| 1801 | `ThrottleTripped` | Warning | `Scope` (`Client`, `Network`, `Pair`, `Account`, `Repeat`), `Client`, `Seconds` | A failure counter trips. Once per trip, never per refused attempt. `Client` is the IPv4 address, the IPv6 /64, or the IPv6 /48 for `Network`; never the user name. |
 
 ### Startup security warnings (1900–1999)
 

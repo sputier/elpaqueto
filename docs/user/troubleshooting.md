@@ -30,7 +30,7 @@ The request carried no usable credentials. The answer is the same whatever the c
 
 ## `429 Too Many Requests`
 
-Too many failed sign-ins from your address, or for your user name from your address. Nothing is checked while it lasts, even correct credentials. Wait for the number of seconds in `Retry-After`, then **fix the credentials before retrying**: a stale password in a `NuGet.Config` or a CI secret keeps failing on its own and keeps the throttle active. Clients behind one NAT or an untrusted proxy share one budget. Details: [`Security:Throttling`](configuration.md#securitythrottling).
+Too many failed sign-ins from your address, or for your user name from your address. Nothing is checked while it lasts, even correct credentials. Wait for the number of seconds in `Retry-After`, then **fix the credentials before retrying**. Retrying the same wrong password is counted once and leads to `401`, not `429`; `429` comes from several *different* wrong passwords or user names from your address (for example several stale `NuGet.Config` files or CI secrets). Clients behind one NAT or an untrusted proxy share one budget. Details: [`Security:Throttling`](configuration.md#securitythrottling).
 
 ## `503 Service Unavailable` during sign-in
 

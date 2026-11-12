@@ -1,4 +1,8 @@
+using System.Buffers;
+using System.Buffers.Binary;
 using System.Net;
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading.RateLimiting;
 using ElPaqueto.Security.Auditing;
 using ElPaqueto.Security.Configuration;
@@ -32,7 +36,14 @@ namespace ElPaqueto.Security.Throttling;
 /// clients, which the global verification capacity bounds.
 /// Waiting attempts are bounded; beyond the bound, and beyond the global verification capacity, the answer
 /// is 503.</para>
-/// <para>Every counter kind holds at most <see cref="SecurityThrottlingOptions.MaxTrackedEntries"/> entries, so
+/// <para>A failed attempt is fingerprinted (HMAC-SHA256 with a per-process random key over the client, the user
+/// name, the secret and the credential state) and remembered for the longest window. An identical failure in that
+/// time counts on no counter: guessing needs distinct candidates, while a client that retries a stale credential
+/// (NuGet sends a refused request six times) must not throttle itself. A different secret, user name, client or
+/// credential state is a new attempt and counts. When the fingerprint store is full, a failure is counted and not
+/// remembered (fail closed). Repetitions are bounded too, per client, by a separate and much higher limit
+/// (<see cref="RepeatLimit"/>): a client that keeps repeating is throttled like any other.</para>
+/// <para>Every counter kind, and the fingerprint store, holds at most <see cref="SecurityThrottlingOptions.MaxTrackedEntries"/> entries, so
 /// memory stays bounded whatever the number of user names or addresses an attacker sends.</para>
 /// </remarks>
 internal sealed class LoginThrottle : ILoginThrottle, IDisposable
@@ -43,9 +54,12 @@ internal sealed class LoginThrottle : ILoginThrottle, IDisposable
     private readonly ILogger<Audit> _logger;
     private readonly ConcurrencyLimiter _capacity;
     private readonly CounterStore<ClientKey> _clients;
+    private readonly CounterStore<ClientKey> _repeats;
     private readonly CounterStore<NetworkKey> _networks;
     private readonly CounterStore<PairKey> _pairs;
     private readonly CounterStore<AccountKey> _accounts;
+    private readonly FailedCredentialStore _failedAttempts;
+    private readonly byte[] _fingerprintKey = RandomNumberGenerator.GetBytes(32);
     private readonly long _origin;
     private int _waiting;
 
@@ -65,9 +79,14 @@ internal sealed class LoginThrottle : ILoginThrottle, IDisposable
             QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
         });
         _clients = new CounterStore<ClientKey>(_options.ClientWindow, _options.ClientFailureLimit, _options.MaxTrackedEntries);
+        _repeats = new CounterStore<ClientKey>(_options.ClientWindow, RepeatLimit(_options), _options.MaxTrackedEntries);
         _networks = new CounterStore<NetworkKey>(_options.ClientWindow, _options.NetworkFailureLimit, _options.MaxTrackedEntries);
         _pairs = new CounterStore<PairKey>(_options.PairWindow, _options.PairFailureLimit, _options.MaxTrackedEntries);
         _accounts = new CounterStore<AccountKey>(_options.AccountWindow, _options.AccountFailureLimit, _options.MaxTrackedEntries);
+
+        // As long as the longest window: a repeated failure never counts again while the first one still does.
+        var fingerprintWindow = new[] { _options.ClientWindow, _options.PairWindow, _options.AccountWindow }.Max();
+        _failedAttempts = new FailedCredentialStore(fingerprintWindow, _options.MaxTrackedEntries);
         _origin = MonotonicTicks();
     }
 
@@ -100,15 +119,27 @@ internal sealed class LoginThrottle : ILoginThrottle, IDisposable
         }
     }
 
-    public async ValueTask<VerificationSlot> EnterVerificationAsync(IPAddress? client, string? userName, CancellationToken cancellationToken)
+    /// <summary>
+    /// Repetitions of counted failures, from one client and in <see cref="SecurityThrottlingOptions.ClientWindow"/>,
+    /// after which the client is throttled: ten times the client limit (300 with the defaults), far above what a
+    /// client retrying a stale credential sends (6 per NuGet command), but a bound on the database reads and log
+    /// lines that repetitions cost.
+    /// </summary>
+    internal static int RepeatLimit(SecurityThrottlingOptions options) => options.ClientFailureLimit * 10;
+
+    public async ValueTask<VerificationSlot> EnterVerificationAsync(
+        IPAddress? client, string? userName, CredentialAttempt? attempt, CancellationToken cancellationToken)
     {
         var keys = Keys.For(client, userName);
+
+        // Computed for every attempt, known user name or not, before taking the lock.
+        UInt128? fingerprint = attempt is { } value ? Fingerprint(keys, value) : null;
 
         // An attempt that waits keeps its place in the queue until it leaves, granted or not.
         var place = new QueuePlace();
         try
         {
-            return await EnterAsync(keys, place, cancellationToken).ConfigureAwait(false);
+            return await EnterAsync(keys, fingerprint, place, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -122,7 +153,7 @@ internal sealed class LoginThrottle : ILoginThrottle, IDisposable
         }
     }
 
-    private async ValueTask<VerificationSlot> EnterAsync(Keys keys, QueuePlace place, CancellationToken cancellationToken)
+    private async ValueTask<VerificationSlot> EnterAsync(Keys keys, UInt128? fingerprint, QueuePlace place, CancellationToken cancellationToken)
     {
         while (true)
         {
@@ -130,6 +161,7 @@ internal sealed class LoginThrottle : ILoginThrottle, IDisposable
             Task? released = null;
             Counter clientCounter;
             Counter? pairCounter = null;
+            var repeated = false;
 
             lock (_gate)
             {
@@ -152,6 +184,9 @@ internal sealed class LoginThrottle : ILoginThrottle, IDisposable
 
                 if (busy is null)
                 {
+                    // Decided once the previous attempt of the pair has completed, so a burst of identical attempts
+                    // sees the first one's failure.
+                    repeated = fingerprint is { } known && _failedAttempts.Contains(known, now);
                     clientCounter.InFlight++;
                     if (pairCounter is not null)
                     {
@@ -203,17 +238,19 @@ internal sealed class LoginThrottle : ILoginThrottle, IDisposable
             }
             catch
             {
-                Complete(keys, clientCounter, pairCounter, lease: null, VerificationOutcome.None);
+                _ = Complete(keys, clientCounter, pairCounter, fingerprint, lease: null, VerificationOutcome.None);
                 throw;
             }
 
             if (!lease.IsAcquired)
             {
-                Complete(keys, clientCounter, pairCounter, lease, VerificationOutcome.None);
+                _ = Complete(keys, clientCounter, pairCounter, fingerprint, lease, VerificationOutcome.None);
                 return VerificationSlot.Rejected(Busy());
             }
 
-            return VerificationSlot.Granted(outcome => Complete(keys, clientCounter, pairCounter, lease, outcome));
+            return VerificationSlot.Granted(
+                outcome => Complete(keys, clientCounter, pairCounter, fingerprint, lease, outcome),
+                repeated);
         }
     }
 
@@ -229,6 +266,7 @@ internal sealed class LoginThrottle : ILoginThrottle, IDisposable
                 ThrottleScope.Client => _clients.Count,
                 ThrottleScope.Network => _networks.Count,
                 ThrottleScope.Pair => _pairs.Count,
+                ThrottleScope.Repeat => _repeats.Count,
                 _ => _accounts.Count,
             };
         }
@@ -240,6 +278,15 @@ internal sealed class LoginThrottle : ILoginThrottle, IDisposable
         lock (_gate)
         {
             return _clients.Outstanding + _pairs.Outstanding + _waiting;
+        }
+    }
+
+    /// <summary>The failed attempts currently remembered. For tests and diagnostics.</summary>
+    internal int RememberedFailedAttempts()
+    {
+        lock (_gate)
+        {
+            return _failedAttempts.Count(Now());
         }
     }
 
@@ -256,15 +303,17 @@ internal sealed class LoginThrottle : ILoginThrottle, IDisposable
                 ThrottleScope.Client => _clients.Find(keys.Client, now),
                 ThrottleScope.Network => keys.Network is { } network ? _networks.Find(network, now) : null,
                 ThrottleScope.Pair => keys.Pair is { } pair ? _pairs.Find(pair, now) : null,
+                ThrottleScope.Repeat => _repeats.Find(keys.Client, now),
                 _ => keys.Account is { } account ? _accounts.Find(account, now) : null,
             };
             return counter?.FailureCount ?? 0;
         }
     }
 
-    private void Complete(Keys keys, Counter clientCounter, Counter? pairCounter, RateLimitLease? lease, VerificationOutcome outcome)
+    private bool Complete(Keys keys, Counter clientCounter, Counter? pairCounter, UInt128? fingerprint, RateLimitLease? lease, VerificationOutcome outcome)
     {
         List<(ThrottleScope Scope, TimeSpan Duration)>? trips = null;
+        var counted = false;
 
         lock (_gate)
         {
@@ -277,7 +326,19 @@ internal sealed class LoginThrottle : ILoginThrottle, IDisposable
 
             switch (outcome)
             {
+                // Decided and recorded under the lock: of parallel identical failures, exactly one counts.
+                case VerificationOutcome.Failure when fingerprint is { } repeated && _failedAttempts.Contains(repeated, now):
+                    var repeats = _repeats.GetOrAdd(keys.Client, now);
+                    AddTrip(ref trips, ThrottleScope.Repeat, _repeats.RecordFailure(repeats, now, _options));
+                    break;
+
                 case VerificationOutcome.Failure:
+                    counted = true;
+                    if (fingerprint is { } first)
+                    {
+                        _failedAttempts.Add(first, now);
+                    }
+
                     AddTrip(ref trips, ThrottleScope.Client, _clients.RecordFailure(clientCounter, now, _options));
                     if (keys.Network is { } networkKey)
                     {
@@ -324,6 +385,43 @@ internal sealed class LoginThrottle : ILoginThrottle, IDisposable
                 AuditLog.ThrottleTripped(_logger, scope, scope == ThrottleScope.Network ? network : client, (long)duration.TotalSeconds);
             }
         }
+
+        return counted;
+    }
+
+    // HMAC-SHA256(per-process key, client | user name digest | credential state | secret), truncated to 128 bits.
+    // Fixed-size, meaningless outside this process, and never the secret itself. Every field but the last has a
+    // fixed size or a length prefix, so two different attempts cannot be encoded alike.
+    private UInt128 Fingerprint(Keys keys, CredentialAttempt attempt)
+    {
+        const int HeaderLength = 16 + 1 + 16 + 4;
+        var stateLength = Encoding.UTF8.GetByteCount(attempt.State);
+        var length = HeaderLength + stateLength + Encoding.UTF8.GetByteCount(attempt.Secret);
+        byte[]? rented = null;
+        var buffer = length <= 512 ? stackalloc byte[512] : (rented = ArrayPool<byte>.Shared.Rent(length));
+        buffer = buffer[..length];
+
+        try
+        {
+            BinaryPrimitives.WriteUInt128BigEndian(buffer, keys.Client.Value);
+            buffer[16] = keys.Account is null ? (byte)0 : (byte)1;
+            BinaryPrimitives.WriteUInt128BigEndian(buffer[17..], keys.Account?.Value ?? UInt128.Zero);
+            BinaryPrimitives.WriteInt32BigEndian(buffer[33..], stateLength);
+            var written = Encoding.UTF8.GetBytes(attempt.State, buffer[HeaderLength..]);
+            _ = Encoding.UTF8.GetBytes(attempt.Secret, buffer[(HeaderLength + written)..]);
+
+            Span<byte> mac = stackalloc byte[HMACSHA256.HashSizeInBytes];
+            _ = HMACSHA256.HashData(_fingerprintKey, buffer, mac);
+            return BinaryPrimitives.ReadUInt128BigEndian(mac);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(buffer);
+            if (rented is not null)
+            {
+                ArrayPool<byte>.Shared.Return(rented);
+            }
+        }
     }
 
     private static void AddTrip(ref List<(ThrottleScope, TimeSpan)>? trips, ThrottleScope scope, TimeSpan? duration)
@@ -341,6 +439,11 @@ internal sealed class LoginThrottle : ILoginThrottle, IDisposable
         if (_clients.Find(keys.Client, now) is { } client && client.IsThrottled(now))
         {
             until = Math.Max(until, client.ThrottledUntil);
+        }
+
+        if (_repeats.Find(keys.Client, now) is { } repeats && repeats.IsThrottled(now))
+        {
+            until = Math.Max(until, repeats.ThrottledUntil);
         }
 
         if (keys.Network is { } networkKey && _networks.Find(networkKey, now) is { } network && network.IsThrottled(now))
@@ -417,4 +520,7 @@ internal enum ThrottleScope
 
     /// <summary>A user name, from all clients.</summary>
     Account,
+
+    /// <summary>Repetitions of failures already counted, from a client address (IPv6 by /64).</summary>
+    Repeat,
 }

@@ -15,6 +15,9 @@ namespace ElPaqueto.Security.Throttling;
 /// <item>otherwise calls <see cref="EnterVerificationAsync"/>, refuses the request if the slot carries a
 /// rejection, and else verifies the credential and reports the outcome on the slot.</item>
 /// </list>
+/// <para>A failure is counted once per identical attempt and window: an attempt that repeats one already counted
+/// (same client, user name, secret and credential state; see <see cref="CredentialAttempt"/>) is reported like
+/// any other failure but counts nothing (<see cref="VerificationSlot.RepeatsACountedFailure"/>).</para>
 /// <para>The user name is the one presented, known or not. It is <see langword="null"/> for a credential
 /// without one (an API key header), which is then only counted against the client.</para>
 /// </remarks>
@@ -30,7 +33,15 @@ internal interface ILoginThrottle
     /// Waits until this attempt may run a verification and reserves it, or returns a slot that carries
     /// the rejection to send.
     /// </summary>
-    public ValueTask<VerificationSlot> EnterVerificationAsync(IPAddress? client, string? userName, CancellationToken cancellationToken);
+    /// <param name="client">The client address.</param>
+    /// <param name="userName">The user name presented, or <see langword="null"/> for an API key.</param>
+    /// <param name="attempt">
+    /// The credential, so that a repeated identical failure is counted once; <see langword="null"/> counts every
+    /// failure.
+    /// </param>
+    /// <param name="cancellationToken">The request's cancellation.</param>
+    public ValueTask<VerificationSlot> EnterVerificationAsync(
+        IPAddress? client, string? userName, CredentialAttempt? attempt, CancellationToken cancellationToken);
 }
 
 /// <summary>The answer to send instead of verifying a credential.</summary>

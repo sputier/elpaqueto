@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Text;
 using System.Threading;
@@ -46,11 +47,9 @@ public class ApiKeyThrottlingIntegrationTests
         using var baseApp = NewApp();
         var counter = new ValidationCounter();
         using var app = WithServices(baseApp, new FakeTimeProvider(DateTimeOffset.UtcNow), counter);
-        var wrong = WrongKey(baseApp.TestApiKey);
-
         for (var i = 0; i < 3; i++)
         {
-            var failure = await SendAsync(app, ClientA, wrong, inHeader);
+            var failure = await SendAsync(app, ClientA, WrongKey(baseApp.TestApiKey, i), inHeader);
             Assert.Equal(StatusCodes.Status401Unauthorized, failure.Response.StatusCode);
         }
 
@@ -77,8 +76,32 @@ public class ApiKeyThrottlingIntegrationTests
 
         Assert.Equal(StatusCodes.Status401Unauthorized, (await SendAsync(app, ClientA, WrongKey(baseApp.TestApiKey), inHeader: true)).Response.StatusCode);
         Assert.Equal(StatusCodes.Status401Unauthorized, (await SendAsync(app, ClientA, authorization: Basic(baseApp.TestUserName, "wrong password 1234"))).Response.StatusCode);
-        Assert.Equal(StatusCodes.Status401Unauthorized, (await SendAsync(app, ClientA, WrongKey(baseApp.TestApiKey), inHeader: false)).Response.StatusCode);
+        Assert.Equal(StatusCodes.Status401Unauthorized, (await SendAsync(app, ClientA, WrongKey(baseApp.TestApiKey, 1), inHeader: false)).Response.StatusCode);
 
+        AssertThrottled(await SendAsync(app, ClientA, baseApp.TestApiKey, inHeader: true));
+    }
+
+    [Fact]
+    public async Task ARepeatedWrongKey_IsValidatedEachTime_ButCountedOnce_InTheHeaderOrAsAPassword()
+    {
+        using var baseApp = NewApp();
+        var counter = new ValidationCounter();
+        using var app = WithServices(baseApp, new FakeTimeProvider(DateTimeOffset.UtcNow), counter);
+        var wrong = WrongKey(baseApp.TestApiKey);
+
+        // Six attempts, the way NuGet retries a refused push, each way of sending it: the same token is one attempt.
+        for (var i = 0; i < 12; i++)
+        {
+            Assert.Equal(StatusCodes.Status401Unauthorized, (await SendAsync(app, ClientA, wrong, inHeader: i % 2 == 0)).Response.StatusCode);
+        }
+
+        // Still validated every time (the key or its owner may have changed), but counted once: the right key works.
+        Assert.Equal(12, counter.Calls);
+        Assert.Equal(StatusCodes.Status200OK, (await SendAsync(app, ClientA, baseApp.TestApiKey, inHeader: true)).Response.StatusCode);
+
+        // Two more distinct wrong keys reach the limit of 3.
+        Assert.Equal(StatusCodes.Status401Unauthorized, (await SendAsync(app, ClientA, WrongKey(baseApp.TestApiKey, 1), inHeader: true)).Response.StatusCode);
+        Assert.Equal(StatusCodes.Status401Unauthorized, (await SendAsync(app, ClientA, WrongKey(baseApp.TestApiKey, 2), inHeader: true)).Response.StatusCode);
         AssertThrottled(await SendAsync(app, ClientA, baseApp.TestApiKey, inHeader: true));
     }
 
@@ -87,17 +110,15 @@ public class ApiKeyThrottlingIntegrationTests
     {
         using var baseApp = NewApp();
         using var app = WithServices(baseApp, new FakeTimeProvider(DateTimeOffset.UtcNow));
-        var wrong = WrongKey(baseApp.TestApiKey);
-
-        Assert.Equal(StatusCodes.Status401Unauthorized, (await SendAsync(app, ClientA, wrong, inHeader: true)).Response.StatusCode);
-        Assert.Equal(StatusCodes.Status401Unauthorized, (await SendAsync(app, ClientA, wrong, inHeader: true)).Response.StatusCode);
+        Assert.Equal(StatusCodes.Status401Unauthorized, (await SendAsync(app, ClientA, WrongKey(baseApp.TestApiKey, 0), inHeader: true)).Response.StatusCode);
+        Assert.Equal(StatusCodes.Status401Unauthorized, (await SendAsync(app, ClientA, WrongKey(baseApp.TestApiKey, 1), inHeader: true)).Response.StatusCode);
 
         // A valid key, from the same client and from another one, while client A has two failures.
         Assert.Equal(StatusCodes.Status200OK, (await SendAsync(app, ClientA, baseApp.TestApiKey, inHeader: true)).Response.StatusCode);
         Assert.Equal(StatusCodes.Status200OK, (await SendAsync(app, ClientB, baseApp.TestApiKey, inHeader: true)).Response.StatusCode);
 
         // Neither success refilled client A's budget: its third failure trips the throttle.
-        Assert.Equal(StatusCodes.Status401Unauthorized, (await SendAsync(app, ClientA, wrong, inHeader: true)).Response.StatusCode);
+        Assert.Equal(StatusCodes.Status401Unauthorized, (await SendAsync(app, ClientA, WrongKey(baseApp.TestApiKey, 2), inHeader: true)).Response.StatusCode);
         AssertThrottled(await SendAsync(app, ClientA, baseApp.TestApiKey, inHeader: true));
         Assert.Equal(StatusCodes.Status200OK, (await SendAsync(app, ClientB, baseApp.TestApiKey, inHeader: true)).Response.StatusCode);
     }
@@ -105,8 +126,9 @@ public class ApiKeyThrottlingIntegrationTests
     private ElPaquetoApplication NewApp()
         => new(_output, inMemoryConfiguration: dict => dict["Security:Throttling:ClientFailureLimit"] = ClientLimit);
 
-    // Same key id, another secret: a well-formed key that fails validation.
-    private static string WrongKey(string token) => token[..^1] + (token[^1] == 'a' ? 'b' : 'a');
+    // Same key id, another secret: a well-formed key that fails validation. Each variant is a different wrong secret.
+    private static string WrongKey(string token, int variant = 0)
+        => token[..^1] + "abcdefgh".Where(c => c != token[^1]).ElementAt(variant);
 
     private static WebApplicationFactory<Startup> WithServices(ElPaquetoApplication app, TimeProvider time, ValidationCounter counter = null)
     {

@@ -40,6 +40,13 @@ No version of ElPaqueto has been released yet. The first release will contain th
 - Legacy BaGetter authentication settings are retired; upgrades from BaGetter are checked at startup
   (#35, #94).
 
+### Fixed
+
+- A `dotnet restore` or `dotnet nuget push` with a stale password no longer trips the sign-in throttle by
+  itself: a repeated identical failed attempt is counted once, answered without hashing, and logged at
+  `Debug`, so the client reports `401` and the right password works right away; distinct wrong passwords
+  are still throttled (#99).
+
 ### Removed
 
 - Inherited upstream release, documentation deployment and Helm workflows (#2, #54).

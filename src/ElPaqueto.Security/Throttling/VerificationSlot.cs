@@ -9,37 +9,44 @@ namespace ElPaqueto.Security.Throttling;
 /// </remarks>
 internal sealed class VerificationSlot : IDisposable
 {
-    private readonly Action<VerificationOutcome>? _complete;
+    private readonly Func<VerificationOutcome, bool>? _complete;
     private int _completed;
 
-    private VerificationSlot(ThrottleRejection? rejection, Action<VerificationOutcome>? complete)
+    private VerificationSlot(ThrottleRejection? rejection, Func<VerificationOutcome, bool>? complete, bool repeatsACountedFailure)
     {
         Rejection = rejection;
         _complete = complete;
+        RepeatsACountedFailure = repeatsACountedFailure;
     }
 
     /// <summary>The answer to send instead of verifying, or <see langword="null"/> if the verification may run.</summary>
     public ThrottleRejection? Rejection { get; }
 
-    public static VerificationSlot Rejected(ThrottleRejection rejection) => new(rejection, null);
+    /// <summary>
+    /// The same credential attempt (client, user name, secret and credential state) already failed and was counted
+    /// in the current window: verifying it again would give the same failure, and reporting it counts nothing.
+    /// </summary>
+    public bool RepeatsACountedFailure { get; }
 
-    public static VerificationSlot Granted(Action<VerificationOutcome> complete) => new(null, complete);
+    public static VerificationSlot Rejected(ThrottleRejection rejection) => new(rejection, null, false);
+
+    public static VerificationSlot Granted(Func<VerificationOutcome, bool> complete, bool repeatsACountedFailure)
+        => new(null, complete, repeatsACountedFailure);
 
     /// <summary>The credential was valid.</summary>
     public void Succeeded() => Complete(VerificationOutcome.Success);
 
-    /// <summary>The credential was not valid (wrong password, unknown or disabled user).</summary>
-    public void Failed() => Complete(VerificationOutcome.Failure);
+    /// <summary>The credential was not valid (wrong password, unknown or disabled user, refused key).</summary>
+    /// <returns>
+    /// <see langword="true"/> if the failure was counted; <see langword="false"/> if the same attempt had already
+    /// been counted in the window (or the slot was already completed).
+    /// </returns>
+    public bool Failed() => Complete(VerificationOutcome.Failure);
 
     public void Dispose() => Complete(VerificationOutcome.None);
 
-    private void Complete(VerificationOutcome outcome)
-    {
-        if (_complete is not null && Interlocked.Exchange(ref _completed, 1) == 0)
-        {
-            _complete(outcome);
-        }
-    }
+    private bool Complete(VerificationOutcome outcome)
+        => _complete is not null && Interlocked.Exchange(ref _completed, 1) == 0 && _complete(outcome);
 }
 
 internal enum VerificationOutcome

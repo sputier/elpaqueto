@@ -7,11 +7,14 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using ElPaqueto.Security.Data;
+using ElPaqueto.Security.Passwords;
+using ElPaqueto.Security.Throttling;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
@@ -49,12 +52,11 @@ public class ThrottlingIntegrationTests
         var counter = new CountingPasswordHasher();
         using var baseApp = new ElPaquetoApplication(_output);
         using var app = WithServices(baseApp, time, counter);
-        var wrong = Basic(baseApp.TestUserName, baseApp.TestPassword + "-wrong");
         var right = Basic(baseApp.TestUserName, baseApp.TestPassword);
 
         for (var i = 0; i < 5; i++)
         {
-            var failure = await SendAsync(app, ClientA, wrong);
+            var failure = await SendAsync(app, ClientA, Basic(baseApp.TestUserName, $"{baseApp.TestPassword}-wrong-{i}"));
             Assert.Equal(StatusCodes.Status401Unauthorized, failure.Response.StatusCode);
         }
 
@@ -81,27 +83,163 @@ public class ThrottlingIntegrationTests
         var time = new FakeTimeProvider(DateTimeOffset.UtcNow);
         using var baseApp = new ElPaquetoApplication(_output);
         using var app = WithServices(baseApp, time);
-        await baseApp.AddUserAsync("disabled-user", "a perfectly valid passphrase", Security.Permission.Read, isActive: false);
+        // In the database of the host under test: each host has its own.
+        await app.AddUserAsync("disabled-user", "a perfectly valid passphrase", Security.Permission.Read, isActive: false);
 
-        var known = await Sequence(app, ClientA, Basic(baseApp.TestUserName, "wrong password 1234"));
-        var unknown = await Sequence(app, ClientB, Basic("nobody-here", "wrong password 1234"));
-        var disabled = await Sequence(app, "192.0.2.77", Basic("disabled-user", "a perfectly valid passphrase"));
+        // Distinct wrong passwords: counted, then throttled.
+        var known = await Sequence(app, ClientA, i => Basic(baseApp.TestUserName, $"wrong password 1234 {i}"));
+        var unknown = await Sequence(app, ClientB, i => Basic("nobody-here", $"wrong password 1234 {i}"));
+        var disabled = await Sequence(app, "192.0.2.77", i => Basic("disabled-user", $"a perfectly valid passphrase {i}"));
 
         Assert.Equal(known, unknown);
         Assert.Equal(known, disabled);
         Assert.Equal(5, known.Count(step => step.StartsWith("401|", StringComparison.Ordinal)));
         Assert.Equal(2, known.Count(step => step.StartsWith("429|", StringComparison.Ordinal)));
 
-        static async Task<List<string>> Sequence(WebApplicationFactory<Startup> app, string client, string credentials)
+        // One password repeated (the disabled user's being the right one): counted once, never throttled.
+        var knownRepeated = await Sequence(app, "192.0.2.1", _ => Basic(baseApp.TestUserName, "wrong password 1234"));
+        var unknownRepeated = await Sequence(app, "192.0.2.2", _ => Basic("nobody-here", "wrong password 1234"));
+        var disabledRepeated = await Sequence(app, "192.0.2.3", _ => Basic("disabled-user", "a perfectly valid passphrase"));
+
+        Assert.Equal(knownRepeated, unknownRepeated);
+        Assert.Equal(knownRepeated, disabledRepeated);
+        Assert.All(knownRepeated, step => Assert.StartsWith("401|", step, StringComparison.Ordinal));
+        Assert.Equal(known[0], knownRepeated[0]);
+
+        static async Task<List<string>> Sequence(WebApplicationFactory<Startup> app, string client, Func<int, string> credentials)
         {
             var steps = new List<string>();
             for (var i = 0; i < 7; i++)
             {
-                steps.Add(Fingerprint(await SendAsync(app, client, credentials)));
+                steps.Add(Fingerprint(await SendAsync(app, client, credentials(i))));
             }
 
             return steps;
         }
+    }
+
+    [Fact]
+    public async Task AClientRetryingAStalePassword_IsVerifiedAndCountedOnce_AndTheRightPasswordWorksRightAfter()
+    {
+        var counter = new CountingPasswordHasher();
+        using var baseApp = new ElPaquetoApplication(_output);
+        using var app = WithServices(baseApp, new FakeTimeProvider(DateTimeOffset.UtcNow), counter);
+        var stale = Basic(baseApp.TestUserName, baseApp.TestPassword + "-stale");
+
+        // NuGet sends a refused request six times per command; two commands.
+        for (var i = 0; i < 12; i++)
+        {
+            var failure = await SendAsync(app, ClientA, stale);
+            Assert.Equal(StatusCodes.Status401Unauthorized, failure.Response.StatusCode);
+            Assert.Equal(Challenge, failure.Response.Headers.WWWAuthenticate.ToString());
+        }
+
+        // One hash: the repetitions are answered without verifying again.
+        Assert.Equal(1, counter.VerifyCalls);
+        var throttle = (LoginThrottle)app.Services.GetRequiredService<ILoginThrottle>();
+        Assert.Equal(1, throttle.FailureCount(ThrottleScope.Pair, IPAddress.Parse(ClientA), baseApp.TestUserName));
+        Assert.Equal(1, throttle.FailureCount(ThrottleScope.Client, IPAddress.Parse(ClientA), null));
+
+        var right = await SendAsync(app, ClientA, Basic(baseApp.TestUserName, baseApp.TestPassword));
+        Assert.Equal(StatusCodes.Status200OK, right.Response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ARepetition_IsAnsweredWithoutHashing_AfterAboutTheTimeOfAVerification()
+    {
+        var hasher = new SlowPasswordHasher(TimeSpan.FromMilliseconds(400));
+        using var baseApp = new ElPaquetoApplication(_output);
+        using var app = WithServices(baseApp, new FakeTimeProvider(DateTimeOffset.UtcNow), hasher);
+        var stale = Basic(baseApp.TestUserName, "stale password 1234");
+
+        var verified = System.Diagnostics.Stopwatch.StartNew();
+        Assert.Equal(StatusCodes.Status401Unauthorized, (await SendAsync(app, ClientA, stale)).Response.StatusCode);
+        verified.Stop();
+
+        var repeated = System.Diagnostics.Stopwatch.StartNew();
+        Assert.Equal(StatusCodes.Status401Unauthorized, (await SendAsync(app, ClientA, stale)).Response.StatusCode);
+        repeated.Stop();
+
+        _output.WriteLine($"Verified: {verified.ElapsedMilliseconds} ms; repetition: {repeated.ElapsedMilliseconds} ms.");
+        Assert.Equal(1, hasher.VerifyCalls);
+        Assert.True(repeated.Elapsed >= TimeSpan.FromMilliseconds(300), $"The repetition was answered in {repeated.ElapsedMilliseconds} ms.");
+    }
+
+    [Fact]
+    public async Task ARepeatedPassword_IsVerifiedAgain_OnceTheAccountChanged()
+    {
+        var counter = new CountingPasswordHasher();
+        using var baseApp = new ElPaquetoApplication(_output);
+        using var app = WithServices(baseApp, new FakeTimeProvider(DateTimeOffset.UtcNow), counter);
+        const string Password = "a perfectly valid passphrase";
+        await app.AddUserAsync("returning-user", Password, Security.Permission.Read, isActive: false);
+        var credentials = Basic("returning-user", Password);
+
+        // Disabled: the right password fails, once verified, then recognised as a repetition.
+        Assert.Equal(StatusCodes.Status401Unauthorized, (await SendAsync(app, ClientA, credentials)).Response.StatusCode);
+        Assert.Equal(StatusCodes.Status401Unauthorized, (await SendAsync(app, ClientA, credentials)).Response.StatusCode);
+        Assert.Equal(1, counter.VerifyCalls);
+
+        // Enabled by an administrator: the same password is a new attempt, verified, and accepted.
+        await UpdateUserAsync(app, "returning-user", user => user.IsActive = true);
+        Assert.Equal(StatusCodes.Status200OK, (await SendAsync(app, ClientA, credentials)).Response.StatusCode);
+        Assert.Equal(2, counter.VerifyCalls);
+
+        // A wrong password repeated, then set as the new password by an administrator: accepted at once.
+        var future = Basic("returning-user", "the next passphrase 2030");
+        Assert.Equal(StatusCodes.Status401Unauthorized, (await SendAsync(app, ClientA, future)).Response.StatusCode);
+        Assert.Equal(StatusCodes.Status401Unauthorized, (await SendAsync(app, ClientA, future)).Response.StatusCode);
+        Assert.Equal(3, counter.VerifyCalls);
+        await UpdateUserAsync(app, "returning-user", (user, passwords) => user.PasswordHash = passwords.Hash("the next passphrase 2030"));
+        Assert.Equal(StatusCodes.Status200OK, (await SendAsync(app, ClientA, future)).Response.StatusCode);
+        Assert.Equal(4, counter.VerifyCalls);
+    }
+
+    [Fact]
+    public async Task DistinctWrongPasswords_StillGet429_WhileRepetitionsInBetweenCountNothing()
+    {
+        using var baseApp = new ElPaquetoApplication(_output);
+        using var app = WithServices(baseApp, new FakeTimeProvider(DateTimeOffset.UtcNow));
+
+        // The fifth distinct guess trips the pair: it is sent once.
+        for (var i = 0; i < 5; i++)
+        {
+            for (var repeat = 0; repeat < (i < 4 ? 3 : 1); repeat++)
+            {
+                var failure = await SendAsync(app, ClientA, Basic(baseApp.TestUserName, $"guess number {i}"));
+                Assert.Equal(StatusCodes.Status401Unauthorized, failure.Response.StatusCode);
+            }
+        }
+
+        AssertThrottled(await SendAsync(app, ClientA, Basic(baseApp.TestUserName, baseApp.TestPassword)), expectedRetryAfter: "60");
+    }
+
+    [Fact]
+    public async Task ARepeatedFailure_IsLoggedAsAWarningOnce_ThenAtDebug()
+    {
+        var logs = new List<(EventId Id, LogLevel Level, string Message)>();
+        using var baseApp = new ElPaquetoApplication(_output);
+        using var app = WithServices(baseApp, new FakeTimeProvider(DateTimeOffset.UtcNow)).WithWebHostBuilder(builder => builder.ConfigureLogging(logging =>
+        {
+            logging.SetMinimumLevel(LogLevel.Trace);
+            logging.AddProvider(new CapturingLoggerProvider(logs));
+        }));
+
+        for (var i = 0; i < 6; i++)
+        {
+            await SendAsync(app, ClientA, Basic(baseApp.TestUserName, "stale password 1234"));
+        }
+
+        (EventId Id, LogLevel Level, string Message)[] failures;
+        lock (logs)
+        {
+            failures = logs.Where(entry => entry.Id.Id == 1002).ToArray();
+        }
+
+        Assert.Equal(6, failures.Length);
+        Assert.Equal(LogLevel.Warning, failures[0].Level);
+        Assert.All(failures[1..], entry => Assert.Equal(LogLevel.Debug, entry.Level));
+        Assert.All(failures, entry => Assert.Contains("bad_password", entry.Message, StringComparison.Ordinal));
     }
 
     [Fact]
@@ -130,7 +268,7 @@ public class ThrottlingIntegrationTests
         // Each attempt claims to come from another address: the socket address is what counts.
         for (var i = 0; i < 5; i++)
         {
-            var failure = await SendAsync(app, ClientA, wrong, "X-Forwarded-For", $"198.51.100.{i + 1}");
+            var failure = await SendAsync(app, ClientA, Basic(baseApp.TestUserName, $"wrong password {i}"), "X-Forwarded-For", $"198.51.100.{i + 1}");
             Assert.Equal(StatusCodes.Status401Unauthorized, failure.Response.StatusCode);
             Assert.Equal(IPAddress.Parse(ClientA), failure.Connection.RemoteIpAddress);
         }
@@ -148,7 +286,7 @@ public class ThrottlingIntegrationTests
         // The loopback proxy is trusted by default: the client behind it is the forwarded address.
         for (var i = 0; i < 5; i++)
         {
-            await SendAsync(app, "127.0.0.1", wrong, "X-Forwarded-For", ClientA, "X-Forwarded-Proto", "https");
+            await SendAsync(app, "127.0.0.1", Basic(baseApp.TestUserName, $"wrong password {i}"), "X-Forwarded-For", ClientA, "X-Forwarded-Proto", "https");
         }
 
         AssertThrottled(await SendAsync(app, "127.0.0.1", wrong, "X-Forwarded-For", ClientA, "X-Forwarded-Proto", "https"), expectedRetryAfter: "60");
@@ -191,7 +329,7 @@ public class ThrottlingIntegrationTests
     [Fact]
     public async Task ATrip_IsLoggedOnceAndNoLogContainsTheCredentials()
     {
-        var logs = new List<(EventId Id, string Message)>();
+        var logs = new List<(EventId Id, LogLevel Level, string Message)>();
         using var baseApp = new ElPaquetoApplication(_output);
         using var app = WithServices(baseApp, new FakeTimeProvider(DateTimeOffset.UtcNow)).WithWebHostBuilder(builder => builder.ConfigureLogging(logging =>
         {
@@ -199,14 +337,18 @@ public class ThrottlingIntegrationTests
             logging.AddProvider(new CapturingLoggerProvider(logs));
         }));
         const string password = "wrong-password-marker-1234";
-        var credentials = Basic("user-name-marker", password);
+        var sent = new List<string>();
 
+        // Distinct passwords, each sent twice, the way a client retries.
         for (var i = 0; i < 10; i++)
         {
+            var credentials = Basic("user-name-marker", $"{password}-{i}");
+            sent.Add(credentials);
+            await SendAsync(app, ClientA, credentials);
             await SendAsync(app, ClientA, credentials);
         }
 
-        (EventId Id, string Message)[] captured;
+        (EventId Id, LogLevel Level, string Message)[] captured;
         lock (logs)
         {
             captured = logs.ToArray();
@@ -216,7 +358,7 @@ public class ThrottlingIntegrationTests
         Assert.Contains(ClientA, trip.Message, StringComparison.Ordinal);
         Assert.Contains("Pair", trip.Message, StringComparison.Ordinal);
         Assert.DoesNotContain(captured, entry => entry.Message.Contains(password, StringComparison.Ordinal));
-        Assert.DoesNotContain(captured, entry => entry.Message.Contains(credentials, StringComparison.Ordinal));
+        Assert.DoesNotContain(captured, entry => sent.Any(credentials => entry.Message.Contains(credentials, StringComparison.Ordinal)));
 
         // The trip never names the user; only the sign-in failures do, by design of the audit trail (#22).
         Assert.DoesNotContain("user-name-marker", trip.Message, StringComparison.Ordinal);
@@ -238,6 +380,20 @@ public class ThrottlingIntegrationTests
                 services.AddSingleton(hasher);
             }
         }));
+    }
+
+    private static Task UpdateUserAsync(WebApplicationFactory<Startup> app, string userName, Action<User> change)
+        => UpdateUserAsync(app, userName, (user, _) => change(user));
+
+    private static async Task UpdateUserAsync(WebApplicationFactory<Startup> app, string userName, Action<User, IPasswordService> change)
+    {
+        using var scope = app.Services.CreateScope();
+        var database = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
+        var passwords = scope.ServiceProvider.GetRequiredService<IPasswordService>();
+        var normalized = User.Normalize(userName);
+        var user = await database.Users.SingleAsync(u => u.NormalizedUserName == normalized);
+        change(user, passwords);
+        await database.SaveChangesAsync();
     }
 
     private static void AssertThrottled(HttpContext context, string expectedRetryAfter)
@@ -307,6 +463,15 @@ public class ThrottlingIntegrationTests
         }
     }
 
+    private sealed class SlowPasswordHasher(TimeSpan duration) : CountingPasswordHasher
+    {
+        public override PasswordVerificationResult VerifyHashedPassword(User user, string hashedPassword, string providedPassword)
+        {
+            Thread.Sleep(duration);
+            return base.VerifyHashedPassword(user, hashedPassword, providedPassword);
+        }
+    }
+
     private sealed class BlockingPasswordHasher : CountingPasswordHasher
     {
         public ManualResetEventSlim Entered { get; } = new();
@@ -321,7 +486,7 @@ public class ThrottlingIntegrationTests
         }
     }
 
-    private sealed class CapturingLoggerProvider(List<(EventId Id, string Message)> logs) : ILoggerProvider
+    private sealed class CapturingLoggerProvider(List<(EventId Id, LogLevel Level, string Message)> logs) : ILoggerProvider
     {
         public ILogger CreateLogger(string categoryName) => new CapturingLogger(logs);
 
@@ -329,7 +494,7 @@ public class ThrottlingIntegrationTests
         {
         }
 
-        private sealed class CapturingLogger(List<(EventId Id, string Message)> logs) : ILogger
+        private sealed class CapturingLogger(List<(EventId Id, LogLevel Level, string Message)> logs) : ILogger
         {
             public IDisposable BeginScope<TState>(TState state) => null;
 
@@ -339,7 +504,7 @@ public class ThrottlingIntegrationTests
             {
                 lock (logs)
                 {
-                    logs.Add((eventId, formatter(state, exception) + (exception == null ? string.Empty : " " + exception)));
+                    logs.Add((eventId, logLevel, formatter(state, exception) + (exception == null ? string.Empty : " " + exception)));
                 }
             }
         }
