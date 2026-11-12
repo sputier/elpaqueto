@@ -43,6 +43,7 @@ public static class ElPaquetoCommandLineExtensions
         builder.Group(app, "admin", "Administer users from the command line.", admin =>
         {
             BootstrapCommand.Register(builder, admin);
+            UserCommands.Register(builder, admin);
         });
 
         return app;

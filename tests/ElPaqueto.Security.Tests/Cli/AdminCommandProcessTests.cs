@@ -137,6 +137,56 @@ public sealed class AdminCommandProcessTests : IDisposable
         Assert.Single(await cli.UsersAsync());
     }
 
+    [Fact]
+    public async Task UserCommands_WhileTheServerRunsOnTheSameData_ChangeTheUsersAndUseTheExitCodes()
+    {
+        using var server = HostProcess.Start([], HostEnvironment());
+        await server.WaitForOutputAsync("Now listening");
+
+        Assert.Equal(0, await RunAsync(["admin", "bootstrap", "--username", "admin", "--password-stdin"], Password));
+        Assert.Equal(0, await RunAsync(["admin", "user", "create", "ci", "--permissions", "publisher", "--password-stdin"], Password));
+        Assert.Equal(3, await RunAsync(["admin", "user", "create", "CI", "--permissions", "reader", "--password-stdin"], Password));
+        Assert.Equal(2, await RunAsync(["admin", "user", "set-permissions", "ci", "--permissions", "write"]));
+        Assert.Equal(0, await RunAsync(["admin", "user", "set-permissions", "ci", "--permissions", "read"]));
+        Assert.Equal(0, await RunAsync(["admin", "user", "reset-password", "ci", "--password-stdin"], "another long passphrase"));
+        Assert.Equal(0, await RunAsync(["admin", "user", "disable", "ci"]));
+        Assert.Equal(3, await RunAsync(["admin", "user", "disable", "admin"]));
+        Assert.Equal(4, await RunAsync(["admin", "user", "show", "ghost"]));
+
+        Assert.False(server.HasExited, "The server stopped while commands used its security database.");
+        using var cli = new AdminCli(_database);
+        var ci = (await cli.UsersAsync()).Single(u => u.UserName == "ci");
+        var passwords = cli.Services.GetRequiredService<IPasswordService>();
+        Assert.False(ci.IsActive);
+        Assert.Equal(Permission.Read, ci.Permissions);
+        Assert.Equal(PasswordVerification.Failed, passwords.Verify(new Data.User { IsActive = true, PasswordHash = ci.PasswordHash }, Password));
+        Assert.Equal(PasswordVerification.Success, passwords.Verify(new Data.User { IsActive = true, PasswordHash = ci.PasswordHash }, "another long passphrase"));
+    }
+
+    [Fact]
+    public async Task UserListAsJson_ThroughTheBuiltHost_IsParseableAndHasNoHash()
+    {
+        Assert.Equal(0, await RunAsync(["admin", "bootstrap", "--username", "admin", "--password-stdin"], Password));
+        var environment = HostEnvironment();
+        environment["Logging__Console__LogLevel__Default"] = "Warning";
+
+        using var host = HostProcess.Start(["admin", "user", "list", "--format", "json"], environment);
+        Assert.Equal(0, await host.WaitForExitAsync());
+
+        using var document = System.Text.Json.JsonDocument.Parse(host.Output);
+        var user = Assert.Single(document.RootElement.GetProperty("users").EnumerateArray());
+        Assert.Equal("admin", user.GetProperty("userName").GetString());
+        Assert.DoesNotContain("hash", host.Output, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task<int> RunAsync(string[] arguments, string? standardInput = null)
+    {
+        using var host = HostProcess.Start(arguments, HostEnvironment(), standardInput);
+        var exitCode = await host.WaitForExitAsync();
+        Assert.DoesNotContain(Password, host.Output, StringComparison.Ordinal);
+        return exitCode;
+    }
+
     private string PackageDatabasePath => Path.Combine(_database.Directory, "packages.db");
 
     private Dictionary<string, string> HostEnvironment() => new()

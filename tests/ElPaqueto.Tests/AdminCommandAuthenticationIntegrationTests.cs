@@ -21,6 +21,8 @@ namespace ElPaqueto.Tests;
 public class AdminCommandAuthenticationIntegrationTests : IDisposable
 {
     private const string AdminPassword = "the first administrator passphrase";
+    private const string UserPassword = "the passphrase of alice";
+    private const string NewUserPassword = "the new passphrase of alice";
 
     private readonly AdminCommandLine _commands = new();
     private readonly ElPaquetoApplication _app;
@@ -54,13 +56,9 @@ public class AdminCommandAuthenticationIntegrationTests : IDisposable
     {
         await _commands.RunAsync(AdminPassword + "\n", 0, "admin", "bootstrap", "--username", "admin", "--password-stdin");
 
-        using var client = _app.CreateAnonymousClient();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
-            "Basic",
-            Convert.ToBase64String(Encoding.UTF8.GetBytes($"admin:{AdminPassword}")));
-        using var response = await client.GetAsync("health/details");
+        using var client = Client("admin", AdminPassword);
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, await GetAsync(client, "health/details"));
     }
 
     [Fact]
@@ -96,9 +94,83 @@ public class AdminCommandAuthenticationIntegrationTests : IDisposable
         Assert.Equal(HttpStatusCode.OK, await GetIndexAsync(userName, AdminPassword));
     }
 
-    private async Task<HttpStatusCode> GetIndexAsync(string userName, string password)
+    [Fact]
+    public async Task ACreatedReader_CanReadButNotAdminister()
     {
-        using var client = _app.CreateAnonymousClient();
+        await CreateAliceAsync("reader");
+        using var client = Client("alice", UserPassword);
+
+        Assert.Equal(HttpStatusCode.OK, await GetAsync(client, "v3/index.json"));
+        Assert.Equal(HttpStatusCode.Forbidden, await GetAsync(client, "health/details"));
+    }
+
+    [Fact]
+    public async Task Disable_RejectsTheNextRequest_AndEnable_AcceptsItAgain()
+    {
+        await CreateAliceAsync("reader");
+        using var client = Client("alice", UserPassword);
+        Assert.Equal(HttpStatusCode.OK, await GetAsync(client, "v3/index.json"));
+
+        await _commands.RunAsync(string.Empty, 0, "admin", "user", "disable", "alice");
+
+        // The same client, with the password it was just accepted with: the verification cache must not hide the change.
+        Assert.Equal(HttpStatusCode.Unauthorized, await GetAsync(client, "v3/index.json"));
+
+        await _commands.RunAsync(string.Empty, 0, "admin", "user", "enable", "alice");
+
+        Assert.Equal(HttpStatusCode.OK, await GetAsync(client, "v3/index.json"));
+    }
+
+    [Fact]
+    public async Task SetPermissions_AppliesToTheNextRequest()
+    {
+        await CreateAliceAsync("reader");
+        using var client = Client("alice", UserPassword);
+        Assert.Equal(HttpStatusCode.OK, await GetAsync(client, "v3/index.json"));
+
+        // Read removed: still authenticated, no longer allowed to read.
+        await _commands.RunAsync(string.Empty, 0, "admin", "user", "set-permissions", "alice", "--permissions", "publish");
+
+        Assert.Equal(HttpStatusCode.Forbidden, await GetAsync(client, "v3/index.json"));
+
+        await _commands.RunAsync(string.Empty, 0, "admin", "user", "set-permissions", "alice", "--permissions", "read,admin");
+
+        Assert.Equal(HttpStatusCode.OK, await GetAsync(client, "v3/index.json"));
+        Assert.Equal(HttpStatusCode.OK, await GetAsync(client, "health/details"));
+    }
+
+    [Fact]
+    public async Task ResetPassword_RejectsTheOldPasswordAndAcceptsTheNewOneOnTheNextRequest()
+    {
+        await CreateAliceAsync("reader");
+
+        // Signed in once, so the old password is in the verification cache.
+        using var oldClient = Client("alice", UserPassword);
+        Assert.Equal(HttpStatusCode.OK, await GetAsync(oldClient, "v3/index.json"));
+
+        await _commands.RunAsync(NewUserPassword + "\n", 0, "admin", "user", "reset-password", "alice", "--password-stdin");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, await GetAsync(oldClient, "v3/index.json"));
+        Assert.Equal(HttpStatusCode.OK, await GetIndexAsync("alice", NewUserPassword));
+    }
+
+    [Fact]
+    public async Task ResetPassword_OfADisabledUser_DoesNotLetItSignIn()
+    {
+        await CreateAliceAsync("reader");
+        await _commands.RunAsync(string.Empty, 0, "admin", "user", "disable", "alice");
+
+        await _commands.RunAsync(NewUserPassword + "\n", 0, "admin", "user", "reset-password", "alice", "--password-stdin");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, await GetIndexAsync("alice", NewUserPassword));
+    }
+
+    private Task CreateAliceAsync(string permissions)
+        => _commands.RunAsync(UserPassword + "\n", 0, "admin", "user", "create", "alice", "--permissions", permissions, "--password-stdin");
+
+    private HttpClient Client(string userName, string password)
+    {
+        var client = _app.CreateAnonymousClient();
         if (userName is not null)
         {
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
@@ -106,7 +178,18 @@ public class AdminCommandAuthenticationIntegrationTests : IDisposable
                 Convert.ToBase64String(Encoding.UTF8.GetBytes($"{userName}:{password}")));
         }
 
-        using var response = await client.GetAsync("v3/index.json");
+        return client;
+    }
+
+    private async Task<HttpStatusCode> GetIndexAsync(string userName, string password)
+    {
+        using var client = Client(userName, password);
+        return await GetAsync(client, "v3/index.json");
+    }
+
+    private static async Task<HttpStatusCode> GetAsync(HttpClient client, string path)
+    {
+        using var response = await client.GetAsync(path);
         return response.StatusCode;
     }
 }
