@@ -33,14 +33,26 @@ public sealed class SecurityDatabaseOptions : IValidatableObject
         try
         {
             var builder = new SqliteConnectionStringBuilder(ConnectionString);
+
             if (string.IsNullOrWhiteSpace(builder.DataSource))
             {
                 problem = "Security:Database:ConnectionString must specify a Data Source.";
             }
+            else if (builder.Mode == SqliteOpenMode.Memory
+                || builder.DataSource.Equals(":memory:", StringComparison.OrdinalIgnoreCase))
+            {
+                problem = "Security:Database:ConnectionString must point to a file: an in-memory database would lose every user at restart.";
+            }
+            else if (builder.DataSource.StartsWith("file:", StringComparison.OrdinalIgnoreCase))
+            {
+                // SQLite creates a file named by a URI without the owner-only permissions applied to plain paths.
+                problem = "Security:Database:ConnectionString must use a plain file path, not a file: URI.";
+            }
         }
-        catch (ArgumentException)
+        catch (Exception e) when (e is ArgumentException or FormatException or OverflowException or InvalidCastException)
         {
-            // The exception message can quote part of the connection string: report a fixed message.
+            // These messages can quote part of the connection string, which may hold a secret:
+            // report a fixed message and never the exception.
             problem = "Security:Database:ConnectionString is not a valid SQLite connection string.";
         }
 

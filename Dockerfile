@@ -47,6 +47,7 @@ ENV Storage__Path "/data"
 ENV Search__Type "Database"
 ENV Database__Type "Sqlite"
 ENV Database__ConnectionString "Data Source=/data/db/elpaqueto.db"
+ENV Security__Database__ConnectionString "Data Source=/data/db/auth.db"
 LABEL org.opencontainers.image.source="https://github.com/sputier/ElPaqueto"
 # copy default folders
 COPY --from=publish /data /data

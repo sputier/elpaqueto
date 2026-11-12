@@ -29,6 +29,7 @@ namespace ElPaqueto.Security.Data.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_Users", x => x.Id);
+                    table.CheckConstraint("CK_Users_Permissions", "\"Permissions\" BETWEEN 0 AND 7");
                 });
 
             migrationBuilder.CreateIndex(

@@ -8,10 +8,15 @@ Users, permissions and (later) API keys are stored in a SQLite database that is 
 
 The database must be backed up together with the package data. It uses write-ahead logging: copy it only while the server is stopped, or with SQLite's online backup (`.backup`).
 
+The connection string must name a plain file path: in-memory databases and `file:` URIs are rejected at startup, because SQLite creates a URI-named file without the owner-only permissions. `Mode=ReadWrite` is honoured as "open, never create": the server then fails to start when the file is missing, for example when a volume is not mounted. Use it to avoid ever starting on an empty user database.
+
+A database file that already exists, for example restored from a backup or created by another tool, may be readable by other users. At startup, on Unix, the server narrows the mode of the file and of its `-wal` and `-shm` side files to the owner and logs a warning. On Windows the file inherits the permissions of its folder: restrict the folder to the service account.
+
 ## Startup behaviour
 
 - The server applies pending migrations **before** it accepts requests, whatever the inherited `RunMigrationsAtStartup` setting says. If the database cannot be created or migrated, the host fails to start with a non-zero exit code and a message that names the path, never the connection string.
 - Every connection sets a busy timeout (the connection string's `Default Timeout`, 30 seconds by default) and `journal_mode = WAL`, so the server and a concurrent command-line process do not fail with `SQLITE_BUSY` under normal use. A writer waits for another writer; readers never block writers.
+- A startup failure ends the process with exit code 1 and a logged error instead of an unhandled exception, so no core dump of the process memory is produced.
 - `AuthDbContext` does not implement the inherited `IContext` and is never registered as one, so the inherited migration runner and health checks never touch it.
 
 ## Data model
@@ -39,4 +44,6 @@ Migrations live in `src/ElPaqueto.Security/Data/Migrations/` and are generated c
 dotnet ef migrations add <Name> --project src/ElPaqueto.Security --output-dir Data/Migrations
 ```
 
-The command uses a design-time factory and does not build or start the host. Commit the generated files, including the model snapshot.
+The command uses a design-time factory and does not build or start the host. The design-time factory points at an in-memory database: `dotnet ef database update` does nothing useful here. The server and the `admin` commands apply migrations themselves. EF Core takes a migration lock (`__EFMigrationsLock`): if a process is killed in the middle of a pending migration, the next start may wait on it.
+
+The unique user-name index relies on `NormalizedUserName`, which the context derives from `UserName` on every save. A check constraint rejects `Permissions` values outside the defined flag combinations (0 to 7). Commit the generated files, including the model snapshot.

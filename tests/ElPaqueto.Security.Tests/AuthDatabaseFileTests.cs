@@ -1,3 +1,4 @@
+using System.Runtime.Versioning;
 using ElPaqueto.Security.Data;
 
 namespace ElPaqueto.Security.Tests;
@@ -18,21 +19,18 @@ public sealed class AuthDatabaseFileTests : IDisposable
         Assert.True(File.Exists(path));
     }
 
-    [Fact]
+    [UnixFact]
+    [UnsupportedOSPlatform("windows")]
     public void Prepare_OnUnix_RestrictsTheDirectoryAndTheFileToTheOwner()
     {
         var path = Path.Combine(_root, "secure", "auth.db");
 
         AuthDatabaseFile.Prepare($"Data Source={path}");
 
-        // Windows has no Unix modes: the mode assertions run on the Linux leg of the CI.
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(path));
-            Assert.Equal(
-                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute,
-                File.GetUnixFileMode(Path.GetDirectoryName(path)!));
-        }
+        Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(path));
+        Assert.Equal(
+            UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute,
+            File.GetUnixFileMode(Path.GetDirectoryName(path)!));
     }
 
     [Fact]
@@ -82,5 +80,34 @@ public sealed class AuthDatabaseFileTests : IDisposable
         await Task.WhenAll(tasks);
 
         Assert.True(File.Exists(path));
+    }
+
+    [Fact]
+    public void Prepare_WithModeReadWrite_NeverCreatesTheFile()
+    {
+        var path = Path.Combine(_root, "must-exist", "auth.db");
+
+        AuthDatabaseFile.Prepare($"Data Source={path};Mode=ReadWrite");
+
+        Assert.False(File.Exists(path));
+        Assert.False(Directory.Exists(Path.GetDirectoryName(path)));
+    }
+
+    [UnixFact]
+    [UnsupportedOSPlatform("windows")]
+    public void RestrictToOwner_NarrowsAFileThatOtherUsersCouldRead()
+    {
+        var path = Path.Combine(_root, "restored.db");
+        File.WriteAllText(path, "restored from a backup");
+        File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead);
+        File.WriteAllText(path + "-wal", string.Empty);
+        File.SetUnixFileMode(path + "-wal", UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.OtherRead);
+
+        var narrowed = AuthDatabaseFile.RestrictToOwner($"Data Source={path}");
+
+        Assert.Equal([path, path + "-wal"], narrowed);
+        Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(path));
+        Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(path + "-wal"));
+        Assert.Empty(AuthDatabaseFile.RestrictToOwner($"Data Source={path}"));
     }
 }

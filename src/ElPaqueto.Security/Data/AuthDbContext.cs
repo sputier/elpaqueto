@@ -13,9 +13,10 @@ public sealed class AuthDbContext(DbContextOptions<AuthDbContext> options) : DbC
     /// <summary>Name of the migrations history table.</summary>
     public const string MigrationsHistoryTable = "__AuthMigrationsHistory";
 
-    // SQLite cannot order DateTimeOffset values: store UTC DateTime values instead.
+    // SQLite cannot order DateTimeOffset values: store UTC DateTime values instead. A value of unspecified
+    // kind is taken as UTC, not converted: converting it would depend on the time zone of the server.
     private static readonly ValueConverter<DateTime, DateTime> UtcConverter = new(
-        value => value.ToUniversalTime(),
+        value => value.Kind == DateTimeKind.Local ? value.ToUniversalTime() : DateTime.SpecifyKind(value, DateTimeKind.Utc),
         value => DateTime.SpecifyKind(value, DateTimeKind.Utc));
 
     /// <summary>The users.</summary>
@@ -42,7 +43,8 @@ public sealed class AuthDbContext(DbContextOptions<AuthDbContext> options) : DbC
 
         modelBuilder.Entity<User>(user =>
         {
-            user.ToTable("Users");
+            // Every defined combination of the Permission flags is 0..7: anything else is corrupt data.
+            user.ToTable("Users", table => table.HasCheckConstraint("CK_Users_Permissions", "\"Permissions\" BETWEEN 0 AND 7"));
             user.HasKey(u => u.Id);
             user.Property(u => u.Id).ValueGeneratedNever();
 
@@ -69,6 +71,9 @@ public sealed class AuthDbContext(DbContextOptions<AuthDbContext> options) : DbC
             if (entry.State is EntityState.Added or EntityState.Modified)
             {
                 entry.Entity.ConcurrencyStamp = Guid.NewGuid().ToString("N");
+
+                // The unique index relies on this value: derive it here so that no caller can forget it.
+                entry.Entity.NormalizedUserName = User.Normalize(entry.Entity.UserName);
             }
         }
     }
