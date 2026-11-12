@@ -97,6 +97,7 @@ public class Program
                 });
 
                 web.UseStartup<Startup>();
-            });
+            })
+            .ConfigureElPaquetoCommandLogging(args);
     }
 }

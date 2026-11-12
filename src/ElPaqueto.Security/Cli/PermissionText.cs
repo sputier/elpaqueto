@@ -73,7 +73,10 @@ internal static class PermissionText
                 continue;
             }
 
-            error = $"Unknown permission '{token}'. Valid values: {ValidValues}.";
+            // Repeated only when it is short and cannot be a misplaced API key or password.
+            error = token.Length <= 16 && !token.StartsWith("epq_", StringComparison.OrdinalIgnoreCase)
+                ? $"Unknown permission '{token}'. Valid values: {ValidValues}."
+                : $"Unknown permission. Valid values: {ValidValues}.";
             return false;
         }
 

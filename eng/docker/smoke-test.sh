@@ -11,11 +11,12 @@
 #   SMOKE_SDK_IMAGE  .NET SDK image of the NuGet client (default: the Dockerfile's build image)
 #
 # It checks the anonymous behaviour, creates an administrator with "admin bootstrap --password-stdin",
-# a reader and a publisher, then pushes and restores a package with the real dotnet CLI
-# (eng/docker/smoke-client.sh, in an SDK container sharing the server's network namespace), restarts
-# the container and restores again. Passwords are random, never on a command line, masked in GitHub
-# Actions.
-# TODO(#46): push with a Publish API key once API-key authentication is merged.
+# a reader and a publisher, and two API keys of the publisher with "admin key create" (each key is read
+# from the command's standard output). It pushes a package with the real dotnet CLI, the Publish key
+# given to "dotnet nuget push --api-key" and the Read key as the source password, and restores it with
+# the reader's password (eng/docker/smoke-client.sh, in an SDK container sharing the server's network
+# namespace). It revokes the Publish key, restarts the container and restores again. Passwords and keys
+# are random, never on a host command line, masked in GitHub Actions.
 set -euo pipefail
 repo=$(cd "$(dirname "$0")/../.." && pwd)
 # Git Bash on Windows: pass container paths to docker as they are, and host paths in Windows form.
@@ -77,6 +78,13 @@ request_as() { # <user> <password> <path> [curl options...]
   printf 'user = "%s:%s"\n' "$user" "$password" \
     | curl -sS -o /dev/null -D - --max-time 30 -K - -H 'X-Forwarded-Proto: https' "$@" "$base$path" | tr -d '\r'
 }
+# Same with an API key in the X-NuGet-ApiKey header, given to curl on standard input.
+request_with_key() { # <key> <path> [curl options...]
+  local key=$1 path=$2
+  shift 2
+  printf 'header = "X-NuGet-ApiKey: %s"\n' "$key" \
+    | curl -sS -o /dev/null -D - --max-time 30 -K - -H 'X-Forwarded-Proto: https' "$@" "$base$path" | tr -d '\r'
+}
 status_of() { printf '%s\n' "$1" | sed -n '1s/^HTTP\/[0-9.]* \([0-9]*\).*/\1/p'; }
 expect_status() { # <description> <expected status> <response headers>
   local actual
@@ -97,12 +105,12 @@ fi
 admin_cli() { docker exec -i "$name" dotnet ElPaqueto.dll admin "$@"; }
 
 sdk_image=${SMOKE_SDK_IMAGE:-$(sed -n 's/^FROM --platform=\$BUILDPLATFORM \([^ ]*\) AS build$/\1/p' "$repo/Dockerfile")}
-# The NuGet client. The passwords reach it through the environment of the docker command, not its arguments.
+# The NuGet client. Passwords and keys reach it through the environment of the docker command, not its arguments.
 run_client() { # push-and-restore | restore
   READER_USER=smoke-reader READER_PASSWORD=$reader_password \
-    PUBLISHER_USER=smoke-publisher PUBLISHER_PASSWORD=$publisher_password \
+    SOURCE_KEY=${read_key:-} PUBLISH_KEY=${publish_key:-} \
     docker run --rm --network "container:$name" \
-    -e READER_USER -e READER_PASSWORD -e PUBLISHER_USER -e PUBLISHER_PASSWORD \
+    -e READER_USER -e READER_PASSWORD -e SOURCE_KEY -e PUBLISH_KEY \
     -v "$(host_path "$repo/eng/docker/smoke-client.sh"):/smoke-client.sh:ro" \
     "$sdk_image" sh /smoke-client.sh "$1"
 }
@@ -198,12 +206,46 @@ expect_status "reader on /health/details" 403 "$(request_as smoke-reader "$reade
 expect_status "administrator on /health/details" 200 "$(request_as smoke-admin "$admin_password" /health/details)"
 expect_status "reader pushing a package" 403 "$(request_as smoke-reader "$reader_password" /api/v2/package -X PUT)"
 
+# API keys of the publisher, created with the admin command: the key alone is on standard output, the
+# messages on standard error.
+key_pattern='^epq_[0-9A-Za-z]{12}_[0-9A-Za-z]{43}$'
+publish_key=$(admin_cli key create --user smoke-publisher --name smoke-push --permissions publish --expires 1d < /dev/null) \
+  || fail "admin key create (Publish key) failed"
+read_key=$(admin_cli key create --user smoke-publisher --name smoke-source --permissions read --no-expiry < /dev/null) \
+  || fail "admin key create (Read key) failed"
+if [ "${GITHUB_ACTIONS:-}" = true ]; then
+  echo "::add-mask::$publish_key"
+  echo "::add-mask::$read_key"
+fi
+if [[ "$publish_key" =~ $key_pattern ]] && [[ "$read_key" =~ $key_pattern ]]; then
+  pass "admin key create wrote exactly one key to standard output"
+else
+  fail "admin key create did not write exactly one key to standard output"
+fi
+key_list=$(admin_cli key list --include-revoked --format json < /dev/null) || fail "admin key list failed"
+if [[ "$key_list" == *"${publish_key:17}"* ]] || [[ "$key_list" == *"${read_key:17}"* ]]; then
+  fail "admin key list shows a secret"
+else
+  pass "admin key list shows the keys without their secrets"
+fi
+expect_status "Read key as the source password on /v3/index.json" 200 "$(request_as apikey "$read_key" /v3/index.json)"
+expect_status "Publish-only key in X-NuGet-ApiKey on /v3/index.json" 403 "$(request_with_key "$publish_key" /v3/index.json)"
+expect_status "Read key in X-NuGet-ApiKey pushing a package" 403 "$(request_with_key "$read_key" /api/v2/package -X PUT)"
+
 # Push and restore with the real dotnet CLI.
 if run_client push-and-restore; then
-  pass "dotnet nuget push (publisher) and dotnet restore (reader) with an empty package cache"
+  pass "dotnet nuget push --api-key (Publish key) and dotnet restore (reader) with an empty package cache"
 else
   fail "dotnet nuget push or dotnet restore failed"
 fi
+
+# Revocation takes effect on the next request.
+if admin_cli key revoke "${publish_key:4:12}" < /dev/null; then
+  pass "admin key revoke"
+else
+  fail "admin key revoke failed"
+fi
+expect_status "revoked Publish key pushing a package" 401 "$(request_with_key "$publish_key" /api/v2/package -X PUT)"
 
 # Graceful stop within the 10 s grace period, then restart on the same volume.
 stop_started=$SECONDS
