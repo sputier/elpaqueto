@@ -1,0 +1,69 @@
+# Dependabot version updates. Security updates are enabled in the repository
+# settings (see docs/maintainers/repository-settings.md).
+version: 2
+
+updates:
+  - package-ecosystem: nuget
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: build(deps)
+    open-pull-requests-limit: 10
+    groups:
+      nuget-minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      # Major versions of these packages follow the target framework.
+      # A retarget is a deliberate change, not a routine update.
+      - dependency-name: Microsoft.EntityFrameworkCore*
+        update-types: [version-update:semver-major]
+      - dependency-name: Microsoft.AspNetCore.*
+        update-types: [version-update:semver-major]
+      - dependency-name: Microsoft.Extensions.*
+        update-types: [version-update:semver-major]
+      - dependency-name: Npgsql.EntityFrameworkCore.PostgreSQL
+        update-types: [version-update:semver-major]
+      - dependency-name: Pomelo.*
+        update-types: [version-update:semver-major]
+
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci(deps)
+    groups:
+      actions-minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: build(deps)
+    groups:
+      docker-minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      # The .NET image major version follows the target framework.
+      - dependency-name: dotnet/sdk
+        update-types: [version-update:semver-major]
+      - dependency-name: dotnet/aspnet
+        update-types: [version-update:semver-major]
+
+  # Inherited documentation site; remove this entry if the site is dropped.
+  - package-ecosystem: npm
+    directory: /docs
+    target-branch: develop
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: build(deps)
+    groups:
+      docs-minor-and-patch:
+        update-types: [minor, patch]
