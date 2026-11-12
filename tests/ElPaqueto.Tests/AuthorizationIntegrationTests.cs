@@ -123,16 +123,56 @@ public class AuthorizationIntegrationTests : IDisposable
 
     [Theory]
     [MemberData(nameof(WriteRoutes))]
-    public async Task PublishPermission_OpensTheWriteRoutes(string method, string path)
+    public async Task APublishKeyInTheApiKeyHeader_OpensTheWriteRoutes(string method, string path)
     {
         await _app.AddUserAsync("publisher", Password, Permission.Publish);
-        using var client = _app.CreateClientFor("publisher", Password);
+        var key = await _app.AddApiKeyAsync("publisher", Permission.Publish);
+        using var client = _app.CreateClientWithApiKey(key.Token);
 
         using var response = await Send(client, method, path);
 
         // Authorized: the action itself may answer 400 or 404 for an empty or unknown package.
         Assert.NotEqual(HttpStatusCode.Unauthorized, response.StatusCode);
         Assert.NotEqual(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Theory]
+    [MemberData(nameof(WriteRoutes))]
+    public async Task APasswordWithPublish_NeverOpensAWriteRoute(string method, string path)
+    {
+        await _app.AddUserAsync("publisher", Password, Permission.Publish | Permission.Admin);
+        using var client = _app.CreateClientFor("publisher", Password);
+
+        using var response = await Send(client, method, path);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.False(response.Headers.Contains("WWW-Authenticate"), "A 403 must not carry a challenge.");
+    }
+
+    [Theory]
+    [MemberData(nameof(WriteRoutes))]
+    public async Task APublishKeySentAsBasicPassword_NeverOpensAWriteRoute(string method, string path)
+    {
+        await _app.AddUserAsync("publisher", Password, Permission.Read | Permission.Publish | Permission.Admin);
+        var key = await _app.AddApiKeyAsync("publisher", Permission.Read | Permission.Publish | Permission.Admin);
+        using var client = _app.CreateClientWithApiKeyAsPassword(key.Token);
+
+        using var response = await Send(client, method, path);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Theory]
+    [MemberData(nameof(WriteRoutes))]
+    public async Task AReadKeyInTheApiKeyHeader_NeverOpensAWriteRoute(string method, string path)
+    {
+        await _app.AddUserAsync("publisher", Password, Permission.Read | Permission.Publish);
+        var key = await _app.AddApiKeyAsync("publisher", Permission.Read);
+        using var client = _app.CreateClientWithApiKey(key.Token);
+
+        using var response = await Send(client, method, path);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
     [Theory]
@@ -217,10 +257,11 @@ public class AuthorizationIntegrationTests : IDisposable
         using var app = new ElPaquetoApplication(
             _output,
             inMemoryConfiguration: dict => dict["PackageDeletionBehavior"] = "HardDelete");
-        await app.AddUserAsync("publisher", Password, Permission.Publish);
-        await app.AddUserAsync("publisher-admin", Password, Permission.Publish | Permission.Admin);
-        using var publisher = app.CreateClientFor("publisher", Password);
-        using var publisherAdmin = app.CreateClientFor("publisher-admin", Password);
+        await app.AddUserAsync("publisher", Password, Permission.Publish | Permission.Admin);
+        var publishKey = await app.AddApiKeyAsync("publisher", Permission.Publish);
+        var publishAdminKey = await app.AddApiKeyAsync("publisher", Permission.Publish | Permission.Admin);
+        using var publisher = app.CreateClientWithApiKey(publishKey.Token);
+        using var publisherAdmin = app.CreateClientWithApiKey(publishAdminKey.Token);
 
         using var refused = await Send(publisher, "DELETE", "api/v2/package/some.package/1.0.0");
         using var allowed = await Send(publisherAdmin, "DELETE", "api/v2/package/some.package/1.0.0");
@@ -234,7 +275,8 @@ public class AuthorizationIntegrationTests : IDisposable
     public async Task Unlisting_NeedsOnlyPublishByDefault()
     {
         await _app.AddUserAsync("publisher", Password, Permission.Publish);
-        using var publisher = _app.CreateClientFor("publisher", Password);
+        var key = await _app.AddApiKeyAsync("publisher", Permission.Publish);
+        using var publisher = _app.CreateClientWithApiKey(key.Token);
 
         using var response = await Send(publisher, "DELETE", "api/v2/package/some.package/1.0.0");
 
@@ -356,8 +398,7 @@ public class AuthorizationIntegrationTests : IDisposable
             builder.ConfigureLogging(logging => logging.AddProvider(new CapturingProvider(logs)));
             builder.ConfigureTestServices(services => services.AddSingleton<IStartupFilter>(new MapExtraEndpointFilter(null)));
         });
-        using var anonymous = app.CreateClient();
-        anonymous.DefaultRequestHeaders.Authorization = null;
+        using var anonymous = app.CreateAnonymousClient();
         using var admin = app.CreateClient();
 
         using var anonymousResponse = await anonymous.GetAsync("zz-unmapped");
@@ -402,8 +443,7 @@ public class AuthorizationIntegrationTests : IDisposable
         const string checkName = "a-distinctive-check-name";
         using var app = _app.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
             services.AddHealthChecks().AddCheck(checkName, () => HealthCheckResult.Healthy())));
-        using var anonymous = app.CreateClient();
-        anonymous.DefaultRequestHeaders.Authorization = null;
+        using var anonymous = app.CreateAnonymousClient();
         using var admin = app.CreateClient();
 
         var liveness = await anonymous.GetStringAsync("health");

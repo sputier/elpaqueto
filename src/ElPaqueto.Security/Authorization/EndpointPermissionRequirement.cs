@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using ElPaqueto.Core;
+using ElPaqueto.Security.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -15,7 +16,8 @@ internal sealed class EndpointPermissionRequirement : IAuthorizationRequirement;
 
 /// <summary>
 /// Decides whether the current request may reach its endpoint. It fails closed: no endpoint, no key, no
-/// row, a method the row does not allow, an unauthenticated caller or a missing permission all fail.
+/// row, a method the row does not allow, an unauthenticated caller, a write without an API key sent in
+/// <c>X-NuGet-ApiKey</c> or a missing permission all fail.
 /// </summary>
 /// <remarks>
 /// Permissions are read from the claims built by authentication: this handler never queries a database.
@@ -72,6 +74,12 @@ internal sealed class EndpointPermissionHandler(IHttpContextAccessor httpContext
         }
 
         if (user.Identity?.IsAuthenticated != true)
+        {
+            return false;
+        }
+
+        // Writes: only an API key sent in X-NuGet-ApiKey, never a password or a key sent as a Basic password.
+        if (rule.RequiresApiKeyHeader && user.ApiKeyIdFromHeader() is null)
         {
             return false;
         }
