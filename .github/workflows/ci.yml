@@ -44,6 +44,10 @@ jobs:
       - name: Build
         run: dotnet build --configuration Release --no-restore
 
+      - name: Check formatting (strict projects)
+        shell: bash
+        run: bash eng/format-strict.sh
+
       - name: Test
         run: dotnet test --configuration Release --no-build --logger trx --results-directory TestResults
 
