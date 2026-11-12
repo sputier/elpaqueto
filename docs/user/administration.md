@@ -1,6 +1,6 @@
 # Administration from the command line
 
-ElPaqueto has no web administration interface. Users are created and managed with the `admin` commands of the server binary, run against the same configuration and data as the server.
+ElPaqueto has no web administration interface. Users and API keys are created and managed with the `admin` commands of the server binary, run against the same configuration and data as the server.
 
 ElPaqueto ships **without any account and without any default password**. The first administrator is created with [`admin bootstrap`](#first-administrator).
 
@@ -12,7 +12,8 @@ The commands:
 
 - create and migrate the security database when needed, exactly as the server does at startup;
 - never create or migrate the package database, never start the web server and never bind a port, so they can run next to a running server;
-- never print or log passwords or password hashes.
+- never print or log passwords or password hashes;
+- print an API key once, when `admin key create` or `admin key rotate` creates it, and never log it.
 
 Changes are committed to the security database at once; no restart is needed. The server reads the user on every request, so a disabled user, a reset password or new permissions take effect on the next request.
 
@@ -210,7 +211,102 @@ docker compose run --rm elpaqueto admin user reset-password ci --password-file /
 - Dates are UTC, ISO 8601, with seven fractional digits and a `Z` suffix.
 - The output never contains a password hash.
 
-Log lines from the console logger also go to standard output: keep the default log level (`Warning`) or send logs elsewhere when a script parses the JSON.
+Standard output only carries the result: the `admin` commands send console log lines to standard error, so a script can parse the JSON whatever the log level.
+
+## API keys
+
+An API key lets a client (a CI job, `dotnet nuget push`, a restore) authenticate as its owner with some of the owner's permissions, without the owner's password. How clients send keys is described in [Using an API key](configuration.md#using-an-api-key). Keys are managed by the `admin key` commands:
+
+| Command | Effect |
+| --- | --- |
+| `admin key create --user <username> --name <label> --permissions <list> (--expires <when> \| --no-expiry) [--format text\|json]` | Creates a key for the user and prints it once. |
+| `admin key list [--user <username>] [--include-revoked] [--format text\|json]` | Lists the keys that are not revoked, or all of them with `--include-revoked`, oldest first. |
+| `admin key show <keyId> [--format text\|json]` | Shows one key. |
+| `admin key revoke <keyId>` | Revokes the key at once. Already revoked: exit code 0 with a notice. |
+| `admin key rotate <keyId> (--expires <when> \| --no-expiry) [--format text\|json]` | Creates a new key with the same owner, name and permissions, revokes the old one, and prints the new key once. |
+
+The **key id** is the public part of a key: the 12 characters after `epq_` (`epq_<keyId>_<secret>`). `list` shows it. Give the commands the key id, never the complete key: a complete key given where a key id is expected is refused (exit code 2) without being repeated, but it is then in your shell history, so rotate or revoke it.
+
+### Creating a key
+
+- `--permissions` is required: a key gets no permission by default. It takes the same values as for users (`read`, `publish`, `admin` and the presets, see [Permissions](#permissions)), and **every permission must be held by the owner** now, `admin` included; otherwise the command exits with code 3 and creates nothing. Give each key only what its client needs: `read` for restore, `publish` for pushes.
+- The expiry must be stated: `--expires <when>` or `--no-expiry`. `<when>` is a number of days (`90d`, from 1 to 36500), a date (`2027-01-31`, meaning 00:00 UTC that day) or a time with `Z` or an offset (`2027-01-31T12:00:00Z`, `2027-01-31T14:00:00+02:00`). A time in the past is refused (exit code 2). Prefer keys that expire, and rotate them before they do.
+- `--name` is a label of 1 to 100 characters without control characters, for example the job that uses the key (`ci-main`). It need not be unique, and cannot start with `epq_`.
+- A value that looks like an API key (it starts with `epq_`) given to `--user`, `--name`, `--permissions` or as a key id is never repeated in an error message.
+- The owner must exist (exit code 4 otherwise) and be active (exit code 3 otherwise). User names are matched ignoring case.
+
+**The key is printed once, and nowhere else.** `create` and `rotate` write the key alone, followed by a line feed, to **standard output**; the summary and the warning go to standard error. Only a hash of the key is stored: it cannot be displayed again, and a lost key is revoked and replaced. Redirect standard output to keep the key out of the terminal and of logs:
+
+```bash
+# Into a file that only you can read.
+(umask 077 && dotnet ElPaqueto.dll admin key create --user ci --name ci-main --permissions publish --expires 90d > ci-main.key)
+
+# Straight into a secret store (any tool that reads the secret from standard input).
+dotnet ElPaqueto.dll admin key create --user ci --name ci-main --permissions publish --expires 90d | my-secret-tool write elpaqueto-publish-key
+```
+
+With `--format json`, standard output is one JSON object with the key in `token` and its description in `key` (and, for `rotate`, the replaced key id in `replacedKeyId`).
+
+### Listing and inspecting
+
+`list` and `show` print the key id, name, owner, status, permissions, effective permissions, and the creation, expiry, revocation and last-use dates (UTC). They never print the key or its hash.
+
+- **Status**: `active`, `revoked`, `expired` or `owner-disabled`, in this order of precedence. Only an `active` key authenticates.
+- **Effective permissions**: the key's permissions that its owner still holds. A key never grants more than its owner holds *now*: removing a permission from a user restricts all of the user's keys at the next request, and disabling a user stops all of them.
+- **Last used** is recorded at most once per `Security:ApiKeys:LastUsedUpdateInterval` (5 minutes by default), so it is accurate to within that interval.
+
+### Revoking and rotating
+
+`revoke` takes effect on the next request: there is no cache. Revoking a key twice is not an error. An unknown key id exits with code 4.
+
+`rotate` replaces a key in one database transaction: the new key has the same owner, name and permissions, and the old key stops working at once. The expiry of the new key must be stated again. It is refused (exit code 3, nothing changed) for a revoked key, for a disabled owner, and when the owner no longer holds every permission of the key: rotation never silently changes what a key may do, so revoke the key and create one with the permissions wanted.
+
+Because the old key stops working immediately, `rotate` interrupts the clients that use it until they get the new key. To switch clients without interruption, rotate by hand: `create` a new key, update the clients, then `revoke` the old key.
+
+### Examples
+
+```bash
+# A Publish key for the CI push job, valid 90 days, written to a file.
+(umask 077 && dotnet ElPaqueto.dll admin key create --user ci --name ci-push --permissions publish --expires 90d > ci-push.key)
+
+# A Read key for restore jobs, without expiry, as JSON.
+dotnet ElPaqueto.dll admin key create --user ci --name ci-restore --permissions read --no-expiry --format json
+
+# Keys of one user, revoked ones included.
+dotnet ElPaqueto.dll admin key list --user ci --include-revoked
+
+# Replace a key, then revoke another one.
+dotnet ElPaqueto.dll admin key rotate AbCdEfGhIjKl --expires 2027-06-30 > ci-push.key
+dotnet ElPaqueto.dll admin key revoke MnOpQrStUvWx
+
+# In Docker Compose: -T keeps the key on standard output instead of a pseudo-terminal.
+docker compose run --rm -T elpaqueto admin key create --user ci --name ci-push --permissions publish --expires 90d > ci-push.key
+docker compose exec -T elpaqueto dotnet ElPaqueto.dll admin key revoke AbCdEfGhIjKl
+```
+
+The key ids above are placeholders. Then use the key as described in [Using an API key](configuration.md#using-an-api-key), for example `dotnet nuget push <package> --source <source> --api-key "$(cat ci-push.key)"`.
+
+### JSON shape of a key
+
+`list --format json` writes `{"keys": [ ... ]}`; `show --format json` writes one key; `create` and `rotate` write `{"token": "epq_...", "replacedKeyId": "...", "key": { ... }}` (`replacedKeyId` for `rotate` only):
+
+```json
+{
+  "keyId": "AbCdEfGhIjKl",
+  "name": "ci-push",
+  "ownerId": "6f1c2a0e-8d1b-4c63-9a55-0d4f3c2b1a90",
+  "owner": "ci",
+  "status": "active",
+  "permissions": ["publish"],
+  "effectivePermissions": ["publish"],
+  "createdAt": "2026-11-12T08:30:00.0000000Z",
+  "expiresAt": "2027-02-10T08:30:00.0000000Z",
+  "revokedAt": null,
+  "lastUsedAt": null
+}
+```
+
+Dates are UTC, ISO 8601, with seven fractional digits and a `Z` suffix; `expiresAt`, `revokedAt` and `lastUsedAt` are `null` when not set. Permission lists are always in the order `read`, `publish`, `admin`.
 
 ## Exit codes
 
@@ -220,8 +316,8 @@ Every `admin` command uses the same exit codes:
 | --- | --- |
 | `0` | Success. |
 | `1` | Unexpected error, for example the database cannot be opened or stayed locked. Retrying may help. |
-| `2` | Usage or validation error: unknown option or argument, missing value, invalid user name, missing password source, password refused by the policy. Nothing was changed. |
-| `3` | Precondition failed, for example an administrator already exists. Nothing was changed. |
-| `4` | The user does not exist. |
+| `2` | Usage or validation error: unknown option or argument, missing value, invalid user name, missing password source, password refused by the policy, missing or past key expiry, malformed key id. Nothing was changed. |
+| `3` | Precondition failed, for example an administrator already exists, a key permission the owner does not hold, a disabled owner, or a revoked key to rotate. Nothing was changed. |
+| `4` | The user or the API key does not exist. |
 
-Results are written to standard output, errors and prompts to standard error. Log messages go to the logging providers configured for the server: by default the console logger, which writes to standard output, at level `Warning` and above. The structured events of the administration commands (category `ElPaqueto.Security.Administration`) are at level `Information`, so they are not shown by default; set `Logging__Console__LogLevel__ElPaqueto.Security.Administration=Information`, or configure another provider, to keep them.
+Results are written to standard output, errors and prompts to standard error. Log messages go to the logging providers configured for the server: by default the console logger at level `Warning` and above, which the `admin` commands send to **standard error**, so standard output only carries results (and the new key of `admin key create` and `rotate`). The structured events of the administration commands (category `ElPaqueto.Security.Administration`) are at level `Information`, so they are not shown by default; set `Logging__Console__LogLevel__ElPaqueto.Security.Administration=Information`, or configure another provider, to keep them.
