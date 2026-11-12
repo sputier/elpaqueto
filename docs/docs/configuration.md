@@ -5,44 +5,9 @@ import TabItem from '@theme/TabItem';
 
 You can modify BaGetter's configurations by editing the `appsettings.json` file.
 
-## Require an API key
+## Users and API keys
 
-You can require that users provide a password, called an API key, to publish packages.
-To do so, you can insert the desired API key in the `ApiKey` field.
-
-```json
-{
-    "ApiKey": "NUGET-SERVER-API-KEY",
-    ...
-}
-```
-
-You can also use the `ApiKeys` array in order to manage multiple API keys for multiple teams/developers.
-
-```json
-{
-    "Authentication": {
-        "ApiKeys": [
-            {
-                "Key" : "NUGET-SERVER-API-KEY-1"
-            },
-            {
-                "Key" : "NUGET-SERVER-API-KEY-2"
-            }
-        ]
-        ...
-    }
-    ...
-}
-```
-
-Both `ApiKey` and `ApiKeys` work in conjunction additively eg.: `or` `||` logical operator.
-
-Users will now have to provide the API key to push packages:
-
-```shell
-dotnet nuget push -s http://localhost:5000/v3/index.json -k NUGET-SERVER-API-KEY package.1.0.0.nupkg
-```
+ElPaqueto does not read BaGetter's `ApiKey` and `Authentication` settings: it refuses to start when one of them is set. Users and their permissions are managed with the [administration commands](https://github.com/sputier/ElPaqueto/blob/develop/docs/user/administration.md), and API keys are described in the [security configuration](https://github.com/sputier/ElPaqueto/blob/develop/docs/user/configuration.md). See [Upgrading from BaGetter](https://github.com/sputier/ElPaqueto/blob/develop/docs/user/upgrading-from-bagetter.md).
 
 ## Hosting on a different path
 
@@ -230,56 +195,7 @@ Pushing a package with a pre-release version like "3.1.0-SNAPSHOT" will overwrit
 
 ## Private feeds
 
-A private feed requires users to authenticate before accessing packages.
-
-You can require that users provide a username and password to access the nuget feed.
-To do so, you can insert the credentials in the `Authentication` section.
-
-```json
-{
-    "Authentication": {
-        "Credentials": [
-            {
-                "Username": "username",
-                "Password": "password"
-            }
-        ]
-        ...
-    }
-    ...
-}
-```
-
-Users will now have to provide the username and password to fetch and download packages.
-
-How to add private nuget feed:
-
-1. Download the latest NuGet executable.
-2. Open a Command Prompt and change the path to the nuget.exe location.
-3. The command from the example below stores a token in the %AppData%\NuGet\NuGet.config file. Your original credentials cannot be obtained from this token.
-
-
-```shell
-NuGet Sources Add -Name "localhost" -Source "http://localhost:5000/v3/index.json" -UserName "username" -Password "password"
-```
-
-If you are unable to connect to the feed by using encrypted credentials, store your credentials in clear text:
-
-```shell
-NuGet Sources Add -Name "localhost" -Source "http://localhost:5000/v3/index.json" -UserName "username" -Password "password" -StorePasswordInClearText
-```
-
-If you have already stored a token instead of storing the credentials as clear text, update the definition in the %AppData%\NuGet\NuGet.config file by using the following command:
-
-```shell
-NuGet Sources Update -Name "localhost" -Source "http://localhost:5000/v3/index.json" -UserName "username" -Password "password" -StorePasswordInClearText
-```
-
-The commands are slightly different when using the Package Manager console in Visual Studio:
-
-```shell
-dotnet nuget add source "http://localhost:5000/v3/index.json" --name "bagetter" --username "username" --password "password"
-```
+Every ElPaqueto feed is private: reading packages requires a user or an API key with the `Read` permission. See the [security configuration](https://github.com/sputier/ElPaqueto/blob/develop/docs/user/configuration.md) for the client configuration.
 
 ## Database configuration
 
@@ -434,20 +350,19 @@ services:
   bagetter:
     image: bagetter/bagetter:latest
     volumes:
-      # Single file mounted for API key
-      - ./secrets/api-key.txt:/run/secrets/ApiKey:ro
+      # Single file mounted for the database connection string
+      - ./secrets/connection-string.txt:/run/secrets/Database__ConnectionString:ro
       - ./data:/srv/baget
     ports:
       - "5000:8080"
     environment:
-      - Database__ConnectionString=Data Source=/srv/baget/bagetter.db
       - Database__Type=Sqlite
       - Mirror__Enabled=false
       - Storage__Type=FileSystem
       - Storage__Path=/srv/baget/packages
 ```
 
-The specified file `./secrets/api-key.txt` contains the clear text api key only.
+The specified file `./secrets/connection-string.txt` contains the connection string only, for example `Data Source=/srv/baget/elpaqueto.db`.
 
 The port mapping will make available the service at `http://localhost:5000`. (To make it available using `https` you should use an additional reverse proxy service, like "apache" or "nginx".)
 

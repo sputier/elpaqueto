@@ -34,7 +34,8 @@ public static class ElPaquetoSecurityApplicationExtensions
     /// <param name="app">The application to extend.</param>
     /// <returns>The same <paramref name="app"/> instance, to allow chaining.</returns>
     /// <remarks>
-    /// Registers the validated <c>Security</c> options, the security database, which is migrated
+    /// Registers the validated <c>Security</c> options, the rejection of the legacy BaGetter authentication
+    /// settings (<c>ApiKey</c>, <c>Authentication:*</c>), the security database, which is migrated
     /// before the server accepts requests, password hashing, the API key service, authentication (passwords and
     /// API keys) with sign-in throttling, deny-by-default authorization, the replacement of the inherited inline API key
     /// check, the CORS policy, and the
@@ -48,6 +49,9 @@ public static class ElPaquetoSecurityApplicationExtensions
 
         services.AddElPaquetoOptions<ElPaquetoSecurityOptions>(ElPaquetoSecurityOptions.SectionName);
         services.AddSingleton<IValidateOptions<ElPaquetoSecurityOptions>, SecurityConfigurationShapeValidator>();
+
+        // The inherited ApiKey and Authentication:* settings no longer do anything: refuse to start with them.
+        services.AddSingleton<IValidateOptions<ElPaquetoOptions>, LegacyAuthenticationSettingsValidator>();
 
         // Deliberately not an IContext: the inherited provider pipeline must never resolve this database.
         services.AddDbContext<AuthDbContext>((provider, builder) =>
