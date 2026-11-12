@@ -42,7 +42,7 @@ internal sealed partial class ElPaquetoAuthenticationHandler(
     : AuthenticationHandler<AuthenticationSchemeOptions>(options, loggerFactory, encoder)
 {
     /// <summary>The header NuGet clients send the API key in, on push and delete.</summary>
-    internal const string ApiKeyHeaderName = "X-NuGet-ApiKey";
+    internal const string ApiKeyHeaderName = RequestCredentialSelector.ApiKeyHeaderName;
 
     // Fixed strings: the base class logs them, so they must never contain request data.
     private const string InvalidCredentials = "Invalid credentials.";
@@ -51,40 +51,31 @@ internal sealed partial class ElPaquetoAuthenticationHandler(
 
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
-        // 1. The API key header, when present, is the only credential considered.
-        var apiKeyValues = Request.Headers[ApiKeyHeaderName];
-        if (apiKeyValues.Count > 0)
-        {
-            // A client sends one key; several are ambiguous, hence a failure rather than a pick.
-            if (apiKeyValues.Count > 1)
-            {
-                LogMalformedApiKeyRefused(Logger, ApiKeyValidationFailure.Malformed, ElPaquetoClaimTypes.ApiKeyHeaderSource);
-                return AuthenticateResult.Fail(InvalidCredentials);
-            }
+        // Exactly one credential decides; the selection order is in RequestCredentialSelector. Every branch below
+        // either verifies that credential in full or fails: no branch grants anything by itself.
+        var credential = RequestCredentialSelector.Select(Request.Headers);
 
-            return await AuthenticateApiKeyAsync(apiKeyValues[0], ElPaquetoClaimTypes.ApiKeyHeaderSource);
+        return credential.Kind switch
+        {
+            CredentialKind.ApiKey => await AuthenticateApiKeyAsync(credential.Secret, credential.Source!),
+
+            // The parser guarantees a non-empty user name. A token-shaped password never reaches this path, and the
+            // password policy refuses passwords with that shape, so no value is ever tried both ways.
+            CredentialKind.Password => await AuthenticatePasswordAsync(credential.UserName!, credential.Secret!),
+            CredentialKind.Invalid => Refuse(credential),
+            _ => AuthenticateResult.NoResult(),
+        };
+    }
+
+    private AuthenticateResult Refuse(RequestCredential credential)
+    {
+        if (credential.Source is { } source)
+        {
+            // Two API key header values.
+            LogMalformedApiKeyRefused(Logger, ApiKeyValidationFailure.Malformed, source);
         }
 
-        // 2. HTTP Basic.
-        var parsed = BasicCredentialsParser.Parse(Request.Headers.Authorization);
-
-        switch (parsed.Outcome)
-        {
-            case BasicParseOutcome.NoResult:
-                return AuthenticateResult.NoResult();
-            case BasicParseOutcome.Malformed:
-                return AuthenticateResult.Fail(InvalidCredentials);
-        }
-
-        // The parser guarantees a non-empty user name. For a key it is otherwise ignored: the key names its owner.
-        // A token-shaped password is never verified as a user password, and the password policy refuses
-        // passwords with that shape, so no value is ever tried both ways.
-        if (ApiKeyToken.IsTokenFormat(parsed.Password))
-        {
-            return await AuthenticateApiKeyAsync(parsed.Password, ElPaquetoClaimTypes.BasicPasswordSource);
-        }
-
-        return await AuthenticatePasswordAsync(parsed.UserName!, parsed.Password!);
+        return AuthenticateResult.Fail(InvalidCredentials);
     }
 
     protected override Task HandleChallengeAsync(AuthenticationProperties properties)

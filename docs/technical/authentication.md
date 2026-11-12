@@ -4,7 +4,7 @@ Authentication is implemented by `ElPaquetoAuthenticationHandler` (`src/ElPaquet
 
 ## Which credential decides
 
-Exactly one credential decides a request, chosen in this order ([ADR 0002](../adr/0002-authentication-architecture.md), decision 6):
+Exactly one credential decides a request, chosen by `RequestCredentialSelector` (purely syntactic, no database) in this order ([ADR 0002](../adr/0002-authentication-architecture.md), decision 6):
 
 1. **`X-NuGet-ApiKey` present** (sent by `dotnet nuget push` and `dotnet nuget delete`): the key alone decides and `Authorization` is ignored. An invalid, revoked or expired key, a key whose owner is disabled, or **two `X-NuGet-ApiKey` values**, fail authentication, even if valid Basic credentials are also present: every protected route then answers 401 (the anonymous liveness endpoint is still served, and grants nothing). A header with an empty value is present, so it fails too.
 2. **`Authorization: Basic`**, parsed strictly (below). If the password has the exact API key token format (`ApiKeyToken.IsTokenFormat`, see [API keys](api-keys.md)), it is validated **as an API key only**: the user name must be non-empty (the parser refuses an empty one) and is otherwise ignored, so it can never select another user. Any other password is verified **as the user's password only**. No value is ever tried both ways: a token-shaped password is never looked up as a user password, and the password policy refuses passwords with that shape ([passwords](passwords.md)).
