@@ -246,7 +246,7 @@ internal sealed partial class ElPaquetoAuthenticationHandler(
 
         // The same password, for the same account state, already failed from this client: verifying it again
         // would fail again. Answered without a hash, so that a client retrying a stale password costs no processor
-        // time, after the time a verification takes.
+        // time, after about the time a verification takes.
         if (slot.RepeatsACountedFailure)
         {
             var counted = slot.Failed();
@@ -257,7 +257,7 @@ internal sealed partial class ElPaquetoAuthenticationHandler(
 
         var started = Stopwatch.GetTimestamp();
         var verification = passwords.Verify(user, password);
-        verificationTiming.Record(started);
+        verificationTiming.Record(Stopwatch.GetElapsedTime(started));
 
         switch (verification)
         {

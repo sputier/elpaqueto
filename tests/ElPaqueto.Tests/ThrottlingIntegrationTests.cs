@@ -145,6 +145,27 @@ public class ThrottlingIntegrationTests
     }
 
     [Fact]
+    public async Task ARepetition_IsAnsweredWithoutHashing_AfterAboutTheTimeOfAVerification()
+    {
+        var hasher = new SlowPasswordHasher(TimeSpan.FromMilliseconds(400));
+        using var baseApp = new ElPaquetoApplication(_output);
+        using var app = WithServices(baseApp, new FakeTimeProvider(DateTimeOffset.UtcNow), hasher);
+        var stale = Basic(baseApp.TestUserName, "stale password 1234");
+
+        var verified = System.Diagnostics.Stopwatch.StartNew();
+        Assert.Equal(StatusCodes.Status401Unauthorized, (await SendAsync(app, ClientA, stale)).Response.StatusCode);
+        verified.Stop();
+
+        var repeated = System.Diagnostics.Stopwatch.StartNew();
+        Assert.Equal(StatusCodes.Status401Unauthorized, (await SendAsync(app, ClientA, stale)).Response.StatusCode);
+        repeated.Stop();
+
+        _output.WriteLine($"Verified: {verified.ElapsedMilliseconds} ms; repetition: {repeated.ElapsedMilliseconds} ms.");
+        Assert.Equal(1, hasher.VerifyCalls);
+        Assert.True(repeated.Elapsed >= TimeSpan.FromMilliseconds(300), $"The repetition was answered in {repeated.ElapsedMilliseconds} ms.");
+    }
+
+    [Fact]
     public async Task ARepeatedPassword_IsVerifiedAgain_OnceTheAccountChanged()
     {
         var counter = new CountingPasswordHasher();
@@ -439,6 +460,15 @@ public class ThrottlingIntegrationTests
         {
             Interlocked.Increment(ref _verifyCalls);
             return _inner.VerifyHashedPassword(user, hashedPassword, providedPassword);
+        }
+    }
+
+    private sealed class SlowPasswordHasher(TimeSpan duration) : CountingPasswordHasher
+    {
+        public override PasswordVerificationResult VerifyHashedPassword(User user, string hashedPassword, string providedPassword)
+        {
+            Thread.Sleep(duration);
+            return base.VerifyHashedPassword(user, hashedPassword, providedPassword);
         }
     }
 

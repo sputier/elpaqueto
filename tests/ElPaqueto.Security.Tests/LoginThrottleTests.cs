@@ -863,6 +863,71 @@ public sealed class LoginThrottleTests : IDisposable
         Assert.Equal(nameof(CredentialAttempt), Attempt("marker-secret-5").ToString()?.Split('.')[^1]);
     }
 
+    [Fact]
+    public async Task TwoIdenticalKeyAttemptsInFlightAtOnce_CountExactlyOnce()
+    {
+        var throttle = Create();
+
+        // Key attempts are not serialized: both slots are granted before either reports.
+        using var first = await throttle.EnterVerificationAsync(ClientA, null, Attempt("epq_same", state: ""), CancellationToken.None);
+        using var second = await throttle.EnterVerificationAsync(ClientA, null, Attempt("epq_same", state: ""), CancellationToken.None);
+        Assert.Null(first.Rejection);
+        Assert.Null(second.Rejection);
+        Assert.False(first.RepeatsACountedFailure);
+        Assert.False(second.RepeatsACountedFailure);
+
+        Assert.True(second.Failed());
+        Assert.False(first.Failed());
+        Assert.Equal(1, throttle.FailureCount(ThrottleScope.Client, ClientA, null));
+    }
+
+    [Fact]
+    public async Task RepetitionsBeyondTheRepeatLimit_ThrottleTheClient()
+    {
+        var throttle = Create(o => o.ClientFailureLimit = 3);
+        var limit = LoginThrottle.RepeatLimit(new SecurityThrottlingOptions { ClientFailureLimit = 3 });
+        Assert.Equal(30, limit);
+
+        Assert.True(await FailAsync(throttle, ClientA, "alice", Attempt("stale")));
+        for (var i = 0; i < limit - 1; i++)
+        {
+            Assert.False(await FailAsync(throttle, ClientA, "alice", Attempt("stale")));
+        }
+
+        Assert.Null(throttle.Check(ClientA, "alice"));
+        Assert.Equal(limit - 1, throttle.FailureCount(ThrottleScope.Repeat, ClientA, null));
+        Assert.Equal(1, throttle.FailureCount(ThrottleScope.Client, ClientA, null));
+
+        Assert.False(await FailAsync(throttle, ClientA, "alice", Attempt("stale")));
+
+        // The whole client is throttled, logged once as a Repeat trip; another client is not.
+        Assert.Equal(429, throttle.Check(ClientA, "anyone")?.StatusCode);
+        Assert.Equal(429, throttle.Check(ClientA, null)?.StatusCode);
+        Assert.Null(throttle.Check(ClientB, "alice"));
+        Assert.Contains(_logger.Entries, e => e.Message.Contains("Repeat", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void VerificationTiming_IsAMovingAverage_SeededByTheFirstSample_AndClamped()
+    {
+        var timing = new ElPaqueto.Security.Authentication.VerificationTiming();
+        Assert.Equal(TimeSpan.Zero, timing.Typical);
+
+        timing.Record(TimeSpan.FromMilliseconds(800));
+        Assert.Equal(TimeSpan.FromMilliseconds(800), timing.Typical);
+
+        // Weight 1/8 for a new sample.
+        timing.Record(TimeSpan.FromMilliseconds(0));
+        Assert.Equal(TimeSpan.FromMilliseconds(700), timing.Typical);
+
+        // A pause of a minute counts as two seconds at most.
+        var clamped = new ElPaqueto.Security.Authentication.VerificationTiming();
+        clamped.Record(TimeSpan.FromMinutes(1));
+        Assert.Equal(TimeSpan.FromSeconds(2), clamped.Typical);
+        clamped.Record(TimeSpan.FromSeconds(-5));
+        Assert.Equal(TimeSpan.FromSeconds(1.75), clamped.Typical);
+    }
+
     [Theory]
     [InlineData(0.2, "1")]
     [InlineData(1, "1")]
@@ -961,4 +1026,12 @@ public sealed class LoginThrottleTests : IDisposable
             }
         }
     }
+}
+
+/// <summary>Attempts without a credential: every failure counts, as before repetitions were recognised.</summary>
+internal static class LoginThrottleTestExtensions
+{
+    public static ValueTask<VerificationSlot> EnterVerificationAsync(
+        this LoginThrottle throttle, IPAddress? client, string? userName, CancellationToken cancellationToken)
+        => throttle.EnterVerificationAsync(client, userName, attempt: null, cancellationToken);
 }

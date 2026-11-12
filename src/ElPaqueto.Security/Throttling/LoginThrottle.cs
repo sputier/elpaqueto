@@ -41,7 +41,8 @@ namespace ElPaqueto.Security.Throttling;
 /// time counts on no counter: guessing needs distinct candidates, while a client that retries a stale credential
 /// (NuGet sends a refused request six times) must not throttle itself. A different secret, user name, client or
 /// credential state is a new attempt and counts. When the fingerprint store is full, a failure is counted and not
-/// remembered (fail closed).</para>
+/// remembered (fail closed). Repetitions are bounded too, per client, by a separate and much higher limit
+/// (<see cref="RepeatLimit"/>): a client that keeps repeating is throttled like any other.</para>
 /// <para>Every counter kind, and the fingerprint store, holds at most <see cref="SecurityThrottlingOptions.MaxTrackedEntries"/> entries, so
 /// memory stays bounded whatever the number of user names or addresses an attacker sends.</para>
 /// </remarks>
@@ -53,6 +54,7 @@ internal sealed class LoginThrottle : ILoginThrottle, IDisposable
     private readonly ILogger<Audit> _logger;
     private readonly ConcurrencyLimiter _capacity;
     private readonly CounterStore<ClientKey> _clients;
+    private readonly CounterStore<ClientKey> _repeats;
     private readonly CounterStore<NetworkKey> _networks;
     private readonly CounterStore<PairKey> _pairs;
     private readonly CounterStore<AccountKey> _accounts;
@@ -77,6 +79,7 @@ internal sealed class LoginThrottle : ILoginThrottle, IDisposable
             QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
         });
         _clients = new CounterStore<ClientKey>(_options.ClientWindow, _options.ClientFailureLimit, _options.MaxTrackedEntries);
+        _repeats = new CounterStore<ClientKey>(_options.ClientWindow, RepeatLimit(_options), _options.MaxTrackedEntries);
         _networks = new CounterStore<NetworkKey>(_options.ClientWindow, _options.NetworkFailureLimit, _options.MaxTrackedEntries);
         _pairs = new CounterStore<PairKey>(_options.PairWindow, _options.PairFailureLimit, _options.MaxTrackedEntries);
         _accounts = new CounterStore<AccountKey>(_options.AccountWindow, _options.AccountFailureLimit, _options.MaxTrackedEntries);
@@ -116,9 +119,13 @@ internal sealed class LoginThrottle : ILoginThrottle, IDisposable
         }
     }
 
-    /// <summary>Enters a verification whose failure is always counted. For tests.</summary>
-    internal ValueTask<VerificationSlot> EnterVerificationAsync(IPAddress? client, string? userName, CancellationToken cancellationToken)
-        => EnterVerificationAsync(client, userName, attempt: null, cancellationToken);
+    /// <summary>
+    /// Repetitions of counted failures, from one client and in <see cref="SecurityThrottlingOptions.ClientWindow"/>,
+    /// after which the client is throttled: ten times the client limit (300 with the defaults), far above what a
+    /// client retrying a stale credential sends (6 per NuGet command), but a bound on the database reads and log
+    /// lines that repetitions cost.
+    /// </summary>
+    internal static int RepeatLimit(SecurityThrottlingOptions options) => options.ClientFailureLimit * 10;
 
     public async ValueTask<VerificationSlot> EnterVerificationAsync(
         IPAddress? client, string? userName, CredentialAttempt? attempt, CancellationToken cancellationToken)
@@ -259,6 +266,7 @@ internal sealed class LoginThrottle : ILoginThrottle, IDisposable
                 ThrottleScope.Client => _clients.Count,
                 ThrottleScope.Network => _networks.Count,
                 ThrottleScope.Pair => _pairs.Count,
+                ThrottleScope.Repeat => _repeats.Count,
                 _ => _accounts.Count,
             };
         }
@@ -295,6 +303,7 @@ internal sealed class LoginThrottle : ILoginThrottle, IDisposable
                 ThrottleScope.Client => _clients.Find(keys.Client, now),
                 ThrottleScope.Network => keys.Network is { } network ? _networks.Find(network, now) : null,
                 ThrottleScope.Pair => keys.Pair is { } pair ? _pairs.Find(pair, now) : null,
+                ThrottleScope.Repeat => _repeats.Find(keys.Client, now),
                 _ => keys.Account is { } account ? _accounts.Find(account, now) : null,
             };
             return counter?.FailureCount ?? 0;
@@ -319,6 +328,8 @@ internal sealed class LoginThrottle : ILoginThrottle, IDisposable
             {
                 // Decided and recorded under the lock: of parallel identical failures, exactly one counts.
                 case VerificationOutcome.Failure when fingerprint is { } repeated && _failedAttempts.Contains(repeated, now):
+                    var repeats = _repeats.GetOrAdd(keys.Client, now);
+                    AddTrip(ref trips, ThrottleScope.Repeat, _repeats.RecordFailure(repeats, now, _options));
                     break;
 
                 case VerificationOutcome.Failure:
@@ -430,6 +441,11 @@ internal sealed class LoginThrottle : ILoginThrottle, IDisposable
             until = Math.Max(until, client.ThrottledUntil);
         }
 
+        if (_repeats.Find(keys.Client, now) is { } repeats && repeats.IsThrottled(now))
+        {
+            until = Math.Max(until, repeats.ThrottledUntil);
+        }
+
         if (keys.Network is { } networkKey && _networks.Find(networkKey, now) is { } network && network.IsThrottled(now))
         {
             until = Math.Max(until, network.ThrottledUntil);
@@ -504,4 +520,7 @@ internal enum ThrottleScope
 
     /// <summary>A user name, from all clients.</summary>
     Account,
+
+    /// <summary>Repetitions of failures already counted, from a client address (IPv6 by /64).</summary>
+    Repeat,
 }
