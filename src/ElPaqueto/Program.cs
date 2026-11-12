@@ -54,7 +54,19 @@ public class Program
             await host.RunAsync(cancellationToken);
         });
 
-        await app.ExecuteAsync(args);
+        try
+        {
+            await app.ExecuteAsync(args);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            // Exit with a code instead of crashing: an unhandled exception aborts the process, which on
+            // Linux can write a core dump containing process memory, connection strings included.
+            // The host is already disposed here, so write to the console like the runtime would.
+            Console.Error.WriteLine("ElPaqueto stopped because of an unhandled error:");
+            Console.Error.WriteLine(e);
+            Environment.ExitCode = 1;
+        }
     }
 
     public static IHostBuilder CreateHostBuilder(string[] args)
