@@ -7,7 +7,7 @@
     The list is delimited by semicolons on both ends; names are project names without extension.
   -->
   <PropertyGroup>
-    <ElPaquetoStrictProjects>;ElPaqueto.Security;ElPaqueto.Security.Tests;</ElPaquetoStrictProjects>
+    <ElPaquetoStrictProjects>;ElPaqueto.Security;ElPaqueto.Security.Tests;ElPaqueto.EndToEnd.Tests;</ElPaquetoStrictProjects>
   </PropertyGroup>
 
   <PropertyGroup Condition="$(ElPaquetoStrictProjects.Contains(';$(MSBuildProjectName);'))">

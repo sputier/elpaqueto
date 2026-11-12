@@ -190,7 +190,7 @@ Known limitations:
 - **`429 Too Many Requests`** means too many failed sign-ins from your address (or your IPv6 /48 network), for your user name from your address, or against your user name with a recent failure from your address. Nothing about your credentials is checked while it lasts, even correct ones. Wait for the number of seconds in `Retry-After` (at most `MaximumThrottleDuration`), then fix the credentials before retrying: a stale password in a NuGet configuration or a credential provider keeps failing on its own and keeps the throttle active. The server log shows one warning per trip, with the address and the counter kind.
 - **`503 Service Unavailable`** with `Retry-After` during sign-in means the server is already running as many password checks as it allows. It is transient; if it persists under normal load, raise `MaxConcurrentVerifications` or `VerificationQueueLimit`.
 
-How NuGet clients display a `429` or `503`, and whether they retry, has not been verified yet.
+The `dotnet` CLI reports them as `Response status code does not indicate success: 429 (Too Many Requests)` (or `503 (Service Unavailable)`), after retrying a few times within seconds: it does not wait for `Retry-After`. A restore with a wrong password retries six times, which is enough to trip the default `PairFailureLimit` by itself: the client then reports `429` rather than `401` ([#99](https://github.com/sputier/ElPaqueto/issues/99)). See [what the real clients do](../technical/e2e-tests.md#what-the-real-clients-do). `nuget.exe` and Visual Studio have not been verified.
 
 ### `Security:Cors`
 

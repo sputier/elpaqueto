@@ -68,7 +68,7 @@ Key and password failures from one client share its budget. Brute-forcing a key 
 
 The answer is produced by the scheme's challenge, so it only applies where authentication is required. An endpoint open to anonymous callers (the health check) ignores the refused credentials, as it ignores wrong ones.
 
-How the NuGet clients (`dotnet restore`, `dotnet nuget push`, Visual Studio) report and retry a `429` or a `503` has not been verified yet: the end-to-end client tests record it.
+The end-to-end tests record how the `dotnet` CLI reports and retries a `429` or a `503` ([what the real clients do](e2e-tests.md#what-the-real-clients-do)): it retries six times within seconds without waiting for `Retry-After`, and one restore with a wrong password trips the default `PairFailureLimit` by itself ([#99](https://github.com/sputier/ElPaqueto/issues/99)). `nuget.exe` and Visual Studio have not been verified.
 
 ## Logging
 
