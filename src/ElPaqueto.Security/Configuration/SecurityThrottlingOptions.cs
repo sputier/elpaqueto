@@ -28,6 +28,14 @@ public sealed class SecurityThrottlingOptions : IValidatableObject
     public TimeSpan ClientWindow { get; set; } = TimeSpan.FromMinutes(10);
 
     /// <summary>
+    /// Failed attempts, for any user name, from all the /64 networks of one IPv6 /48 after which that /48 is
+    /// throttled. Counted in <see cref="ClientWindow"/>. IPv4 clients are not grouped.
+    /// Setting: <c>Security:Throttling:NetworkFailureLimit</c> (default 300).
+    /// </summary>
+    [Range(1, 10_000, ErrorMessage = Prefix + "NetworkFailureLimit must be between 1 and 10000.")]
+    public int NetworkFailureLimit { get; set; } = 300;
+
+    /// <summary>
     /// Failed attempts for one user name from one client address after which that pair is throttled.
     /// Setting: <c>Security:Throttling:PairFailureLimit</c> (default 5).
     /// </summary>

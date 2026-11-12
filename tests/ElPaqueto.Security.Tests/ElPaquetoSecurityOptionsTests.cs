@@ -212,6 +212,7 @@ public class ElPaquetoSecurityOptionsTests
 
         Assert.Equal(30, throttling.ClientFailureLimit);
         Assert.Equal(TimeSpan.FromMinutes(10), throttling.ClientWindow);
+        Assert.Equal(300, throttling.NetworkFailureLimit);
         Assert.Equal(5, throttling.PairFailureLimit);
         Assert.Equal(TimeSpan.FromMinutes(15), throttling.PairWindow);
         Assert.Equal(50, throttling.AccountFailureLimit);
@@ -229,6 +230,8 @@ public class ElPaquetoSecurityOptionsTests
     [Theory]
     [InlineData(nameof(SecurityThrottlingOptions.ClientFailureLimit), 0)]
     [InlineData(nameof(SecurityThrottlingOptions.ClientFailureLimit), 1001)]
+    [InlineData(nameof(SecurityThrottlingOptions.NetworkFailureLimit), 0)]
+    [InlineData(nameof(SecurityThrottlingOptions.NetworkFailureLimit), 10_001)]
     [InlineData(nameof(SecurityThrottlingOptions.PairFailureLimit), 0)]
     [InlineData(nameof(SecurityThrottlingOptions.AccountFailureLimit), 0)]
     [InlineData(nameof(SecurityThrottlingOptions.MaxTrackedEntries), 99)]

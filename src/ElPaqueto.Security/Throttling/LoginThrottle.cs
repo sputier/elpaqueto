@@ -14,6 +14,8 @@ namespace ElPaqueto.Security.Throttling;
 /// <para>Three kinds of failure counters, each a sliding window of failure times:</para>
 /// <list type="bullet">
 /// <item><b>Client</b> (IPv4 address or IPv6 /64): too many failures throttle every attempt from that client.</item>
+/// <item><b>Network</b> (IPv6 /48, the usual size of one site's allocation): a higher limit, so that rotating
+/// through the /64 networks of one allocation does not multiply the client budget.</item>
 /// <item><b>Pair</b> (user name, client): too many failures throttle that user name from that client.</item>
 /// <item><b>Account</b> (user name, known or not): too many failures from all clients together throttle that
 /// user name only for the clients that have failed for it recently. A client that has not failed for the user
@@ -24,7 +26,9 @@ namespace ElPaqueto.Security.Throttling;
 /// window after its last failure or the end of its last throttle, whichever is later: there is no permanent
 /// lockout.</para>
 /// <para>Attempts for the same pair run one at a time, and a client cannot have more verifications in flight
-/// than its remaining failure budget: a burst of parallel guesses therefore cannot overshoot the limits.
+/// than its remaining failure budget: a burst of parallel guesses from one client therefore cannot overshoot
+/// the client or pair limits. The account limit can be overshot by attempts already in flight from other
+/// clients, which the global verification capacity bounds.
 /// Waiting attempts are bounded; beyond the bound, and beyond the global verification capacity, the answer
 /// is 503.</para>
 /// <para>Every counter kind holds at most <see cref="SecurityThrottlingOptions.MaxTrackedEntries"/> entries, so
@@ -38,8 +42,10 @@ internal sealed partial class LoginThrottle : ILoginThrottle, IDisposable
     private readonly ILogger<LoginThrottle> _logger;
     private readonly ConcurrencyLimiter _capacity;
     private readonly CounterStore<ClientKey> _clients;
+    private readonly CounterStore<NetworkKey> _networks;
     private readonly CounterStore<PairKey> _pairs;
     private readonly CounterStore<AccountKey> _accounts;
+    private readonly long _origin;
     private int _waiting;
 
     public LoginThrottle(IOptions<ElPaquetoSecurityOptions> options, TimeProvider time, ILogger<LoginThrottle> logger)
@@ -58,8 +64,10 @@ internal sealed partial class LoginThrottle : ILoginThrottle, IDisposable
             QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
         });
         _clients = new CounterStore<ClientKey>(_options.ClientWindow, _options.ClientFailureLimit, _options.MaxTrackedEntries);
+        _networks = new CounterStore<NetworkKey>(_options.ClientWindow, _options.NetworkFailureLimit, _options.MaxTrackedEntries);
         _pairs = new CounterStore<PairKey>(_options.PairWindow, _options.PairFailureLimit, _options.MaxTrackedEntries);
         _accounts = new CounterStore<AccountKey>(_options.AccountWindow, _options.AccountFailureLimit, _options.MaxTrackedEntries);
+        _origin = MonotonicTicks();
     }
 
     public ThrottleRejection? Check(IPAddress? client, string? userName)
@@ -95,6 +103,26 @@ internal sealed partial class LoginThrottle : ILoginThrottle, IDisposable
     {
         var keys = Keys.For(client, userName);
 
+        // An attempt that waits keeps its place in the queue until it leaves, granted or not.
+        var place = new QueuePlace();
+        try
+        {
+            return await EnterAsync(keys, place, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (place.Held)
+            {
+                lock (_gate)
+                {
+                    _waiting--;
+                }
+            }
+        }
+    }
+
+    private async ValueTask<VerificationSlot> EnterAsync(Keys keys, QueuePlace place, CancellationToken cancellationToken)
+    {
         while (true)
         {
             Counter? busy;
@@ -131,12 +159,17 @@ internal sealed partial class LoginThrottle : ILoginThrottle, IDisposable
                 }
                 else
                 {
-                    if (_waiting >= _options.VerificationQueueLimit)
+                    if (!place.Held)
                     {
-                        return VerificationSlot.Rejected(Busy());
+                        if (_waiting >= _options.VerificationQueueLimit)
+                        {
+                            return VerificationSlot.Rejected(Busy());
+                        }
+
+                        _waiting++;
+                        place.Held = true;
                     }
 
-                    _waiting++;
                     busy.Waiters++;
                     busy.Released ??= new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
                     released = busy.Released.Task;
@@ -153,7 +186,6 @@ internal sealed partial class LoginThrottle : ILoginThrottle, IDisposable
                 {
                     lock (_gate)
                     {
-                        _waiting--;
                         busy.Waiters--;
                     }
                 }
@@ -194,9 +226,19 @@ internal sealed partial class LoginThrottle : ILoginThrottle, IDisposable
             return scope switch
             {
                 ThrottleScope.Client => _clients.Count,
+                ThrottleScope.Network => _networks.Count,
                 ThrottleScope.Pair => _pairs.Count,
                 _ => _accounts.Count,
             };
+        }
+    }
+
+    /// <summary>Reserved verifications and waiting attempts across all counters. For tests and diagnostics.</summary>
+    internal int OutstandingReservations()
+    {
+        lock (_gate)
+        {
+            return _clients.Outstanding + _pairs.Outstanding + _waiting;
         }
     }
 
@@ -211,6 +253,7 @@ internal sealed partial class LoginThrottle : ILoginThrottle, IDisposable
             var counter = scope switch
             {
                 ThrottleScope.Client => _clients.Find(keys.Client, now),
+                ThrottleScope.Network => keys.Network is { } network ? _networks.Find(network, now) : null,
                 ThrottleScope.Pair => keys.Pair is { } pair ? _pairs.Find(pair, now) : null,
                 _ => keys.Account is { } account ? _accounts.Find(account, now) : null,
             };
@@ -235,6 +278,11 @@ internal sealed partial class LoginThrottle : ILoginThrottle, IDisposable
             {
                 case VerificationOutcome.Failure:
                     AddTrip(ref trips, ThrottleScope.Client, _clients.RecordFailure(clientCounter, now, _options));
+                    if (keys.Network is { } networkKey)
+                    {
+                        var network = _networks.GetOrAdd(networkKey, now);
+                        AddTrip(ref trips, ThrottleScope.Network, _networks.RecordFailure(network, now, _options));
+                    }
                     if (pairCounter is not null)
                     {
                         AddTrip(ref trips, ThrottleScope.Pair, _pairs.RecordFailure(pairCounter, now, _options));
@@ -269,9 +317,10 @@ internal sealed partial class LoginThrottle : ILoginThrottle, IDisposable
         if (trips is not null)
         {
             var client = ClientKey.Describe(keys.Address);
+            var network = NetworkKey.Describe(keys.Address);
             foreach (var (scope, duration) in trips)
             {
-                LogTripped(_logger, scope, client, (long)duration.TotalSeconds);
+                LogTripped(_logger, scope, scope == ThrottleScope.Network ? network : client, (long)duration.TotalSeconds);
             }
         }
     }
@@ -291,6 +340,11 @@ internal sealed partial class LoginThrottle : ILoginThrottle, IDisposable
         if (_clients.Find(keys.Client, now) is { } client && client.IsThrottled(now))
         {
             until = Math.Max(until, client.ThrottledUntil);
+        }
+
+        if (keys.Network is { } networkKey && _networks.Find(networkKey, now) is { } network && network.IsThrottled(now))
+        {
+            until = Math.Max(until, network.ThrottledUntil);
         }
 
         if (keys.Pair is { } pairKey)
@@ -319,7 +373,12 @@ internal sealed partial class LoginThrottle : ILoginThrottle, IDisposable
 
     private ThrottleRejection Busy() => new(StatusCodes.Status503ServiceUnavailable, _options.BusyRetryAfter);
 
-    private long Now() => _time.GetUtcNow().UtcTicks;
+    // Monotonic: a change of the wall clock neither extends nor ends a throttle. The offset keeps every value far
+    // from zero, which counters use as "never".
+    private long Now() => MonotonicTicks() - _origin + TimeSpan.TicksPerDay * 3;
+
+    private long MonotonicTicks()
+        => (long)((Int128)_time.GetTimestamp() * TimeSpan.TicksPerSecond / _time.TimestampFrequency);
 
     [LoggerMessage(
         EventId = 1801,
@@ -327,18 +386,24 @@ internal sealed partial class LoginThrottle : ILoginThrottle, IDisposable
         Message = "Sign-in throttling tripped on the {Scope} counter for client {Client}; attempts are refused for {Seconds} seconds.")]
     private static partial void LogTripped(ILogger logger, ThrottleScope scope, string client, long seconds);
 
-    private readonly record struct Keys(IPAddress? Address, ClientKey Client, AccountKey? Account, PairKey? Pair)
+    private sealed class QueuePlace
+    {
+        public bool Held { get; set; }
+    }
+
+    private readonly record struct Keys(IPAddress? Address, ClientKey Client, NetworkKey? Network, AccountKey? Account, PairKey? Pair)
     {
         public static Keys For(IPAddress? address, string? userName)
         {
             var client = ClientKey.From(address);
+            var network = NetworkKey.From(address);
             if (userName is null)
             {
-                return new Keys(address, client, null, null);
+                return new Keys(address, client, network, null, null);
             }
 
             var account = AccountKey.From(userName);
-            return new Keys(address, client, account, new PairKey(client, account));
+            return new Keys(address, client, network, account, new PairKey(client, account));
         }
     }
 }
@@ -348,6 +413,9 @@ internal enum ThrottleScope
 {
     /// <summary>A client address (IPv6 by /64).</summary>
     Client,
+
+    /// <summary>An IPv6 /48 network.</summary>
+    Network,
 
     /// <summary>A user name tried from a client address.</summary>
     Pair,

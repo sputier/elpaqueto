@@ -57,7 +57,8 @@ public sealed partial class ThrottlingProcessTests : IDisposable
         using var throttled = await client.GetAsync(new Uri("v3/index.json", UriKind.Relative));
 
         Assert.Equal(HttpStatusCode.TooManyRequests, throttled.StatusCode);
-        Assert.Equal(TimeSpan.FromSeconds(60), throttled.Headers.RetryAfter?.Delta);
+        // 60 seconds from the fifth failure, rounded up: 59 if the sixth request came more than a second later.
+        Assert.InRange(throttled.Headers.RetryAfter?.Delta ?? TimeSpan.Zero, TimeSpan.FromSeconds(59), TimeSpan.FromSeconds(60));
         Assert.Empty(throttled.Headers.WwwAuthenticate);
         Assert.Equal(string.Empty, await throttled.Content.ReadAsStringAsync());
 

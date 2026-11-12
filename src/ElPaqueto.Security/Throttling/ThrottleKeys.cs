@@ -35,7 +35,7 @@ internal readonly record struct ClientKey(UInt128 Value)
         Span<byte> bytes = stackalloc byte[16];
         if (address.AddressFamily == AddressFamily.InterNetwork)
         {
-            // Kept apart from every IPv6 key: the top bits mark the family.
+            // ::ffff:a.b.c.d. Kept apart from every IPv6 key, whose low 64 bits are always zero.
             address.TryWriteBytes(bytes[12..], out _);
             bytes[10] = 0xFF;
             bytes[11] = 0xFF;
@@ -69,6 +69,44 @@ internal readonly record struct ClientKey(UInt128 Value)
         address.TryWriteBytes(bytes, out _);
         bytes[8..].Clear();
         return new IPAddress(bytes).ToString() + "/" + IPv6PrefixLength.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    }
+}
+
+/// <summary>
+/// The IPv6 /48 network a failure is also counted against; IPv4 addresses have none.
+/// </summary>
+/// <remarks>
+/// A /48 is the usual allocation of one site or one rented server, and holds 65536 /64 networks: without this
+/// counter, rotating through them would multiply the client budget by as much.
+/// </remarks>
+internal readonly record struct NetworkKey(UInt128 Value)
+{
+    private const int PrefixLength = 48;
+
+    public static NetworkKey? From(IPAddress? address)
+    {
+        if (address is null || address.IsIPv4MappedToIPv6 || address.AddressFamily != AddressFamily.InterNetworkV6)
+        {
+            return null;
+        }
+
+        Span<byte> bytes = stackalloc byte[16];
+        address.TryWriteBytes(bytes, out _);
+        var value = BinaryPrimitives.ReadUInt128BigEndian(bytes);
+        return new NetworkKey(value & (UInt128.MaxValue << (128 - PrefixLength)));
+    }
+
+    /// <summary>The network in CIDR notation, safe to write to logs.</summary>
+    public static string Describe(IPAddress? address)
+    {
+        if (From(address) is not { } key)
+        {
+            return ClientKey.Describe(address);
+        }
+
+        Span<byte> bytes = stackalloc byte[16];
+        BinaryPrimitives.WriteUInt128BigEndian(bytes, key.Value);
+        return new IPAddress(bytes).ToString() + "/" + PrefixLength.ToString(System.Globalization.CultureInfo.InvariantCulture);
     }
 }
 

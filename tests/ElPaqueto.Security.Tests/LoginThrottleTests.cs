@@ -296,6 +296,7 @@ public sealed class LoginThrottleTests : IDisposable
 
         Assert.Equal(500, throttle.FailureCount(ThrottleScope.Client, ClientA, null));
         Assert.Equal(500, throttle.FailureCount(ThrottleScope.Account, null, "shared"));
+        Assert.Equal(0, throttle.OutstandingReservations());
     }
 
     [Fact]
@@ -320,6 +321,7 @@ public sealed class LoginThrottleTests : IDisposable
         })));
 
         Assert.Equal(5, granted);
+        Assert.Equal(0, throttle.OutstandingReservations());
     }
 
     [Fact]
@@ -344,6 +346,7 @@ public sealed class LoginThrottleTests : IDisposable
         })));
 
         Assert.Equal(30, granted);
+        Assert.Equal(0, throttle.OutstandingReservations());
     }
 
     [Fact]
@@ -366,6 +369,7 @@ public sealed class LoginThrottleTests : IDisposable
         })));
 
         Assert.Equal(0, refused);
+        Assert.Equal(0, throttle.OutstandingReservations());
     }
 
     [Fact]
@@ -404,8 +408,12 @@ public sealed class LoginThrottleTests : IDisposable
         Assert.False(waiting.IsCompleted);
 
         running.Failed();
-        using var released = await waiting;
-        Assert.Null(released.Rejection);
+        using (var released = await waiting.WaitAsync(Timeout))
+        {
+            Assert.Null(released.Rejection);
+        }
+
+        Assert.Equal(0, throttle.OutstandingReservations());
     }
 
     [Fact]
@@ -424,8 +432,94 @@ public sealed class LoginThrottleTests : IDisposable
         var second = throttle.EnterVerificationAsync(ClientA, "alice", CancellationToken.None).AsTask();
         Assert.False(second.IsCompleted);
         running.Dispose();
-        using var slot = await second;
-        Assert.Null(slot.Rejection);
+        using (var slot = await second.WaitAsync(Timeout))
+        {
+            Assert.Null(slot.Rejection);
+        }
+
+        Assert.Equal(0, throttle.OutstandingReservations());
+    }
+
+    [Fact]
+    public async Task AnAttemptCancelledWhileQueuedForCapacity_ReleasesItsReservation()
+    {
+        var throttle = Create(o =>
+        {
+            o.MaxConcurrentVerifications = 1;
+            o.VerificationQueueLimit = 1;
+        });
+        using var running = await throttle.EnterVerificationAsync(ClientA, "alice", CancellationToken.None);
+
+        using (var cancellation = new CancellationTokenSource())
+        {
+            var queued = throttle.EnterVerificationAsync(ClientB, "bob", cancellation.Token).AsTask();
+            Assert.False(queued.IsCompleted);
+            await cancellation.CancelAsync();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => queued.WaitAsync(Timeout));
+        }
+
+        running.Dispose();
+        Assert.Equal(0, throttle.OutstandingReservations());
+        Assert.Equal(0, throttle.FailureCount(ThrottleScope.Client, ClientB, null));
+    }
+
+    [Fact]
+    public async Task ManyIPv6Slash64InOneSlash48_ShareTheNetworkBudget()
+    {
+        var throttle = Create();
+
+        // 100 /64 networks of one /48, three failures each: no /64 reaches its own limit.
+        for (var i = 0; i < 100; i++)
+        {
+            for (var j = 0; j < 3; j++)
+            {
+                await FailAsync(throttle, IPAddress.Parse($"2001:db8:aa:{i:x}::1"), $"user{j}");
+            }
+        }
+
+        Assert.Equal(429, throttle.Check(IPAddress.Parse("2001:db8:aa:ffff::1"), "anyone")?.StatusCode);
+        Assert.Null(throttle.Check(IPAddress.Parse("2001:db8:ab::1"), "anyone"));
+        Assert.Null(throttle.Check(ClientA, "anyone"));
+        Assert.Contains(_logger.Entries, e => e.Message.Contains("Network", StringComparison.Ordinal)
+            && e.Message.Contains("2001:db8:aa::/48", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task AWallClockChange_NeitherExtendsNorEndsAThrottle()
+    {
+        var time = new SteppingClock();
+        var options = new ElPaquetoSecurityOptions();
+        using var throttle = new LoginThrottle(Options.Create(options), time, _logger);
+        await FailAsync(throttle, ClientA, "alice", times: 5);
+
+        time.WallClockOffset = TimeSpan.FromDays(-1);
+        Assert.Equal(TimeSpan.FromMinutes(1), throttle.Check(ClientA, "alice")?.RetryAfter);
+
+        time.WallClockOffset = TimeSpan.FromDays(1);
+        Assert.Equal(TimeSpan.FromMinutes(1), throttle.Check(ClientA, "alice")?.RetryAfter);
+
+        time.Elapsed = TimeSpan.FromMinutes(1);
+        Assert.Null(throttle.Check(ClientA, "alice"));
+    }
+
+    [Fact]
+    public async Task AFloodOfNewCounters_EvictsNeitherATrippedCounterNorOneInFlight()
+    {
+        var throttle = Create(o => o.MaxTrackedEntries = 100);
+        await FailAsync(throttle, ClientA, "alice", times: 5);
+        using var inFlight = await throttle.EnterVerificationAsync(ClientB, "bob", CancellationToken.None);
+        Assert.Null(inFlight.Rejection);
+
+        for (var i = 0; i < 5_000; i++)
+        {
+            await FailAsync(throttle, new IPAddress(BitConverter.GetBytes(0x0A000000 + i)), $"flood-{i}");
+        }
+
+        Assert.Equal(429, throttle.Check(ClientA, "alice")?.StatusCode);
+        Assert.InRange(throttle.TrackedEntries(ThrottleScope.Pair), 1, 100);
+        inFlight.Failed();
+        Assert.Equal(1, throttle.FailureCount(ThrottleScope.Pair, ClientB, "bob"));
+        Assert.Equal(0, throttle.OutstandingReservations());
     }
 
     [Fact]
@@ -483,6 +577,8 @@ public sealed class LoginThrottleTests : IDisposable
         Assert.Equal(expected, new ThrottleRejection(429, TimeSpan.FromSeconds(seconds)).RetryAfterHeaderValue);
     }
 
+    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(30);
+
     private static int MaxEntries(LoginThrottle throttle)
         => Math.Max(
             throttle.TrackedEntries(ThrottleScope.Client),
@@ -512,6 +608,22 @@ public sealed class LoginThrottleTests : IDisposable
         configure?.Invoke(options.Throttling);
         _throttle = new LoginThrottle(Options.Create(options), _time, _logger);
         return _throttle;
+    }
+
+    /// <summary>A clock whose wall time can jump independently of its monotonic timestamp.</summary>
+    private sealed class SteppingClock : TimeProvider
+    {
+        private static readonly DateTimeOffset Start = new(2030, 1, 1, 0, 0, 0, TimeSpan.Zero);
+
+        public TimeSpan Elapsed { get; set; }
+
+        public TimeSpan WallClockOffset { get; set; }
+
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+
+        public override DateTimeOffset GetUtcNow() => Start + Elapsed + WallClockOffset;
+
+        public override long GetTimestamp() => TimeSpan.FromHours(1).Ticks + Elapsed.Ticks;
     }
 
     private sealed class TestLogger : ILogger<LoginThrottle>

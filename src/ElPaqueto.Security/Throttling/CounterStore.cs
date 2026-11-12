@@ -101,6 +101,9 @@ internal sealed class CounterStore<TKey>(TimeSpan window, int limit, int capacit
 
     public int Count => _counters.Count;
 
+    /// <summary>Verifications in flight and attempts waiting on this kind's counters.</summary>
+    public int Outstanding => _counters.Values.Sum(counter => counter.InFlight + counter.Waiters);
+
     public Counter? Find(TKey key, long now)
     {
         if (!_counters.TryGetValue(key, out var counter))

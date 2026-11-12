@@ -131,6 +131,7 @@ Failed sign-in attempts are counted in memory and, beyond a limit, refused for a
 | --- | --- | --- |
 | `Security:Throttling:ClientFailureLimit` | `30` | Failures, for any user name, after which a client address is throttled. Between 1 and 1000. IPv6 addresses are counted by /64 network. |
 | `Security:Throttling:ClientWindow` | `00:10:00` | The window in which client failures are counted. Between `00:00:01` and `1.00:00:00`. |
+| `Security:Throttling:NetworkFailureLimit` | `300` | Failures, for any user name, from all the /64 networks of one IPv6 /48, after which that /48 is throttled. Counted in `ClientWindow`. IPv4 clients are not grouped. Between 1 and 10000. |
 | `Security:Throttling:PairFailureLimit` | `5` | Failures for one user name from one client after which that user name is throttled for that client. Between 1 and 1000. |
 | `Security:Throttling:PairWindow` | `00:15:00` | The window in which pair failures are counted. Between `00:00:01` and `1.00:00:00`. |
 | `Security:Throttling:AccountFailureLimit` | `50` | Failures for one user name, from all clients, after which that user name is throttled for the clients that failed for it in the last `PairWindow`. A client without such a failure, such as the account's owner, is not affected. Between 1 and 1000. |
@@ -151,7 +152,7 @@ Known limitations:
 
 #### Troubleshooting `429` and `503`
 
-- **`429 Too Many Requests`** means too many failed sign-ins from your address, for your user name from your address, or against your user name with a recent failure from your address. Nothing about your credentials is checked while it lasts, even correct ones. Wait for the number of seconds in `Retry-After` (at most `MaximumThrottleDuration`), then fix the credentials before retrying: a stale password in a NuGet configuration or a credential provider keeps failing on its own and keeps the throttle active. The server log shows one warning per trip, with the address and the counter kind.
+- **`429 Too Many Requests`** means too many failed sign-ins from your address (or your IPv6 /48 network), for your user name from your address, or against your user name with a recent failure from your address. Nothing about your credentials is checked while it lasts, even correct ones. Wait for the number of seconds in `Retry-After` (at most `MaximumThrottleDuration`), then fix the credentials before retrying: a stale password in a NuGet configuration or a credential provider keeps failing on its own and keeps the throttle active. The server log shows one warning per trip, with the address and the counter kind.
 - **`503 Service Unavailable`** with `Retry-After` during sign-in means the server is already running as many password checks as it allows. It is transient; if it persists under normal load, raise `MaxConcurrentVerifications` or `VerificationQueueLimit`.
 
 How NuGet clients display a `429` or `503`, and whether they retry, has not been verified yet.
