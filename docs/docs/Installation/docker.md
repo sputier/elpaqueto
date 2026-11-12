@@ -1,5 +1,11 @@
 # Run BaGetter on Docker
 
+:::warning
+
+This page describes the inherited BaGetter image. The ElPaqueto image (non-root user, read-only root filesystem, health check, `/data` volume) and its Compose example are documented in [Running ElPaqueto with Docker](https://github.com/sputier/ElPaqueto/blob/develop/docs/user/docker.md).
+
+:::
+
 ## Configure BaGetter (optional)
 
 Create a file named `bagetter.env` to store BaGetter's configurations:

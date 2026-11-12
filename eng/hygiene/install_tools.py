@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Download the pinned third-party tools used by the hygiene checks.
+"""Download the pinned third-party tools used by the hygiene checks and the
+Docker workflow (image vulnerability scan).
 
 Each archive is downloaded from the tool's GitHub release, verified against
 the SHA-256 recorded below (taken from the release's checksum file), then
@@ -17,6 +18,7 @@ import platform
 import stat
 import sys
 import tarfile
+import time
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -40,6 +42,14 @@ TOOLS = {
             "windows-x64": ("windows_x64.zip", "d29144deff3a68aa93ced33dddf84b7fdc26070add4aa0f4513094c8332afc4e"),
         },
     },
+    "trivy": {
+        "version": "0.76.1",
+        "url": "https://github.com/aquasecurity/trivy/releases/download/v{version}/trivy_{version}_{asset}",
+        "assets": {
+            "linux-x64": ("Linux-64bit.tar.gz", "c7cbe3137fb8a48a17574bede3dd6beb16742d1e9772929940fc90082c39d9c0"),
+            "windows-x64": ("windows-64bit.zip", "1051f49cb22d5284f43425f72aad9cda63ca12ceb92e7caa06903490c82dc9bf"),
+        },
+    },
 }
 
 
@@ -60,6 +70,20 @@ def executable(name: str) -> Path:
     return TOOLS_DIR / name / TOOLS[name]["version"] / f"{name}{suffix}"
 
 
+def download(url: str, attempts: int = 3) -> bytes:
+    """Download ``url``, retrying transient network errors (the checksum is verified by the caller)."""
+    for attempt in range(1, attempts + 1):
+        try:
+            with urllib.request.urlopen(url, timeout=120) as response:  # noqa: S310 (fixed https URL)
+                return response.read()
+        except OSError as error:  # URLError and HTTPError are OSError subclasses
+            if attempt == attempts:
+                raise
+            print(f"download failed ({error}), retrying", file=sys.stderr)
+            time.sleep(10 * attempt)
+    raise AssertionError("unreachable")
+
+
 def install(name: str) -> Path:
     target = executable(name)
     if target.exists():
@@ -68,8 +92,7 @@ def install(name: str) -> Path:
     asset, expected = spec["assets"][current_platform()]
     url = spec["url"].format(version=spec["version"], asset=asset)
     print(f"downloading {url}")
-    with urllib.request.urlopen(url, timeout=120) as response:  # noqa: S310 (fixed https URL)
-        data = response.read()
+    data = download(url)
     actual = hashlib.sha256(data).hexdigest()
     if actual != expected:
         raise SystemExit(f"checksum mismatch for {url}: expected {expected}, got {actual}")

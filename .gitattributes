@@ -55,6 +55,12 @@
 /eng/** text eol=lf
 /src/ElPaqueto.Security/** text eol=lf
 /tests/ElPaqueto.Security.Tests/** text eol=lf
+# Container files are read on Linux.
+Dockerfile text eol=lf
+.dockerignore text eol=lf
+.trivyignore text eol=lf
+docker-compose.example.yml text eol=lf
+/samples/reverse-proxy/** text eol=lf
 
 # Byte-exact test fixtures for eng/port-upstream.sh
 eng/tests/fixtures/** -text

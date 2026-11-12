@@ -281,3 +281,5 @@ __pycache__/
 # Chart dependencies
 charts/
 Chart.lock
+# Docker secrets of docker-compose.example.yml (never committed)
+secrets/

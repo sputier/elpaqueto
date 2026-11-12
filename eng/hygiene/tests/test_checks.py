@@ -20,6 +20,7 @@ import check_commits  # noqa: E402
 import check_content  # noqa: E402
 import check_forbidden_files  # noqa: E402
 import check_project_layout  # noqa: E402
+import check_trivyignore  # noqa: E402
 import check_vulnerable_packages  # noqa: E402
 import check_workflows  # noqa: E402
 from hygiene_common import ConfigError, read_allowlist  # noqa: E402
@@ -293,6 +294,48 @@ class VulnerablePackageTests(unittest.TestCase):
     def test_tool_errors_are_configuration_errors(self):
         with self.assertRaises(ConfigError):
             check_vulnerable_packages.parse({"problems": [{"level": "error", "text": "not restored"}]})
+
+
+class TrivyIgnoreTests(unittest.TestCase):
+    TODAY = dt.date(2026, 6, 1)
+    REASON = "# Not reachable from our code.\n"
+
+    def check(self, text):
+        return rules(check_trivyignore.check_text(".trivyignore", text, self.TODAY))
+
+    def test_justified_entries_pass(self):
+        text = (
+            "# Accepted findings\n\n"
+            "# No fixed version yet; the vulnerable parser is never reached.\n"
+            "CVE-2026-12345 exp:2026-09-01\n"
+            "# Advisory for a feature disabled in the image.\n"
+            "GHSA-abcd-efgh-ijkl exp:2027-06-01\n"
+        )
+        self.assertEqual(self.check(text), [])
+
+    def test_empty_file_passes(self):
+        self.assertEqual(self.check(""), [])
+
+    def test_entry_without_expiry_fails(self):
+        self.assertEqual(self.check(self.REASON + "CVE-2026-1\n"), ["trivyignore-format"])
+
+    def test_malformed_expired_or_distant_expiry_fails(self):
+        self.assertEqual(self.check(self.REASON + "CVE-2026-1 exp:2026-13-01\n"), ["trivyignore-format"])
+        self.assertEqual(self.check(self.REASON + "CVE-2026-1 exp:2026-05-31\n"), ["trivyignore-expired"])
+        self.assertEqual(self.check(self.REASON + "CVE-2026-1 exp:2027-06-03\n"), ["trivyignore-expiry"])
+
+    def test_entry_without_justification_fails(self):
+        self.assertEqual(self.check("CVE-2026-1 exp:2026-09-01\n"), ["trivyignore-reason"])
+        self.assertEqual(self.check("# short\nCVE-2026-1 exp:2026-09-01\n"), ["trivyignore-reason"])
+        self.assertEqual(self.check(self.REASON + "\nCVE-2026-1 exp:2026-09-01\n"), ["trivyignore-reason"])
+
+    def test_one_comment_does_not_justify_two_entries(self):
+        text = self.REASON + "CVE-2026-1 exp:2026-09-01\nCVE-2026-2 exp:2026-09-01\n"
+        self.assertEqual(self.check(text), ["trivyignore-reason"])
+
+    def test_duplicate_entry_fails(self):
+        entry = self.REASON + "CVE-2026-1 exp:2026-09-01\n"
+        self.assertEqual(self.check(entry + entry), ["trivyignore-duplicate"])
 
 
 if __name__ == "__main__":

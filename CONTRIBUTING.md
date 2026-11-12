@@ -39,6 +39,38 @@ dotnet test --configuration Release --no-build
 
 A failing test must be fixed or explained in the pull request. Do not skip or disable it to make a check pass.
 
+## Container image
+
+The `Docker` workflow (`.github/workflows/docker.yml`) runs on every pull request and every push to `develop` or `main`. It pushes nothing to any registry and needs no secret.
+
+- `image (amd64)` and `image (arm64)` build the image natively on each architecture, check its metadata (user, port, volume, health check, labels) and run the smoke test.
+- `cross-build` builds the `linux/arm64` image from an amd64 runner, the way a multi-platform build does.
+- `scan` scans the amd64 image with Trivy and fails on HIGH or CRITICAL findings that have a fixed version. On pushes, `scan-report` uploads the same scan to code scanning.
+- `samples` validates `docker-compose.example.yml` and the reverse-proxy samples.
+
+Reproduce it locally (Docker, Python 3 and `openssl` needed; on Windows, use Git Bash):
+
+```bash
+docker build -t elpaqueto:local .
+bash eng/docker/smoke-test.sh elpaqueto:local          # runtime checks, see the script header
+bash eng/docker/validate-proxy-samples.sh               # Compose and proxy samples
+
+docker save elpaqueto:local -o elpaqueto.tar
+bash eng/docker/scan-image.sh --prepare                 # pinned Trivy (SHA-256 checked) and its database
+bash eng/docker/scan-image.sh elpaqueto.tar
+```
+
+The smoke test checks the anonymous behaviour (health, `401` with the Basic challenge on `/v3/index.json` and `/health/details`, `403` for remote plain HTTP), the non-root user, the read-only root filesystem and the owner-only security database. It then creates an administrator with `admin bootstrap --password-stdin`, a reader and a publisher, checks their permissions, pushes and restores a package with the real `dotnet` CLI, stops the container (graceful exit within 10 s) and restores again after the restart. It needs no secret: the passwords are random and masked in the job log. Pushing with an API key will be added once API-key authentication is merged.
+
+**Accepted scan findings** go in `.trivyignore`, one entry per finding, each directly below a comment that justifies it, with an expiry date at most a year ahead:
+
+```text
+# The vulnerable code path (XML signature parsing) is never reached; no fixed package yet.
+CVE-2026-12345 exp:2027-03-31
+```
+
+An entry is accepted in review only when the finding cannot be fixed by updating the base image or a package, and when the justification explains why the server is not exposed. After the expiry date, Trivy reports the finding again and the hygiene check fails: review the entry again, then remove or extend it. `eng/hygiene/check_trivyignore.py` enforces the format. Trivy's version and checksums are pinned in `eng/hygiene/install_tools.py`.
+
 ## Code quality
 
 Code written for ElPaqueto builds under a strict baseline: nullable reference types, warnings as errors and a pinned analysis level (`eng/ElPaqueto.Build.props`). The baseline applies only to the projects listed in `ElPaquetoStrictProjects` in that file. Add a new project to the list in the pull request that creates it.
