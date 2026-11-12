@@ -68,7 +68,7 @@ The maximum password length is fixed at 256 characters. The policy has no compos
 | --- | --- | --- |
 | `Security:ApiKeys:LastUsedUpdateInterval` | `00:05:00` | Minimum time between two writes of an API key's "last used" timestamp, as `[d.]hh:mm:ss`. Between `00:00:01` and `1.00:00:00`. The timestamp is accurate to within this value; a shorter interval means more writes to the security database. |
 
-API keys are stored hashed: the complete key (`epq_...`) is shown once, when it is created, and cannot be displayed again. A lost key is revoked and replaced. Passwords that have the format of an API key are refused. Creating keys from the command line is not available yet.
+API keys are stored hashed: the complete key (`epq_...`) is shown once, when it is created, and cannot be displayed again. A lost key is revoked and replaced. Passwords that have the format of an API key are refused. Keys are created, listed, revoked and rotated with the `admin key` commands: see [API keys](administration.md#api-keys) in the administration guide.
 
 #### Using an API key
 

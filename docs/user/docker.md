@@ -135,4 +135,4 @@ With Compose, set `stop_grace_period` instead of `docker stop -t`. If the grace 
 
 ## Verifying an image
 
-`eng/docker/smoke-test.sh <image>` runs the checks of the Docker workflow against any local image: non-root user, read-only root filesystem, health, anonymous access rules, owner-only security database, accounts created with the `admin` command, a real `dotnet nuget push` and `dotnet restore`, a graceful stop and a restart on the same volume. See [CONTRIBUTING](../../CONTRIBUTING.md#container-image).
+`eng/docker/smoke-test.sh <image>` runs the checks of the Docker workflow against any local image: non-root user, read-only root filesystem, health, anonymous access rules, owner-only security database, accounts and API keys created with the `admin` commands, a real `dotnet nuget push --api-key` with a key created by `admin key create`, its revocation, `dotnet restore`, a graceful stop and a restart on the same volume. See [CONTRIBUTING](../../CONTRIBUTING.md#container-image).

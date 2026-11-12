@@ -35,11 +35,17 @@ internal sealed partial class ApiKeyService(
         ValidateName(name);
         var expiry = ValidateExpiry(expiresAt, now);
 
+        // The owner is read and the key inserted in one transaction: with SQLite in WAL mode, a change to the
+        // owner committed by another connection after the read makes the insert fail (busy snapshot) instead
+        // of storing a key with permissions the owner no longer holds.
+        await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
+
         var owner = await context.Users.AsNoTracking().SingleOrDefaultAsync(u => u.Id == ownerUserId, cancellationToken)
             ?? throw new ApiKeyRequestException("The owner does not exist.");
 
         var (key, token) = NewKey(owner, name, permissions, expiry, now);
         await InsertAsync(key, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
 
         LogCreated(logger, key.KeyId, owner.Id, key.Permissions);
         return new ApiKeyCreated(ToInfo(key), token);
@@ -55,6 +61,19 @@ internal sealed partial class ApiKeyService(
 
         var keys = await query.OrderBy(k => k.CreatedAt).ThenBy(k => k.KeyId).ToListAsync(cancellationToken);
         return keys.Select(ToInfo).ToList();
+    }
+
+    public async Task<ApiKeyInfo?> FindAsync(string keyId, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(keyId);
+
+        if (!IsKeyIdFormat(keyId))
+        {
+            return null;
+        }
+
+        var key = await context.ApiKeys.AsNoTracking().SingleOrDefaultAsync(k => k.KeyId == keyId, cancellationToken);
+        return key is null ? null : ToInfo(key);
     }
 
     public async Task<ApiKeyRevocation> RevokeAsync(string keyId, CancellationToken cancellationToken = default)
@@ -217,26 +236,41 @@ internal sealed partial class ApiKeyService(
         return ApiKeyValidationResult.Success(row.Id, parts.KeyId, row.OwnerUserId, row.OwnerUserName, effective);
     }
 
-    private static bool IsKeyIdFormat(string keyId)
-        => keyId.Length == ApiKeyToken.KeyIdLength && keyId.All(c => ApiKeyGenerator.Alphabet.Contains(c, StringComparison.Ordinal));
-
-    private static void ValidateName(string name)
+    /// <summary>
+    /// Why <paramref name="name"/> cannot be a key name, or <see langword="null"/> if it can. The message is
+    /// safe to show and does not repeat the name.
+    /// </summary>
+    internal static string? NameError(string? name)
     {
         if (string.IsNullOrWhiteSpace(name))
         {
-            throw new ApiKeyRequestException("The key name is required.");
+            return "The key name is required.";
         }
 
         if (name.Length > ApiKey.MaxNameLength)
         {
-            throw new ApiKeyRequestException(string.Create(
+            return string.Create(
                 CultureInfo.InvariantCulture,
-                $"The key name must be at most {ApiKey.MaxNameLength} characters long."));
+                $"The key name must be at most {ApiKey.MaxNameLength} characters long.");
         }
 
         if (name.Any(char.IsControl))
         {
-            throw new ApiKeyRequestException("The key name must not contain control characters.");
+            return "The key name must not contain control characters.";
+        }
+
+        return null;
+    }
+
+    /// <summary>Whether <paramref name="keyId"/> has the format of a public key id.</summary>
+    internal static bool IsKeyIdFormat(string keyId)
+        => keyId.Length == ApiKeyToken.KeyIdLength && keyId.All(c => ApiKeyGenerator.Alphabet.Contains(c, StringComparison.Ordinal));
+
+    private static void ValidateName(string name)
+    {
+        if (NameError(name) is { } error)
+        {
+            throw new ApiKeyRequestException(error);
         }
     }
 

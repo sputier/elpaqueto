@@ -46,4 +46,16 @@ internal static partial class UserAdministrationLog
     [LoggerMessage(EventId = 2009, EventName = "ConcurrentChangeRejected", Level = LogLevel.Warning,
         Message = "Change to user {UserName} rejected: the user was changed concurrently.")]
     public static partial void ConcurrentChangeRejected(ILogger logger, string userName);
+
+    [LoggerMessage(EventId = 2010, EventName = "ApiKeyCreated", Level = LogLevel.Information,
+        Message = "API key {KeyId} created by the command line for user {UserName} ({UserId}) with permissions {Permissions}, expiring at {ExpiresAt} (UTC; null: never).")]
+    public static partial void ApiKeyCreated(ILogger logger, string keyId, string userName, Guid userId, Permission permissions, DateTime? expiresAt);
+
+    [LoggerMessage(EventId = 2011, EventName = "ApiKeyRevoked", Level = LogLevel.Information,
+        Message = "API key {KeyId} of user {UserName} ({UserId}) revoked by the command line.")]
+    public static partial void ApiKeyRevoked(ILogger logger, string keyId, string userName, Guid userId);
+
+    [LoggerMessage(EventId = 2012, EventName = "ApiKeyRotated", Level = LogLevel.Information,
+        Message = "API key {OldKeyId} of user {UserName} ({UserId}) rotated by the command line: replaced by {NewKeyId}, expiring at {ExpiresAt} (UTC; null: never).")]
+    public static partial void ApiKeyRotated(ILogger logger, string oldKeyId, string newKeyId, string userName, Guid userId, DateTime? expiresAt);
 }

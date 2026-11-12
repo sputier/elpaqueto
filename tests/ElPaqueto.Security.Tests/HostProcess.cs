@@ -12,6 +12,7 @@ internal sealed class HostProcess : IDisposable
 
     private readonly Process _process;
     private readonly StringBuilder _output = new();
+    private readonly StringBuilder _standardOutput = new();
 
     private HostProcess(string[] arguments, IReadOnlyDictionary<string, string> environment, string? standardInput)
     {
@@ -45,8 +46,8 @@ internal sealed class HostProcess : IDisposable
         }
 
         _process = Process.Start(startInfo) ?? throw new InvalidOperationException("The host did not start.");
-        _process.OutputDataReceived += (_, e) => Append(e.Data);
-        _process.ErrorDataReceived += (_, e) => Append(e.Data);
+        _process.OutputDataReceived += (_, e) => Append(e.Data, standardOutput: true);
+        _process.ErrorDataReceived += (_, e) => Append(e.Data, standardOutput: false);
         _process.BeginOutputReadLine();
         _process.BeginErrorReadLine();
 
@@ -75,6 +76,18 @@ internal sealed class HostProcess : IDisposable
             lock (_output)
             {
                 return _output.ToString();
+            }
+        }
+    }
+
+    /// <summary>The lines the host wrote so far to standard output alone, each followed by a line break.</summary>
+    public string StandardOutput
+    {
+        get
+        {
+            lock (_output)
+            {
+                return _standardOutput.ToString();
             }
         }
     }
@@ -151,7 +164,7 @@ internal sealed class HostProcess : IDisposable
             || name.StartsWith("ELPAQUETO_", StringComparison.OrdinalIgnoreCase)
             || name.StartsWith("BAGET_", StringComparison.OrdinalIgnoreCase);
 
-    private void Append(string? line)
+    private void Append(string? line, bool standardOutput)
     {
         if (line is null)
         {
@@ -161,6 +174,10 @@ internal sealed class HostProcess : IDisposable
         lock (_output)
         {
             _output.AppendLine(line);
+            if (standardOutput)
+            {
+                _standardOutput.AppendLine(line);
+            }
         }
     }
 

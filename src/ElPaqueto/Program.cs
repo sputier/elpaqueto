@@ -200,7 +200,8 @@ public class Program
                 });
 
                 web.UseStartup<Startup>();
-            });
+            })
+            .ConfigureElPaquetoCommandLogging(args);
     }
 
     /// <summary>A configuration source could not be read or parsed while the host was built.</summary>
