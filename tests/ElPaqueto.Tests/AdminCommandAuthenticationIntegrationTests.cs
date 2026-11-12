@@ -14,8 +14,9 @@ namespace ElPaqueto.Tests;
 /// against the real server sharing the same security database.
 /// </summary>
 /// <remarks>
-/// Only authentication is checked: <c>401</c> for bad credentials, <c>200</c> for good ones. Whether a
-/// permission grants access to an endpoint is the job of authorization, which is not part of this change.
+/// <c>v3/index.json</c> needs <c>Read</c> and <c>health/details</c> needs <c>Admin</c> (deny-by-default
+/// authorization): <c>401</c> means the credentials were refused, <c>403</c> that they were accepted
+/// without the permission.
 /// </remarks>
 public class AdminCommandAuthenticationIntegrationTests : IDisposable
 {
@@ -46,6 +47,20 @@ public class AdminCommandAuthenticationIntegrationTests : IDisposable
         await _commands.RunAsync(AdminPassword + "\n", 0, "admin", "bootstrap", "--username", "admin", "--password-stdin");
 
         Assert.Equal(HttpStatusCode.OK, await GetIndexAsync("admin", AdminPassword));
+    }
+
+    [Fact]
+    public async Task TheBootstrappedAdministrator_HoldsTheAdminPermission()
+    {
+        await _commands.RunAsync(AdminPassword + "\n", 0, "admin", "bootstrap", "--username", "admin", "--password-stdin");
+
+        using var client = _app.CreateAnonymousClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Basic",
+            Convert.ToBase64String(Encoding.UTF8.GetBytes($"admin:{AdminPassword}")));
+        using var response = await client.GetAsync("health/details");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
     [Fact]
