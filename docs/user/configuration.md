@@ -173,12 +173,12 @@ Failed sign-in attempts are counted in memory and, beyond a limit, refused for a
 | `Security:Throttling:AccountWindow` | `01:00:00` | The window in which account failures are counted. Between `00:00:01` and `1.00:00:00`. |
 | `Security:Throttling:InitialThrottleDuration` | `00:01:00` | How long a counter refuses after its first trip. Each further trip doubles it. Between `00:00:01` and `1.00:00:00`, and not more than `MaximumThrottleDuration`. |
 | `Security:Throttling:MaximumThrottleDuration` | `00:15:00` | The longest throttle. Between `00:00:01` and `1.00:00:00`. There is no permanent lockout. |
-| `Security:Throttling:MaxTrackedEntries` | `50000` | Counters kept for each kind (client, pair, user name), which bounds memory whatever an attacker sends. Between 100 and 10000000. |
+| `Security:Throttling:MaxTrackedEntries` | `50000` | Counters kept for each kind (client, pair, user name), and fingerprints of failed attempts kept, which bounds memory whatever an attacker sends. When the fingerprints are full, failures are counted every time. Between 100 and 10000000. |
 | `Security:Throttling:MaxConcurrentVerifications` | `0` | Password hashes that may run at once; `0` means the processor count. Between 0 and 1024. |
 | `Security:Throttling:VerificationQueueLimit` | `100` | Verifications that may wait for a free slot, and attempts that may wait for another attempt of the same user name and client. Beyond it the answer is `503`. Between 0 and 10000. |
 | `Security:Throttling:BusyRetryAfter` | `00:00:05` | The `Retry-After` sent with that `503`. Between `00:00:01` and `00:10:00`. |
 
-Unknown, disabled and existing user names are counted the same way, and a successful sign-in resets only the counter of its own user name and client. The client address is the one left after trusted forwarded headers (`Security:ReverseProxy`): a client cannot change it with its own `X-Forwarded-For`.
+Unknown, disabled and existing user names are counted the same way, and a successful sign-in resets only the counter of its own user name and client. **A repeated identical failure is counted once**: the same password for the same user name from the same client (or the same API key from the same client), within the longest window, counts on no counter, because NuGet clients retry a refused request several times with the same credentials. Each *distinct* wrong password still counts, and a client that keeps repeating (more than ten times `ClientFailureLimit` repetitions in `ClientWindow`) is throttled too. See [repeated identical attempts](../technical/throttling.md#repeated-identical-attempts). The client address is the one left after trusted forwarded headers (`Security:ReverseProxy`): a client cannot change it with its own `X-Forwarded-For`.
 
 Known limitations:
 
@@ -187,10 +187,10 @@ Known limitations:
 
 #### Troubleshooting `429` and `503`
 
-- **`429 Too Many Requests`** means too many failed sign-ins from your address (or your IPv6 /48 network), for your user name from your address, or against your user name with a recent failure from your address. Nothing about your credentials is checked while it lasts, even correct ones. Wait for the number of seconds in `Retry-After` (at most `MaximumThrottleDuration`), then fix the credentials before retrying: a stale password in a NuGet configuration or a credential provider keeps failing on its own and keeps the throttle active. The server log shows one warning per trip, with the address and the counter kind.
+- **`429 Too Many Requests`** means too many failed sign-ins from your address (or your IPv6 /48 network), for your user name from your address, or against your user name with a recent failure from your address. Nothing about your credentials is checked while it lasts, even correct ones. Wait for the number of seconds in `Retry-After` (at most `MaximumThrottleDuration`), then fix the credentials before retrying. A stale password retried by the client counts once and does not cause a `429` by itself; several *different* wrong passwords (or user names) do, for example a configuration that rotates through old passwords. The server log shows one warning per trip, with the address and the counter kind.
 - **`503 Service Unavailable`** with `Retry-After` during sign-in means the server is already running as many password checks as it allows. It is transient; if it persists under normal load, raise `MaxConcurrentVerifications` or `VerificationQueueLimit`.
 
-The `dotnet` CLI reports them as `Response status code does not indicate success: 429 (Too Many Requests)` (or `503 (Service Unavailable)`), after retrying a few times within seconds: it does not wait for `Retry-After`. A restore with a wrong password retries six times, which is enough to trip the default `PairFailureLimit` by itself: the client then reports `429` rather than `401` ([#99](https://github.com/sputier/ElPaqueto/issues/99)). See [what the real clients do](../technical/e2e-tests.md#what-the-real-clients-do). `nuget.exe` and Visual Studio have not been verified.
+The `dotnet` CLI reports them as `Response status code does not indicate success: 429 (Too Many Requests)` (or `503 (Service Unavailable)`), after retrying a few times within seconds: it does not wait for `Retry-After`. A restore with a wrong password retries six times with the same password: it is counted once, and the client reports `401`. See [what the real clients do](../technical/e2e-tests.md#what-the-real-clients-do). `nuget.exe` and Visual Studio have not been verified.
 
 ### `Security:Cors`
 

@@ -36,7 +36,7 @@ NuGet clients send credentials on every request and a password hash is deliberat
 
 - There is **one entry per user**. It holds `HMAC-SHA256(per-process random key, stored password hash, normalized password)`, compared in fixed time. The password is not stored in any reversible form, and the value means nothing outside the process. Because the entry is per user and uses the normalized password, every Unicode spelling of the same password shares one entry: the size is bounded by the number of users and cannot be filled by someone holding a valid password.
 - Because the stored hash is part of the digest, **a password change invalidates the entry by itself**.
-- **Only successes are cached**, never failures. The size is bounded to 10 000 entries.
+- **Only successes are cached**, never failures (the throttle remembers fingerprints of failed attempts for its own purpose: [repeated identical attempts](throttling.md#repeated-identical-attempts)). The size is bounded to 10 000 entries.
 - Requests for the same user from the same client that arrive together on a cold cache verify the password one at a time, and each checks the cache again before verifying: one hash serves the burst. A cache hit is a success for the throttle (it resets the pair counter) and never a failure; it does not need a verification slot.
 - The throttle is checked before the cache: a throttled client is refused even with a cached, correct password.
 - Nothing about the user's state is cached: whether the user is active and which permissions it holds are read from the database on every request. A cache hit therefore only skips the password hash.
