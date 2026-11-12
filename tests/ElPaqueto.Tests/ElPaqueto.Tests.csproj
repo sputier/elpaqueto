@@ -20,6 +20,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The same log capture as the security module's tests, for the audit and redaction tests. -->
+    <Compile Include="..\ElPaqueto.Security.Tests\Logging\RecordingLoggerProvider.cs" Link="Support\RecordingLoggerProvider.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Compile Update="TestData\TestData.Designer.cs">
       <DesignTime>True</DesignTime>
       <AutoGen>True</AutoGen>

@@ -31,6 +31,7 @@ internal sealed class AdminCli : IDisposable
             logging.ClearProviders();
             logging.SetMinimumLevel(LogLevel.Trace);
             logging.AddProvider(new CapturingLoggerProvider(_logs));
+            logging.AddProvider(Recorder);
         });
         services.AddSingleton<IConfiguration>(new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
@@ -55,6 +56,9 @@ internal sealed class AdminCli : IDisposable
     }
 
     public AuthDatabaseFixture Database { get; }
+
+    /// <summary>Every log entry in full: category, event id, state, scopes and exception text.</summary>
+    public Logging.RecordingLoggerProvider Recorder { get; } = new();
 
     public FakeSecretPrompt Prompt { get; } = new();
 
