@@ -1,6 +1,6 @@
 # Security database
 
-Users, permissions and (later) API keys are stored in a SQLite database that is **separate from the package database**. The rationale is recorded in the authentication architecture decision ([ADR 0002](../adr/0002-authentication-architecture.md)): the inherited package database keeps four provider-specific migration trees, and the security data must not depend on them or on which provider hosts the packages.
+Users, permissions and API keys are stored in a SQLite database that is **separate from the package database**. The rationale is recorded in the authentication architecture decision ([ADR 0002](../adr/0002-authentication-architecture.md)): the inherited package database keeps four provider-specific migration trees, and the security data must not depend on them or on which provider hosts the packages.
 
 ## Location
 
@@ -34,6 +34,8 @@ Table `Users`:
 | `CreatedAt`, `UpdatedAt`, `PasswordChangedAt` | `TEXT` | UTC `DateTime`; SQLite cannot order `DateTimeOffset` values |
 | `ConcurrencyStamp` | `TEXT` | concurrency token, regenerated on every update |
 
+Table `ApiKeys` (migration `AddApiKeys`) holds the users' API keys; its columns, constraints and the reasons for them are described in [API keys](api-keys.md). Each key references its owner in `Users` with `ON DELETE RESTRICT`: a user who owns keys cannot be deleted until their keys are.
+
 The migrations history table is `__AuthMigrationsHistory`. There are no foreign keys to the package database.
 
 ## Migrations
@@ -46,4 +48,4 @@ dotnet ef migrations add <Name> --project src/ElPaqueto.Security --output-dir Da
 
 The command uses a design-time factory and does not build or start the host. The design-time factory points at an in-memory database: `dotnet ef database update` does nothing useful here. The server and the `admin` commands apply migrations themselves. EF Core takes a migration lock (`__EFMigrationsLock`): if a process is killed in the middle of a pending migration, the next start may wait on it.
 
-The unique user-name index relies on `NormalizedUserName`, which the context derives from `UserName` on every save. A check constraint rejects `Permissions` values outside the defined flag combinations (0 to 7). Commit the generated files, including the model snapshot.
+The unique user-name index relies on `NormalizedUserName`, which the context derives from `UserName` on every save. Check constraints reject `Permissions` values outside the defined flag combinations (0 to 7) in `Users` and `ApiKeys`. Commit the generated files, including the model snapshot.

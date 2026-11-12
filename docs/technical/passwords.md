@@ -22,7 +22,7 @@ Passwords are normalized to Unicode **NFKC** before hashing and verifying (NIST 
 
 ## Policy
 
-Applied by `Validate` when a password is set (never at login): between `Security:Passwords:MinimumLength` (default 15, floor 12) and 256 characters after normalization; not equal to the user name, ignoring case. There are no composition rules. Messages never contain the password.
+Applied by `Validate` when a password is set (never at login): between `Security:Passwords:MinimumLength` (default 15, floor 12) and 256 characters after normalization; not equal to the user name, ignoring case; not in the [API key token format](api-keys.md) (`epq_` + 12 + `_` + 43 base62 characters), checked on the password as entered and after normalization, because a Basic password with that format is validated as an API key only and could never be used as a password. There are no composition rules. Messages never contain the password.
 
 ## Cost
 
