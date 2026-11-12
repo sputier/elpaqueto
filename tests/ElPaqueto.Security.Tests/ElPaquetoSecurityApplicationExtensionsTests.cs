@@ -18,14 +18,14 @@ public class ElPaquetoSecurityApplicationExtensionsTests
     }
 
     [Fact]
-    public void AddElPaquetoSecurity_RegistersOnlyTheSecurityOptions()
+    public void AddElPaquetoSecurity_RegistersOnlyTheSecurityOptionsAndTheirValidation()
     {
         var services = new ServiceCollection();
         var app = new ElPaquetoApplication(services);
 
         app.AddElPaquetoSecurity();
 
-        Assert.Equal(2, services.Count);
+        Assert.Equal(3, services.Count);
         Assert.Contains(services, d => d.ServiceType == typeof(IConfigureOptions<ElPaquetoSecurityOptions>));
         Assert.Contains(services, d => d.ServiceType == typeof(IValidateOptions<ElPaquetoSecurityOptions>));
     }

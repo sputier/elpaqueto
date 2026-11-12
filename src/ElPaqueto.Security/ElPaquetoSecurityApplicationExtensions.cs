@@ -1,5 +1,7 @@
 using ElPaqueto.Core;
 using ElPaqueto.Security.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace ElPaqueto.Security;
 
@@ -22,6 +24,7 @@ public static class ElPaquetoSecurityApplicationExtensions
         ArgumentNullException.ThrowIfNull(app);
 
         app.Services.AddElPaquetoOptions<ElPaquetoSecurityOptions>(ElPaquetoSecurityOptions.SectionName);
+        app.Services.AddSingleton<IValidateOptions<ElPaquetoSecurityOptions>, SecurityConfigurationShapeValidator>();
 
         return app;
     }

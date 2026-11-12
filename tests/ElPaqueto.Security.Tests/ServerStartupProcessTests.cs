@@ -27,13 +27,27 @@ public class ServerStartupProcessTests
         Assert.DoesNotContain("Now listening", result.Output, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task InheritedAndSecuritySettings_AreValidatedAndBothReported()
+    {
+        var result = await RunHostAsync([], new Dictionary<string, string>
+        {
+            ["Database__Type"] = "NotADatabase",
+            ["Security__Database__ConnectionString"] = "   ",
+        });
+
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.Contains("Database:Type", result.Output, StringComparison.Ordinal);
+        Assert.Contains("Security:Database:ConnectionString", result.Output, StringComparison.Ordinal);
+    }
+
     private static async Task<(int ExitCode, string Output)> RunHostAsync(
         string[] arguments,
         Dictionary<string, string> environment)
     {
         var hostDll = LocateHostAssembly();
 
-        var startInfo = new ProcessStartInfo("dotnet")
+        var startInfo = new ProcessStartInfo(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet")
         {
             WorkingDirectory = Path.GetDirectoryName(hostDll)!,
             RedirectStandardOutput = true,

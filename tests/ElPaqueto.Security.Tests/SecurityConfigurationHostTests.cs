@@ -101,11 +101,51 @@ public sealed class SecurityConfigurationHostTests : IDisposable
             host.Services.GetRequiredService<IOptions<ElPaquetoSecurityOptions>>().Value.Database.ConnectionString);
     }
 
+    [Fact]
+    public void UnconvertibleValue_FailsWithAFixedMessageThatNeverRepeatsTheValue()
+    {
+        const string secretMarker = "s3cr3t-marker";
+        using var host = BuildHost(
+            out var logs,
+            new Dictionary<string, string?>(),
+            configureServices: services => services.AddSingleton<IConfigureOptions<ElPaquetoSecurityOptions>>(
+                new ThrowingConfigureOptions($"Failed to convert configuration value '{secretMarker}'")));
+
+        Assert.False(host.ValidateElPaquetoSecurityOptions());
+        Assert.NotEmpty(logs.Messages);
+        Assert.All(logs.Messages, m => Assert.DoesNotContain(secretMarker, m, StringComparison.Ordinal));
+        Assert.Contains(logs.Messages, m => m.Contains("cannot be converted", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ModuleNotRegistered_IsReportedAsInvalid()
+    {
+        using var host = BuildHost(out var logs, new Dictionary<string, string?>(), registerModule: false);
+
+        Assert.False(host.ValidateElPaquetoSecurityOptions());
+        Assert.Contains(logs.Messages, m => m.Contains("AddElPaquetoSecurity", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void PlainValueWhereASectionIsExpected_IsRejected()
+    {
+        using var host = BuildHost(out var logs, new Dictionary<string, string?>
+        {
+            ["Security:Database"] = "Data Source=/data/db/auth.db",
+        });
+
+        Assert.False(host.ValidateElPaquetoSecurityOptions());
+        Assert.Contains(logs.Messages, m => m.Contains("Security:Database:ConnectionString", StringComparison.Ordinal));
+        Assert.All(logs.Messages, m => Assert.DoesNotContain("/data/db/auth.db", m, StringComparison.Ordinal));
+    }
+
     private IHost BuildHost(
         out LogCollector logs,
         Dictionary<string, string?> values,
         bool useEnvironment = false,
-        bool useSecretsDirectory = false)
+        bool useSecretsDirectory = false,
+        bool registerModule = true,
+        Action<IServiceCollection>? configureServices = null)
     {
         var collector = new LogCollector();
         logs = collector;
@@ -131,8 +171,21 @@ public sealed class SecurityConfigurationHostTests : IDisposable
                 logging.ClearProviders();
                 logging.AddProvider(collector);
             })
-            .ConfigureServices(services => new ElPaquetoApplication(services).AddElPaquetoSecurity())
+            .ConfigureServices(services =>
+            {
+                if (registerModule)
+                {
+                    new ElPaquetoApplication(services).AddElPaquetoSecurity();
+                }
+
+                configureServices?.Invoke(services);
+            })
             .Build();
+    }
+
+    private sealed class ThrowingConfigureOptions(string message) : IConfigureOptions<ElPaquetoSecurityOptions>
+    {
+        public void Configure(ElPaquetoSecurityOptions options) => throw new InvalidOperationException(message);
     }
 
     private sealed class LogCollector : ILoggerProvider
