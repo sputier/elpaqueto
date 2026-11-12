@@ -1,0 +1,3 @@
+# Exceptions to check_forbidden_files.py.
+# Format: <tracked path> | <reason (required)>
+# Never list a real private key, certificate or secret: rotate it instead.
