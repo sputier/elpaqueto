@@ -11,12 +11,17 @@ namespace ElPaqueto.Security.Authorization;
 /// For controller routes, the <c>Controller.Action</c> the row is meant for. A route name is only a label: an endpoint
 /// that reuses it for another action is refused instead of inheriting the row. <see langword="null"/> for pages and health.
 /// </param>
+/// <param name="RequiresApiKeyHeader">
+/// Whether the caller must be authenticated by an API key sent in the <c>X-NuGet-ApiKey</c> header. A user password,
+/// or a key sent only as a Basic password, is refused (403) even with the required permissions.
+/// </param>
 internal sealed record EndpointPermissionRule(
     string Key,
     string[] Methods,
     Permission Required,
     bool Anonymous = false,
-    string? Action = null);
+    string? Action = null,
+    bool RequiresApiKeyHeader = false);
 
 /// <summary>
 /// The one table that decides the permission of every endpoint (ADR 0002, decision 5).
@@ -52,11 +57,12 @@ internal static class EndpointPermissionTable
         Read("symbol-download", "Symbol.Get"),
         Read("prefixed-symbol-download", "Symbol.Get"),
 
-        // Publishing and deleting (issue #26). Deleting also needs Admin when packages are deleted for good.
-        new("upload-package", ["PUT"], Permission.Publish, Action: "PackagePublish.Upload"),
-        new("upload-symbol", ["PUT"], Permission.Publish, Action: "Symbol.Upload"),
-        new("relist", ["POST"], Permission.Publish, Action: "PackagePublish.Relist"),
-        new(DeleteKey, ["DELETE"], Permission.Publish, Action: "PackagePublish.Delete"),
+        // Publishing and deleting (issues #26 and #32): only with an API key sent in X-NuGet-ApiKey. Deleting also
+        // needs Admin when packages are deleted for good.
+        Write("upload-package", "PUT", "PackagePublish.Upload"),
+        Write("upload-symbol", "PUT", "Symbol.Upload"),
+        Write("relist", "POST", "PackagePublish.Relist"),
+        Write(DeleteKey, "DELETE", "PackagePublish.Delete"),
 
         // Web pages (issue #27).
         Read("page:/Index"),
@@ -78,4 +84,7 @@ internal static class EndpointPermissionTable
         => ByKey.TryGetValue(key, out rule!);
 
     private static EndpointPermissionRule Read(string key, string? action = null) => new(key, Reads, Permission.Read, Action: action);
+
+    private static EndpointPermissionRule Write(string key, string method, string action)
+        => new(key, [method], Permission.Publish, Action: action, RequiresApiKeyHeader: true);
 }

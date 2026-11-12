@@ -59,7 +59,7 @@ public class BasicAuthenticationIntegrationTests : IDisposable
     [Fact]
     public async Task ValidCredentialsOfAnActiveUser_AreAccepted()
     {
-        using var client = _app.CreateClient();
+        using var client = _app.CreateClientFor(_app.TestUserName, _app.TestPassword);
 
         using var response = await client.GetAsync("v3/index.json");
 
@@ -191,7 +191,7 @@ public class BasicAuthenticationIntegrationTests : IDisposable
     [Fact]
     public async Task DisablingAUserInTheDatabase_AppliesToTheNextRequestEvenWithCachedCredentials()
     {
-        using var client = _app.CreateClient();
+        using var client = _app.CreateClientFor(_app.TestUserName, _app.TestPassword);
         using (var first = await client.GetAsync("v3/index.json"))
         {
             Assert.Equal(HttpStatusCode.OK, first.StatusCode);
@@ -206,7 +206,7 @@ public class BasicAuthenticationIntegrationTests : IDisposable
     [Fact]
     public async Task ChangingThePasswordInTheDatabase_MakesTheOldPasswordFailAtOnce()
     {
-        using var client = _app.CreateClient();
+        using var client = _app.CreateClientFor(_app.TestUserName, _app.TestPassword);
         using (var first = await client.GetAsync("v3/index.json"))
         {
             Assert.Equal(HttpStatusCode.OK, first.StatusCode);
@@ -236,7 +236,7 @@ public class BasicAuthenticationIntegrationTests : IDisposable
             services.RemoveAll<IPasswordHasher<User>>();
             services.AddSingleton<IPasswordHasher<User>>(counter);
         }));
-        using var client = app.CreateClient();
+        using var client = app.CreateClientFor(_app.TestUserName, _app.TestPassword);
 
         for (var i = 0; i < 100; i++)
         {
@@ -263,7 +263,7 @@ public class BasicAuthenticationIntegrationTests : IDisposable
             services.RemoveAll<IPasswordHasher<User>>();
             services.AddSingleton<IPasswordHasher<User>>(counter);
         }));
-        using var client = counting.CreateClient();
+        using var client = counting.CreateClientFor(app.TestUserName, app.TestPassword);
 
         for (var i = 0; i < 3; i++)
         {
@@ -338,7 +338,7 @@ public class BasicAuthenticationIntegrationTests : IDisposable
             services.RemoveAll<IPasswordHasher<User>>();
             services.AddSingleton<IPasswordHasher<User>>(counter);
         }));
-        using var client = app.CreateClient();
+        using var client = app.CreateAnonymousClient();
 
         // Fullwidth forms are NFKC-equivalent to ASCII: the same password in another spelling.
         var fullwidth = new string(_app.TestPassword.Select(c => (char)(c - '!' + '！')).ToArray());
@@ -404,8 +404,7 @@ public class BasicAuthenticationIntegrationTests : IDisposable
 
         foreach (var header in new[] { goodHeader, badHeader, "Basic %%%", $"Basic {Encode("unknown-user:its-secret-password")}" })
         {
-            using var client = app.CreateClient();
-            client.DefaultRequestHeaders.Authorization = null;
+            using var client = app.CreateAnonymousClient();
             using var request = new HttpRequestMessage(HttpMethod.Get, "v3/index.json");
             request.Headers.TryAddWithoutValidation("Authorization", header);
             using var response = await client.SendAsync(request);

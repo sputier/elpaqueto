@@ -54,7 +54,7 @@ The maximum password length is fixed at 256 characters. The policy has no compos
 | --- | --- | --- |
 | `Security:Authentication:VerificationCacheTtl` | `00:05:00` | How long a successful password verification is remembered in memory, as a time span up to `01:00:00`. `00:00:00` disables the cache. A disabled user, changed permissions and a changed password always apply to the next request: the cache only keeps an unchanged, valid password cheap. |
 
-**Upgrading from BaGetter:** the inherited settings `Authentication:Credentials` (plain-text users) are no longer used: users are stored, hashed, in the security database, and a request that carries credentials only authenticates if the user exists there. The legacy `ApiKey` and `Authentication:ApiKeys` settings are not retired yet: they still gate publishing, and publishing is open to everyone while neither is set. Until deny-by-default authorization and API keys are released, **do not expose the server to untrusted networks**.
+**Upgrading from BaGetter:** the inherited settings `Authentication:Credentials` (plain-text users) are no longer used: users are stored, hashed, in the security database, and a request that carries credentials only authenticates if the user exists there. The legacy `ApiKey` and `Authentication:ApiKeys` settings no longer do anything: publishing needs a per-user API key stored in the security database (below), and **an empty `ApiKey` no longer opens publishing to everyone**. The settings themselves are still read without error; rejecting them at startup is a separate change. Until throttling of failed attempts is released, **do not expose the server to untrusted networks**.
 
 ### `Security:ApiKeys`
 
@@ -62,7 +62,36 @@ The maximum password length is fixed at 256 characters. The policy has no compos
 | --- | --- | --- |
 | `Security:ApiKeys:LastUsedUpdateInterval` | `00:05:00` | Minimum time between two writes of an API key's "last used" timestamp, as `[d.]hh:mm:ss`. Between `00:00:01` and `1.00:00:00`. The timestamp is accurate to within this value; a shorter interval means more writes to the security database. |
 
-API keys are stored hashed: the complete key (`epq_...`) is shown once, when it is created, and cannot be displayed again. A lost key is revoked and replaced. Passwords that have the format of an API key are refused.
+API keys are stored hashed: the complete key (`epq_...`) is shown once, when it is created, and cannot be displayed again. A lost key is revoked and replaced. Passwords that have the format of an API key are refused. Creating keys from the command line is not available yet.
+
+#### Using an API key
+
+A key holds some of its owner's permissions (`Read`, `Publish`, `Admin`) and never more than the owner currently holds.
+
+- **Push, delete, unlist, relist and symbol push need a key with `Publish` sent as the API key** (the `X-NuGet-ApiKey` header): `dotnet nuget push <package> --source <source> --api-key <key>`. A user password, or a key sent as the source password, is refused (403) for these operations even with `Publish`.
+- **Restore and every other read** can use a key with `Read` as the password of the source credentials, with any non-empty user name (`apikey` by convention). The user name is ignored.
+- `dotnet nuget push` to a V3 source reads the service index with the source credentials (unless it is in the NuGet HTTP cache), then pushes with the API key: the source credentials need `Read`, the API key needs `Publish`. One key holding both can be used for both, or two keys can be used. Prefer a `Read`-only key for restore jobs and a separate `Publish` key for publishing jobs.
+
+For CI, keep the key out of `NuGet.Config` and inject it from the CI secret store:
+
+```xml
+<!-- NuGet.Config committed to the repository: no secret -->
+<configuration>
+  <packageSources>
+    <clear />
+    <add key="elpaqueto" value="https://nuget.example.com/v3/index.json" />
+  </packageSources>
+</configuration>
+```
+
+```bash
+# Set by the CI system from its secret store. The variable name ends with the source key.
+export NuGetPackageSourceCredentials_elpaqueto="Username=apikey;Password=$ELPAQUETO_READ_KEY"
+dotnet restore
+dotnet nuget push artifacts/*.nupkg --source elpaqueto --api-key "$ELPAQUETO_PUBLISH_KEY"
+```
+
+`ClearTextPassword` in a `NuGet.Config` is for local tests only, and an encrypted `Password` only works on Windows (DPAPI). A key used as the source password travels on every request: serve the feed over HTTPS only (see `Security:Transport`).
 
 ### `Security:ReverseProxy`
 

@@ -8,6 +8,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using ElPaqueto.Core;
+using ElPaqueto.Security.ApiKeys;
 using ElPaqueto.Security.Data;
 using ElPaqueto.Security.Passwords;
 using Microsoft.AspNetCore.Hosting;
@@ -47,25 +48,38 @@ public class ElPaquetoApplication : WebApplicationFactory<Startup>
     public string TestPassword { get; } = Convert.ToHexString(RandomNumberGenerator.GetBytes(24));
 
     /// <summary>
+    /// The token of the test user's API key, which holds every permission: random, different for every factory,
+    /// and the same in every host built from it (<c>WithWebHostBuilder</c> builds another host with its own database).
+    /// </summary>
+    public string TestApiKey => _testKey.Token;
+
+    /// <summary>The public key id of <see cref="TestApiKey"/>.</summary>
+    public string TestApiKeyId => _testKey.KeyId;
+
+    private readonly (string KeyId, string Secret, string Token) _testKey = NewTestKey();
+
+    private static (string KeyId, string Secret, string Token) NewTestKey()
+    {
+        var (keyId, secret) = ApiKeyGenerator.Default.GenerateToken();
+        return (keyId, secret, ApiKeyToken.Format(keyId, secret));
+    }
+
+    /// <summary>
     /// A client that is NOT authenticated: use it to check what anonymous callers get.
     /// </summary>
-    public HttpClient CreateAnonymousClient()
-    {
-        var client = CreateClient();
-        client.DefaultRequestHeaders.Authorization = null;
-        return client;
-    }
+    public HttpClient CreateAnonymousClient() => TestUserExtensions.CreateAnonymousClient(this);
 
     protected override void ConfigureClient(HttpClient client)
     {
         base.ConfigureClient(client);
 
-        // Clients are authenticated by default: the server denies anonymous callers.
+        // Clients are authenticated by default, the way `dotnet nuget push` does it: the test user's key, which
+        // holds every permission, in X-NuGet-ApiKey. That header alone decides, and writes demand it. Tests of
+        // passwords or of keys sent as Basic passwords use CreateClientFor and the other helpers, which send
+        // exactly one credential.
         if (_seedTestUser)
         {
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
-                "Basic",
-                Convert.ToBase64String(Encoding.UTF8.GetBytes($"{TestUserName}:{TestPassword}")));
+            client.DefaultRequestHeaders.TryAddWithoutValidation(TestUserExtensions.ApiKeyHeader, TestApiKey);
         }
     }
 
@@ -135,7 +149,12 @@ public class ElPaquetoApplication : WebApplicationFactory<Startup>
                 if (_seedTestUser)
                 {
                     // Registered after the security module, so it runs after the security database is migrated.
-                    services.AddSingleton<IHostedService>(provider => new TestUserSeeder(provider, TestUserName, TestPassword));
+                    services.AddSingleton<IHostedService>(provider => new TestUserSeeder(
+                        provider,
+                        TestUserName,
+                        TestPassword,
+                        _testKey.KeyId,
+                        _testKey.Secret));
                 }
 
                 // Setup the integration test database.
@@ -158,9 +177,16 @@ public class ElPaquetoApplication : WebApplicationFactory<Startup>
     }
 }
 
-/// <summary>Creates the test user in the security database before the host starts listening.</summary>
-internal sealed class TestUserSeeder(IServiceProvider services, string userName, string password) : IHostedLifecycleService
+/// <summary>
+/// Creates the test user, and an API key of that user holding every permission, in the security database
+/// before the host starts listening.
+/// </summary>
+internal sealed class TestUserSeeder(IServiceProvider services, string userName, string password, string keyId, string secret)
+    : IHostedLifecycleService
 {
+    private const ElPaqueto.Security.Permission AllPermissions =
+        ElPaqueto.Security.Permission.Read | ElPaqueto.Security.Permission.Publish | ElPaqueto.Security.Permission.Admin;
+
     public async Task StartingAsync(CancellationToken cancellationToken)
     {
         using var scope = services.CreateScope();
@@ -168,16 +194,30 @@ internal sealed class TestUserSeeder(IServiceProvider services, string userName,
         var passwords = scope.ServiceProvider.GetRequiredService<IPasswordService>();
 
         var now = DateTime.UtcNow;
+        var userId = Guid.NewGuid();
         database.Users.Add(new User
         {
-            Id = Guid.NewGuid(),
+            Id = userId,
             UserName = userName,
             PasswordHash = passwords.Hash(password),
             IsActive = true,
-            Permissions = ElPaqueto.Security.Permission.Read | ElPaqueto.Security.Permission.Publish | ElPaqueto.Security.Permission.Admin,
+            Permissions = AllPermissions,
             CreatedAt = now,
             UpdatedAt = now,
             PasswordChangedAt = now,
+        });
+
+        // Stored the way the API key service stores keys (only the hash of the secret), with a token chosen by the
+        // factory so that every host built from it accepts the same key.
+        database.ApiKeys.Add(new ApiKey
+        {
+            Id = Guid.NewGuid(),
+            KeyId = keyId,
+            SecretHash = ApiKeySecretHash.Compute(secret),
+            OwnerUserId = userId,
+            Name = "test key",
+            Permissions = AllPermissions,
+            CreatedAt = now,
         });
 
         await database.SaveChangesAsync(cancellationToken);

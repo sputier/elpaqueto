@@ -47,7 +47,17 @@ For each request with Basic credentials, the handler:
    - A global `ConcurrencyLimiter` (`System.Threading.RateLimiting`) bounds the hashes running at once to `MaxConcurrentVerifications` (default: the processor count), with a queue of `VerificationQueueLimit`; beyond it the answer is `503`.
 5. Reports the outcome. A failure (wrong password, unknown user, disabled user) counts on every counter that applies. A success resets **only the pair**: a valid account must not refill a client's budget for other user names, and the owner signing in must not refill a distributed attacker's budget against its account. An aborted request counts nothing.
 
-Malformed `Authorization` headers are refused by the parser before the throttle and are not counted: they cost no hash.
+Malformed `Authorization` headers, and requests with two `X-NuGet-ApiKey` values, are refused before the throttle and are not counted: they cost no verification.
+
+## API keys
+
+A key, whether sent in `X-NuGet-ApiKey` or as a Basic password, has no user name to count against (the user name sent with a key is ignored): the handler calls the throttle with no user name, so a key attempt counts **against the client and its IPv6 /48 network only**.
+
+1. **Check** before the key is parsed or looked up: a throttled client gets `429` without any validation, even with a valid key.
+2. **Verification slot**, as for passwords: a burst of parallel guesses from one client cannot overshoot its budget.
+3. **Outcome.** Every failed validation counts (malformed, unknown, wrong secret, revoked, expired, owner disabled). A success resets nothing: a key attempt has no pair counter, and a valid key never refills a client's budget.
+
+Key and password failures from one client share its budget. Brute-forcing a key secret (256 bits) is not a realistic threat; the counters bound the database lookups and the log lines an anonymous client can cause.
 
 ## Answers
 

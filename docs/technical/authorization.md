@@ -10,7 +10,8 @@ Authorization is deny-by-default. One requirement, `EndpointPermissionRequiremen
 2. looks the key up in the permission table (`EndpointPermissionTable`). **No endpoint, no key or no row means denied.** A controller row also records the `Controller.Action` it is meant for: a route name is only a label, so an endpoint that reuses `search` for another action is denied instead of inheriting the row. The startup warning and the inventory tests report such an endpoint like an unmapped one.
 3. denies a method the row does not allow (`POST /v3/search` is refused: the inherited routes accepted any verb);
 4. lets an `Anonymous` row through;
-5. otherwise requires an authenticated principal that holds **every** permission flag of the row, read from the claims built by authentication. The handler never queries a database, but the claims were built from the user row read at the start of the same request.
+5. otherwise requires an authenticated principal; for a **write row** (`RequiresApiKeyHeader`), a principal authenticated by an API key read from the `X-NuGet-ApiKey` header (`CredentialClaimsExtensions.ApiKeyIdFromHeader`: method `api_key`, credential source `x-nuget-apikey`, exactly one authenticated identity and one key id);
+6. and finally that the principal holds **every** permission flag of the row, read from the claims built by authentication. The handler never queries a database, but the claims were built from the user or key rows read at the start of the same request.
 
 A failed requirement for an unauthenticated caller makes the framework answer **401** with the Basic challenge; for an authenticated caller it answers **403** with no challenge. A request that matches no endpoint is denied the same way: an unknown URL is 401 for anonymous callers (it reveals nothing) and 403 for authenticated ones.
 
@@ -20,14 +21,16 @@ A failed requirement for an unauthenticated caller makes the framework answer **
 | --- | --- | --- |
 | `index`, `search`, `autocomplete`, `dependents`, `registration-index`, `registration-leaf`, `package-versions`, `package-download`, `package-download-manifest`, `package-download-readme`, `package-download-icon`, `symbol-download`, `prefixed-symbol-download` | GET, HEAD | `Read` |
 | `page:/Index`, `page:/Package`, `page:/Upload`, `page:/Statistics` | GET, HEAD | `Read` |
-| `upload-package`, `upload-symbol` | PUT | `Publish` |
-| `relist` | POST | `Publish` |
-| `delete` | DELETE | `Publish`, plus `Admin` when `PackageDeletionBehavior` is `HardDelete` |
+| `upload-package`, `upload-symbol` | PUT | `Publish`, API key from `X-NuGet-ApiKey` |
+| `relist` | POST | `Publish`, API key from `X-NuGet-ApiKey` |
+| `delete` | DELETE | `Publish`, plus `Admin` when `PackageDeletionBehavior` is `HardDelete`; API key from `X-NuGet-ApiKey` |
 | `health` (liveness, `/health`) | GET, HEAD | anonymous, overall status only |
 | `health-details` (`/health/details`) | GET, HEAD | `Admin` |
 | anything else | | denied |
 
 The table lists the most a route may accept: routing can restrict further. `index`, `registration-index` and `registration-leaf` are mapped for GET only by the inherited code, so a HEAD request to them is answered by the router's 405 endpoint, which has no row and is therefore refused with 401 or 403.
+
+**Writes need an API key in `X-NuGet-ApiKey`** ([ADR 0002](../adr/0002-authentication-architecture.md), decision 6). A user password, or a key sent only as a Basic password, gets **403** on the four write rows even when it holds `Publish` (and `Admin`): least privilege, and a credential that can be revoked per machine. A key's permissions are its effective ones (key ∩ owner's current permissions), so a `Read` key, or a `Publish` key whose owner lost `Publish`, also gets 403. The inherited write actions then run their own inline check, which can only confirm this decision: see [API keys](api-keys.md#the-inline-check-of-the-inherited-write-actions).
 
 The three flags are **independent**: `Admin` implies neither `Read` nor `Publish`, and `Publish` does not imply `Read`. Static files (`/_content/...`) are served by `UseStaticFiles` before authentication and are the only other thing reachable anonymously.
 
@@ -51,4 +54,4 @@ When a change brought by an upstream port adds a controller or a page, these tes
 
 ## What is not covered yet
 
-Writes still accept a Basic-authenticated user holding `Publish`; requiring an API key for writes comes with the API key validation. A user holding `Publish` can still delete package versions for good through the retention options (`DeleteOldVersionsAsync`) and replace a version's content with `AllowPackageOverwrites`: both are controlled by server settings, and closing them belongs to the write-route work. `/stats` lists the configured services to every user with `Read` only when `Statistics:ListConfiguredServices` is set to `true` (the shipped `appsettings.json` sets it to `false`). Throttling is a separate change, so **the server must still not be exposed to untrusted networks.**
+A user holding `Publish` can still delete package versions for good through the retention options (`DeleteOldVersionsAsync`) and replace a version's content with `AllowPackageOverwrites`: both are controlled by server settings, and closing them belongs to the write-route work. `/stats` lists the configured services to every user with `Read` only when `Statistics:ListConfiguredServices` is set to `true` (the shipped `appsettings.json` sets it to `false`).

@@ -35,9 +35,10 @@ public static class ElPaquetoSecurityApplicationExtensions
     /// <returns>The same <paramref name="app"/> instance, to allow chaining.</returns>
     /// <remarks>
     /// Registers the validated <c>Security</c> options, the security database, which is migrated
-    /// before the server accepts requests, password hashing, the API key service, authentication, the CORS policy, and the
+    /// before the server accepts requests, password hashing, the API key service, authentication (passwords and
+    /// API keys) with sign-in throttling, deny-by-default authorization, the replacement of the inherited inline API key
+    /// check, the CORS policy, and the
     /// trusted-proxy configuration used by <see cref="ElPaquetoSecurityPipelineExtensions.UseElPaquetoForwardedHeaders"/>.
-    /// Authorization is added by a later change behind this single entry point.
     /// </remarks>
     public static ElPaquetoApplication AddElPaquetoSecurity(this ElPaquetoApplication app)
     {
@@ -84,7 +85,7 @@ public static class ElPaquetoSecurityApplicationExtensions
                 authentication.DefaultAuthenticateScheme = AuthenticationConstants.NugetBasicAuthenticationScheme;
                 authentication.DefaultChallengeScheme = AuthenticationConstants.NugetBasicAuthenticationScheme;
             })
-            .AddScheme<AuthenticationSchemeOptions, ElPaquetoBasicAuthenticationHandler>(
+            .AddScheme<AuthenticationSchemeOptions, ElPaquetoAuthenticationHandler>(
                 AuthenticationConstants.NugetBasicAuthenticationScheme,
                 displayName: null,
                 configureOptions: null);
@@ -107,6 +108,10 @@ public static class ElPaquetoSecurityApplicationExtensions
         services.AddSingleton<IApiKeyHashComparer, FixedTimeApiKeyHashComparer>();
         services.AddSingleton<ApiKeyUsageTracker>();
         services.AddScoped<IApiKeyService, ApiKeyService>();
+
+        // The inline check of the inherited write actions: Replace, not TryAdd, because the inherited
+        // ApiKeyAuthenticationService is already registered when this method runs (ADR 0002, decision 7).
+        services.Replace(ServiceDescriptor.Transient<Core.IAuthenticationService, ApiKeyPrincipalAuthenticationService>());
 
         services.AddSingleton<IPostConfigureOptions<ForwardedHeadersOptions>, ConfigureTrustedForwardedHeaders>();
         services.AddSingleton<IHostedService, TransportStartupWarnings>();
