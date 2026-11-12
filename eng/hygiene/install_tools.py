@@ -18,6 +18,7 @@ import platform
 import stat
 import sys
 import tarfile
+import time
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -69,6 +70,20 @@ def executable(name: str) -> Path:
     return TOOLS_DIR / name / TOOLS[name]["version"] / f"{name}{suffix}"
 
 
+def download(url: str, attempts: int = 3) -> bytes:
+    """Download ``url``, retrying transient network errors (the checksum is verified by the caller)."""
+    for attempt in range(1, attempts + 1):
+        try:
+            with urllib.request.urlopen(url, timeout=120) as response:  # noqa: S310 (fixed https URL)
+                return response.read()
+        except OSError as error:  # URLError and HTTPError are OSError subclasses
+            if attempt == attempts:
+                raise
+            print(f"download failed ({error}), retrying", file=sys.stderr)
+            time.sleep(10 * attempt)
+    raise AssertionError("unreachable")
+
+
 def install(name: str) -> Path:
     target = executable(name)
     if target.exists():
@@ -77,8 +92,7 @@ def install(name: str) -> Path:
     asset, expected = spec["assets"][current_platform()]
     url = spec["url"].format(version=spec["version"], asset=asset)
     print(f"downloading {url}")
-    with urllib.request.urlopen(url, timeout=120) as response:  # noqa: S310 (fixed https URL)
-        data = response.read()
+    data = download(url)
     actual = hashlib.sha256(data).hexdigest()
     if actual != expected:
         raise SystemExit(f"checksum mismatch for {url}: expected {expected}, got {actual}")

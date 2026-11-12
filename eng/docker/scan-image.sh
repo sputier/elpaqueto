@@ -24,7 +24,7 @@ if [ "${1:-}" = "--prepare" ]; then
       exit 0
     fi
     echo "vulnerability database download failed (attempt $attempt)" >&2
-    sleep $((attempt * 15))
+    [ "$attempt" -lt 3 ] && sleep $((attempt * 15))
   done
   exit 1
 fi

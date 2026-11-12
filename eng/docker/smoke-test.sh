@@ -131,10 +131,16 @@ pass "healthy after $((SECONDS - started))s (read-only root, all capabilities dr
 uid=$(docker exec "$name" id -u)
 if [ "$uid" = "0" ]; then fail "the process runs as root"; else pass "runs as UID $uid"; fi
 
-if docker exec "$name" sh -c 'touch /app/smoke 2>/dev/null'; then
-  fail "the application folder is writable"
+if [ "$(docker inspect -f '{{.HostConfig.ReadonlyRootfs}}' "$name")" = true ] \
+  && ! docker exec "$name" sh -c 'touch /home/app/smoke 2>/dev/null'; then
+  pass "the root filesystem is read-only (even the user's own home folder)"
 else
-  pass "the root filesystem is read-only"
+  fail "the root filesystem is writable"
+fi
+if docker exec "$name" sh -c 'touch /app/smoke 2>/dev/null'; then
+  fail "the application folder is writable by the process"
+else
+  pass "the application folder is not writable by the process"
 fi
 
 # Liveness: 200 and the overall status only.
@@ -209,7 +215,8 @@ if [ "$exit_code" = "0" ] && [ "$stop_seconds" -lt 10 ]; then
 else
   fail "docker stop: exit code $exit_code after ${stop_seconds}s (expected 0, under 10s)"
 fi
-if docker logs "$name" 2>&1 | grep -q 'Application is shutting down'; then
+server_logs=$(docker logs "$name" 2>&1)
+if [[ "$server_logs" == *"Application is shutting down"* ]]; then
   pass "the logs show a graceful shutdown"
 else
   fail "the logs do not show a graceful shutdown"

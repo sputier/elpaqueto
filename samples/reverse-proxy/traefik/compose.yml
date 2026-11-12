@@ -21,8 +21,10 @@ services:
     ports:
       - "443:443"
     volumes:
-      # Read-only access to the Docker API, to read the labels below. Anyone who controls Traefik controls
-      # this socket: keep the Traefik dashboard and API disabled (the default here).
+      # The Docker socket, to read the labels below. ":ro" does NOT limit the Docker API: whoever controls
+      # Traefik controls the Docker daemon (root on the host). Keep the Traefik dashboard and API disabled
+      # (the default here); prefer a Docker socket proxy that only allows reading containers, or the
+      # file provider instead of labels.
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
       - proxy

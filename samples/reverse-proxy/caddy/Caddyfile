@@ -25,7 +25,7 @@ nuget.example.test {
 
 	request_body {
 		# At least MaxPackageSizeGiB (8 GiB by default).
-		max_size 8GB
+		max_size 8GiB
 	}
 
 	reverse_proxy elpaqueto:8080 {

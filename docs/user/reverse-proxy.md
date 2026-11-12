@@ -110,7 +110,7 @@ curl -s -u <user>:<password> https://nuget.example.test/v3/index.json   # every 
 
 - TLS: automatic (ACME) for a public host name. Caddy redirects every plain-HTTP request to HTTPS by default; the sample turns that off with `auto_https disable_redirects` and adds an `http://` site that redirects `GET /` only and answers `404` to everything else.
 - Forwarded headers: `reverse_proxy` sets `X-Forwarded-For`, `X-Forwarded-Proto` and `X-Forwarded-Host` itself and does not keep the client's values unless the client is listed in Caddy's `trusted_proxies`. Do not override them with `header_up`.
-- Body size: `request_body { max_size 8GB }` makes the limit explicit. Uploads are streamed.
+- Body size: `request_body { max_size 8GiB }` makes the limit explicit (use `GiB`: Caddy reads `GB` as decimal, 8 GB is below 8 GiB). Uploads are streamed.
 - Timeouts: if you set `servers { timeouts { read_body ... } }`, it limits the reading of the **whole** body, so it must cover the slowest push of the largest package.
 - `Authorization`: passed through. No `basic_auth` in this site.
 
@@ -123,7 +123,7 @@ curl -s -u <user>:<password> https://nuget.example.test/v3/index.json   # every 
 - Body size: Traefik sets no request body limit unless the `buffering` middleware is used. Do not add it: it would also hold whole uploads in memory or on disk.
 - Timeouts: **Traefik v3 reads the whole request within 60 seconds by default** (`respondingTimeouts.readTimeout`, checked with Traefik 3.7.18), which cuts long pushes. The sample raises it to 600 s on the `websecure` entry point.
 - `Authorization`: passed through. No `basicAuth` or `forwardAuth` middleware on this router.
-- The Docker provider reads the labels through the Docker socket, mounted read-only. Keep the Traefik API and dashboard disabled, as in the sample.
+- The Docker provider reads the labels through the Docker socket. Mounting it `:ro` does **not** limit the Docker API: whoever controls Traefik controls the Docker daemon, which is root on the host. Keep the Traefik API and dashboard disabled, as in the sample, or put a Docker socket proxy that only allows reading containers in between, or use the file provider instead of labels.
 
 ### Tunnels
 
