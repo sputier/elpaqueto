@@ -742,11 +742,11 @@ public sealed class LoginThrottleTests : IDisposable
         var counted = 0;
         var flagged = 0;
 
-        // Key attempts are not serialized per pair: several identical ones run at once and race to report.
-        using var start = new ManualResetEventSlim();
+        // Key attempts are not serialized per pair: several identical ones can run at once and race to report (the
+        // deterministic case is TwoIdenticalKeyAttemptsInFlightAtOnce_CountExactlyOnce). No thread is blocked here:
+        // blocking 200 pool threads starves the pool on a loaded machine.
         var attempts = Enumerable.Range(0, 200).Select(i => Task.Run(async () =>
         {
-            start.Wait();
             var userName = i % 2 == 0 ? null : "alice";
             using var slot = await throttle.EnterVerificationAsync(ClientA, userName, Attempt("same wrong secret"), CancellationToken.None);
             Assert.Null(slot.Rejection);
@@ -761,7 +761,6 @@ public sealed class LoginThrottleTests : IDisposable
                 Interlocked.Increment(ref counted);
             }
         })).ToArray();
-        start.Set();
         await Task.WhenAll(attempts).WaitAsync(Timeout);
 
         // One for the key attempts, one for the password attempts.
