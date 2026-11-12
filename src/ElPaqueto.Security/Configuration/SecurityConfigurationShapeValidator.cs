@@ -11,7 +11,7 @@ namespace ElPaqueto.Security.Configuration;
 internal sealed class SecurityConfigurationShapeValidator(IConfiguration configuration)
     : IValidateOptions<ElPaquetoSecurityOptions>
 {
-    private static readonly string[] Sections = ["Database", "Passwords", "Authentication"];
+    private static readonly string[] Sections = ["Database", "Passwords", "Authentication", "ApiKeys"];
 
     public ValidateOptionsResult Validate(string? name, ElPaquetoSecurityOptions options)
     {

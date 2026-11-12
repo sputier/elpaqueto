@@ -163,4 +163,44 @@ public class ElPaquetoSecurityOptionsTests
         Assert.Equal(15, options.Passwords.MinimumLength);
         Assert.True(Validator.Validate(name: null, options).Succeeded);
     }
+    [Fact]
+    public void ApiKeyDefaults_FollowTheDocumentedValues()
+    {
+        var options = new ElPaquetoSecurityOptions();
+
+        Assert.Equal(TimeSpan.FromMinutes(5), options.ApiKeys.LastUsedUpdateInterval);
+        Assert.True(Validator.Validate(name: null, options).Succeeded);
+    }
+
+    [Theory]
+    [InlineData("00:00:00")]
+    [InlineData("00:00:00.5")]
+    [InlineData("-00:01:00")]
+    [InlineData("1.00:00:01")]
+    public void LastUsedUpdateIntervalOutsideTheAcceptedRange_IsRejected(string interval)
+    {
+        var options = new ElPaquetoSecurityOptions
+        {
+            ApiKeys = new SecurityApiKeyOptions { LastUsedUpdateInterval = TimeSpan.Parse(interval, System.Globalization.CultureInfo.InvariantCulture) },
+        };
+
+        var result = Validator.Validate(name: null, options);
+
+        Assert.True(result.Failed);
+        Assert.Contains(result.Failures!, f => f.Contains("Security:ApiKeys:LastUsedUpdateInterval", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("00:00:01")]
+    [InlineData("01:00:00")]
+    [InlineData("1.00:00:00")]
+    public void LastUsedUpdateIntervalWithinTheAcceptedRange_IsAccepted(string interval)
+    {
+        var options = new ElPaquetoSecurityOptions
+        {
+            ApiKeys = new SecurityApiKeyOptions { LastUsedUpdateInterval = TimeSpan.Parse(interval, System.Globalization.CultureInfo.InvariantCulture) },
+        };
+
+        Assert.True(Validator.Validate(name: null, options).Succeeded);
+    }
 }

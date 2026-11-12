@@ -56,4 +56,12 @@ The maximum password length is fixed at 256 characters. The policy has no compos
 
 **Upgrading from BaGetter:** the inherited settings `Authentication:Credentials` (plain-text users) are no longer used: users are stored, hashed, in the security database, and a request that carries credentials only authenticates if the user exists there. The legacy `ApiKey` and `Authentication:ApiKeys` settings are not retired yet: they still gate publishing, and publishing is open to everyone while neither is set. Until deny-by-default authorization and API keys are released, **do not expose the server to untrusted networks**.
 
+### `Security:ApiKeys`
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| `Security:ApiKeys:LastUsedUpdateInterval` | `00:05:00` | Minimum time between two writes of an API key's "last used" timestamp, as `[d.]hh:mm:ss`. Between `00:00:01` and `1.00:00:00`. The timestamp is accurate to within this value; a shorter interval means more writes to the security database. |
+
+API keys are stored hashed: the complete key (`epq_...`) is shown once, when it is created, and cannot be displayed again. A lost key is revoked and replaced. Passwords that have the format of an API key are refused.
+
 More settings are added to this page as the features that need them are released.

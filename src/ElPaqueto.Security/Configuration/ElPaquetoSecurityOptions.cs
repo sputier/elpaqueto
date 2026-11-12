@@ -33,6 +33,11 @@ public sealed class ElPaquetoSecurityOptions : IValidatableObject
     /// </summary>
     public SecurityAuthenticationOptions Authentication { get; set; } = new();
 
+    /// <summary>
+    /// API keys. Section: <c>Security:ApiKeys</c>.
+    /// </summary>
+    public SecurityApiKeyOptions ApiKeys { get; set; } = new();
+
     /// <inheritdoc />
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
@@ -47,6 +52,11 @@ public sealed class ElPaquetoSecurityOptions : IValidatableObject
         }
 
         foreach (var result in ValidateSection(Authentication, nameof(Authentication)))
+        {
+            yield return result;
+        }
+
+        foreach (var result in ValidateSection(ApiKeys, nameof(ApiKeys)))
         {
             yield return result;
         }
