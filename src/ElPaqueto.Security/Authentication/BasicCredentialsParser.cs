@@ -87,7 +87,7 @@ internal static class BasicCredentialsParser
             return BasicParseResult.Malformed;
         }
 
-        var buffer = new byte[MaxHeaderLength];
+        var buffer = new byte[(token.Length / 4 + 1) * 3];
         if (!Convert.TryFromBase64Chars(token, buffer, out var written))
         {
             return BasicParseResult.Malformed;

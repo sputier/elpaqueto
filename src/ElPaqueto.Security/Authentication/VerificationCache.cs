@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using ElPaqueto.Security.Configuration;
 using ElPaqueto.Security.Data;
+using ElPaqueto.Security.Passwords;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 
@@ -13,12 +14,13 @@ namespace ElPaqueto.Security.Authentication;
 /// </summary>
 /// <remarks>
 /// <list type="bullet">
-/// <item>The key is <c>HMAC-SHA256(per-process random key, user id, password hash, password)</c>: the
-/// password is not stored in any reversible form, the key means nothing outside this process, and
-/// including the stored hash invalidates the entry as soon as the password changes.</item>
+/// <item>There is <b>one entry per user</b>, so the size is bounded by the number of users and cannot be
+/// filled by spelling the same password in different ways.</item>
+/// <item>The entry holds <c>HMAC-SHA256(per-process random key, stored password hash, normalized password)</c>,
+/// compared in fixed time: the password is not stored in any reversible form, the value means nothing
+/// outside this process, and including the stored hash invalidates the entry as soon as the password changes.</item>
 /// <item>Only successes are cached, never failures.</item>
 /// <item>The user's state and permissions are not cached: the handler reads them on every request.</item>
-/// <item>The size is bounded.</item>
 /// </list>
 /// </remarks>
 internal sealed class VerificationCache : IDisposable
@@ -38,7 +40,12 @@ internal sealed class VerificationCache : IDisposable
 
     public bool Contains(User user, string password)
     {
-        return _timeToLive > TimeSpan.Zero && _cache.TryGetValue(KeyFor(user, password), out _);
+        if (_timeToLive <= TimeSpan.Zero || !_cache.TryGetValue(user.Id, out byte[]? remembered) || remembered is null)
+        {
+            return false;
+        }
+
+        return CryptographicOperations.FixedTimeEquals(remembered, DigestFor(user, password));
     }
 
     public void Remember(User user, string password)
@@ -49,8 +56,8 @@ internal sealed class VerificationCache : IDisposable
         }
 
         _cache.Set(
-            KeyFor(user, password),
-            true,
+            user.Id,
+            DigestFor(user, password),
             new MemoryCacheEntryOptions { Size = 1, AbsoluteExpirationRelativeToNow = _timeToLive });
     }
 
@@ -59,13 +66,13 @@ internal sealed class VerificationCache : IDisposable
         _cache.Dispose();
     }
 
-    private string KeyFor(User user, string password)
+    private byte[] DigestFor(User user, string password)
     {
-        var data = Encoding.UTF8.GetBytes($"{user.Id:N}\0{user.PasswordHash}\0{password}");
+        var data = Encoding.UTF8.GetBytes($"{user.PasswordHash}\0{PasswordNormalization.Normalize(password)}");
 
         try
         {
-            return Convert.ToBase64String(HMACSHA256.HashData(_processKey, data));
+            return HMACSHA256.HashData(_processKey, data);
         }
         finally
         {
