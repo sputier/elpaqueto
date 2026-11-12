@@ -48,6 +48,14 @@ printf '%s' 'Data Source=/data/db/auth.db' > /run/secrets/Security__Database__Co
 
 The maximum password length is fixed at 256 characters. The policy has no composition rules (no required digits or symbols): long passphrases are preferred. A password equal to the user name (ignoring case) is rejected. The policy applies when a password is set, never at login.
 
+### `Security:Authentication`
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| `Security:Authentication:VerificationCacheTtl` | `00:05:00` | How long a successful password verification is remembered in memory, as a time span up to `01:00:00`. `00:00:00` disables the cache. A disabled user, changed permissions and a changed password always apply to the next request: the cache only keeps an unchanged, valid password cheap. |
+
+**Upgrading from BaGetter:** the inherited settings `Authentication:Credentials` (plain-text users) are no longer used: users are stored, hashed, in the security database, and a request that carries credentials only authenticates if the user exists there. The legacy `ApiKey` and `Authentication:ApiKeys` settings are not retired yet: they still gate publishing, and publishing is open to everyone while neither is set. Until deny-by-default authorization and API keys are released, **do not expose the server to untrusted networks**.
+
 ### `Security:ApiKeys`
 
 | Setting | Default | Description |

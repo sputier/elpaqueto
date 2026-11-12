@@ -160,6 +160,8 @@ internal sealed class ApiKeyServiceHarness(AuthDatabaseFixture database, TimeSpa
 
     public AuthDbContext CreateContext(IInterceptor? extra = null)
     {
+        AuthDatabaseFile.Prepare(database.ConnectionString);
+
         var builder = new DbContextOptionsBuilder<AuthDbContext>();
         AuthDbContextConfiguration.ConfigureCore(builder, database.ConnectionString);
         builder.AddInterceptors(Counter);
