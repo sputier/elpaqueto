@@ -87,6 +87,11 @@ public class AuditLoggingIntegrationTests : IDisposable
         Assert.Equal(401, await StatusAsync("203.0.113.6", Basic(passwordAsUserName, "irrelevant password")));
         Assert.Equal(401, await StatusAsync("203.0.113.7", Basic("evil\r\n" + ForgedLine, _password)));
 
+        // Secrets typed in the user name field, made only of characters the user name rules allow.
+        Assert.Equal(401, await StatusAsync("203.0.113.8", Basic(_baseApp.TestApiKey, "x")));
+        Assert.Equal(401, await StatusAsync("203.0.113.9", Basic(_password, "x")));
+        Assert.Equal(401, await StatusAsync("203.0.113.10", Basic(wrongSecretKey, string.Empty)));
+
         // API keys, in the header and as a Basic password.
         Assert.Equal(200, await StatusAsync("203.0.113.20", apiKey: _baseApp.TestApiKey));
         Assert.Equal(200, await StatusAsync("203.0.113.21", Basic(UserName, _baseApp.TestApiKey)));
@@ -127,15 +132,19 @@ public class AuditLoggingIntegrationTests : IDisposable
         Assert.Equal(_baseApp.TestApiKeyId, Single(audit, 1001, r => r["ClientAddress"] == "203.0.113.21")["KeyId"]);
 
         AssertFailure(audit, "203.0.113.2", "bad_password", UserName, LogLevel.Warning);
-        AssertFailure(audit, "203.0.113.3", "unknown_user", "audit-nobody", LogLevel.Warning);
+        Assert.Matches("^<unknown:[0-9a-f]{8}>$", Single(audit, 1002, r => r["ClientAddress"] == "203.0.113.3")["UserName"]);
+        Assert.Equal("unknown_user", Single(audit, 1002, r => r["ClientAddress"] == "203.0.113.3")["Reason"]);
         AssertFailure(audit, "203.0.113.4", "disabled", DisabledUserName, LogLevel.Warning);
         Assert.Equal(2, audit.Count(r => r.EventId.Id == 1002 && r["ClientAddress"] == "203.0.113.5" && r["Reason"] == "malformed" && r.Level == LogLevel.Debug));
 
-        // A value outside the user name rules is never logged, only its fingerprint.
-        var invalidName = Single(audit, 1002, r => r["ClientAddress"] == "203.0.113.6");
-        Assert.Matches("^<invalid:[0-9a-f]{8}>$", invalidName["UserName"]);
-        var forged = Single(audit, 1002, r => r["ClientAddress"] == "203.0.113.7");
-        Assert.Matches("^<invalid:[0-9a-f]{8}>$", forged["UserName"]);
+        // A user name that matches no account is never logged, only its fingerprint: it may be a secret or forge lines.
+        foreach (var client in new[] { "203.0.113.6", "203.0.113.7", "203.0.113.8", "203.0.113.9", "203.0.113.10" })
+        {
+            var unknown = Single(audit, 1002, r => r["ClientAddress"] == client);
+            Assert.Equal("unknown_user", unknown["Reason"]);
+            Assert.Matches("^<unknown:[0-9a-f]{8}>$", unknown["UserName"]);
+        }
+
         Assert.DoesNotContain(records, r => r.AllText.Contains(ForgedLine, StringComparison.Ordinal));
 
         // API key refusals: the key id only.
@@ -166,9 +175,12 @@ public class AuditLoggingIntegrationTests : IDisposable
         Assert.Equal("api_key_header_required", write["Reason"]);
 
         // Transport, and the forwarded client addresses.
-        Assert.Equal("http", Single(audit, 1201, r => r["ClientAddress"] == "203.0.113.40")["Scheme"]);
+        // Anonymous and unthrottled: one Warning a minute at most, the other refusals at Debug.
+        var plainHttp = Single(audit, 1201, r => r["ClientAddress"] == "203.0.113.40");
+        Assert.Equal("http", plainHttp["Scheme"]);
+        Assert.Equal(LogLevel.Warning, plainHttp.Level);
         AssertFailure(audit, "192.0.2.44", "bad_password", UserName, LogLevel.Warning);
-        Single(audit, 1201, r => r["ClientAddress"] == "192.0.2.45");
+        Assert.Equal(LogLevel.Debug, Single(audit, 1201, r => r["ClientAddress"] == "192.0.2.45").Level);
         Assert.DoesNotContain(audit, r => r["ClientAddress"] == LoopbackProxy);
 
         // No credential anywhere, in any category.

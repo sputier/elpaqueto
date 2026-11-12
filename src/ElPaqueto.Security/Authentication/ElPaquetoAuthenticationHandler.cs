@@ -41,7 +41,8 @@ internal sealed partial class ElPaquetoAuthenticationHandler(
     IPasswordService passwords,
     IApiKeyService apiKeys,
     VerificationCache verificationCache,
-    ILoginThrottle throttle)
+    ILoginThrottle throttle,
+    ILogger<Audit> audit)
     : AuthenticationHandler<AuthenticationSchemeOptions>(options, loggerFactory, encoder)
 {
     private const string AttemptRefused = "Attempt refused by throttling.";
@@ -55,7 +56,7 @@ internal sealed partial class ElPaquetoAuthenticationHandler(
     private static readonly Permission[] Flags = [Permission.Read, Permission.Publish, Permission.Admin];
 
     // The audit trail (docs/technical/audit-logging.md): reasons, ids and the client address, never a credential.
-    private readonly ILogger _audit = loggerFactory.CreateLogger<Audit>();
+    private readonly ILogger<Audit> _audit = audit;
 
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
@@ -78,6 +79,11 @@ internal sealed partial class ElPaquetoAuthenticationHandler(
     // Malformed credentials are refused before throttling, so they are logged at Debug only: anyone can send them.
     private AuthenticateResult Refuse(RequestCredential credential)
     {
+        if (!_audit.IsEnabled(LogLevel.Debug))
+        {
+            return AuthenticateResult.Fail(InvalidCredentials);
+        }
+
         var client = ClientAddress;
         if (credential.Source is { } source)
         {
@@ -124,7 +130,10 @@ internal sealed partial class ElPaquetoAuthenticationHandler(
 
     private AuthenticateResult Refuse(ThrottleRejection rejection, string method)
     {
-        AuditLog.AuthenticationThrottled(_audit, method, rejection.StatusCode, ClientAddress, rejection.RetryAfterHeaderValue);
+        if (_audit.IsEnabled(LogLevel.Debug))
+        {
+            AuditLog.AuthenticationThrottled(_audit, method, rejection.StatusCode, ClientAddress, rejection.RetryAfterHeaderValue);
+        }
         Context.Features.Set(new RefusedAttemptFeature(rejection));
         return AuthenticateResult.Fail(AttemptRefused);
     }
@@ -241,8 +250,8 @@ internal sealed partial class ElPaquetoAuthenticationHandler(
         }
     }
 
-    // The reason category, and the user name only when it follows the user name rules: a value outside them may be a
-    // password typed in the wrong field, or carry line breaks, and is logged as a fingerprint.
+    // The reason category, and the user name only when it names an existing account: a name that matches no account may
+    // be a password or an API key typed in the wrong field, or carry line breaks, and is logged as a fingerprint.
     private void LogPasswordFailure(User? user, string userName)
     {
         var reason = user switch
@@ -252,7 +261,7 @@ internal sealed partial class ElPaquetoAuthenticationHandler(
             _ => AuthenticationFailureReason.BadPassword,
         };
 
-        var loggedName = AuditValues.UserName(userName);
+        var loggedName = user is null ? AuditValues.UnknownUserName(userName) : AuditValues.UserName(user.UserName);
         AuditLog.AuthenticationFailed(_audit, LogLevel.Warning, AuditValues.PasswordMethod, reason, loggedName, ClientAddress);
     }
 

@@ -73,10 +73,13 @@ internal static partial class AuditLog
 
     // ---- 1200-1299: transport ----
 
-    /// <summary>A remote plain-HTTP request was refused (403) while HTTPS is required.</summary>
-    [LoggerMessage(EventId = 1201, EventName = "TransportRejected", Level = LogLevel.Warning,
+    /// <summary>
+    /// A remote plain-HTTP request was refused (403) while HTTPS is required. Warning at most once a minute, Debug
+    /// otherwise: these requests are anonymous and refused before throttling.
+    /// </summary>
+    [LoggerMessage(EventId = 1201, EventName = "TransportRejected",
         Message = "Refused a remote {Scheme} request from {ClientAddress}: HTTPS is required.")]
-    public static partial void TransportRejected(ILogger logger, string scheme, string clientAddress);
+    public static partial void TransportRejected(ILogger logger, LogLevel level, string scheme, string clientAddress);
 
     /// <summary>Forwarded headers from an untrusted sender were ignored. Logged once per process.</summary>
     [LoggerMessage(EventId = 1202, EventName = "UntrustedForwardedHeaders", Level = LogLevel.Warning,

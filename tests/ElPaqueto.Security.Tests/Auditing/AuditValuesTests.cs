@@ -33,6 +33,26 @@ public sealed class AuditValuesTests
         Assert.DoesNotContain("\r", logged, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("hunter2")]
+    [InlineData("Sentinel-Pw-0123456789")]
+    [InlineData("epq_0123456789ab_0123456789012345678901234567890123456789012")]
+    [InlineData("alice\r\nforged")]
+    public void AUserNameThatMatchesNoAccount_IsAlwaysAFingerprint(string userName)
+    {
+        var logged = AuditValues.UnknownUserName(userName);
+
+        Assert.Matches("^<unknown:[0-9a-f]{8}>$", logged);
+        Assert.Equal(logged, AuditValues.UnknownUserName(userName));
+    }
+
+    [Fact]
+    public void ATokenShapedName_IsNeverLoggedAsIs()
+    {
+        Assert.Matches("^<invalid:[0-9a-f]{8}>$", AuditValues.UserName("epq_0123456789ab_0123456789012345678901234567890123456789012"));
+        Assert.Matches("^<invalid:[0-9a-f]{8}>$", AuditValues.UserName("EPQ_x"));
+    }
+
     [Fact]
     public void ATooLongUserName_IsLoggedAsAFingerprint()
     {
@@ -57,6 +77,7 @@ public sealed class AuditValuesTests
     public void AMissingUserName_IsLoggedAsADash(string? userName)
     {
         Assert.Equal("-", AuditValues.UserName(userName));
+        Assert.Equal("-", AuditValues.UnknownUserName(userName));
     }
 
     [Fact]

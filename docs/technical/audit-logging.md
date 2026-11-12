@@ -7,8 +7,8 @@ The security module records its decisions as structured log events under one log
 - **One category.** Audit events are written through an `ILogger<Audit>` (`src/ElPaqueto.Security/Audit.cs`, a marker type whose full name is the category) or through a logger created with `AuditLog.Category`. Every audit event, whatever class raises it, has that category.
 - **One catalogue.** Events are declared with the `LoggerMessage` source generator in `src/ElPaqueto.Security/Auditing/AuditLog.cs`, except the user administration events, which stay in `src/ElPaqueto.Security/Users/UserAdministrationLog.cs` (same category, block 2000–2099). New security events are added to `AuditLog`, never as ad-hoc log calls.
 - **Fixed ids and names.** Every `LoggerMessage` event of the security module, audit or not, has an explicit `EventId` and `EventName`. Ids are allocated by block (below) and never reused. `AuditLogCatalogueTests` fails when two events share an id or a name, when an event has no explicit id, when an audit event leaves the 1000–2999 range, or when an event has no row in the tables of this page.
-- **Safe values only.** Properties are ids (user GUIDs, public API key ids), fixed vocabularies (reasons, methods, scopes), client addresses, server-defined route names and user names that follow the user name rules. `AuditValues` (`src/ElPaqueto.Security/Auditing/AuditValues.cs`) converts request data into such values.
-- **No flooding.** Successful sign-ins are `Debug` (NuGet clients authenticate every request). Failures that anyone can send without limit (malformed headers, values without the API key format) are `Debug`; failures that are counted by throttling are `Warning`, so their number is bounded. A throttle trip is logged once; the refused attempts behind it are `Debug`.
+- **Safe values only.** Properties are ids (user GUIDs, public API key ids), fixed vocabularies (reasons, methods, scopes), client addresses, server-defined route names and the user names of existing accounts. `AuditValues` (`src/ElPaqueto.Security/Auditing/AuditValues.cs`) converts request data into such values.
+- **No flooding.** Successful sign-ins are `Debug` (NuGet clients authenticate every request). Failures that anyone can send without limit (malformed headers, values without the API key format) are `Debug`; failures that are counted by throttling are `Warning`, so their number is bounded per client address (a distributed attack from many addresses still produces one line per attempt, which is what an operator wants to see). Refused plain-HTTP requests, which are anonymous and not throttled, are `Warning` at most once a minute and `Debug` otherwise. A throttle trip is logged once; the refused attempts behind it are `Debug`.
 
 ### Event id allocation
 
@@ -38,7 +38,7 @@ Common properties: `ClientAddress` is the connection's remote address **after tr
 | Id | Name | Level | Properties | Emitted when |
 | --- | --- | --- | --- | --- |
 | 1001 | `AuthenticationSucceeded` | Debug | `UserId`, `Method` (`password`, `api_key`), `KeyId`, `ClientAddress` | A password or an API key is accepted. |
-| 1002 | `AuthenticationFailed` | Warning; Debug for `malformed` | `Method` (`password`), `Reason`, `UserName`, `ClientAddress` | A Basic header with a password (not an API key) is refused. |
+| 1002 | `AuthenticationFailed` | Warning; Debug for `malformed` | `Method` (`password`), `Reason`, `UserName` (see [user names](#user-names-in-logs)), `ClientAddress` | A Basic header with a password (not an API key) is refused. |
 | 1003 | `ApiKeyRejected` | Warning when the value has the token format; Debug otherwise | `Reason`, `KeyId`, `CredentialSource` (`x-nuget-apikey`, `basic-password`), `ClientAddress` | An API key is refused, from the header or as a Basic password. |
 | 1004 | `AuthenticationThrottled` | Debug | `Method`, `StatusCode` (429 or 503), `ClientAddress`, `RetryAfterSeconds` | An attempt is refused by throttling or for lack of verification capacity, without checking its credential. |
 
@@ -58,7 +58,7 @@ Reasons: `unmapped_endpoint`, `route_mismatch`, `method_not_allowed`, `api_key_h
 
 | Id | Name | Level | Properties | Emitted when |
 | --- | --- | --- | --- | --- |
-| 1201 | `TransportRejected` | Warning | `Scheme` (`http`, `other`), `ClientAddress` | A remote plain-HTTP request is refused with 403 while HTTPS is required. Its credentials are never read. |
+| 1201 | `TransportRejected` | Warning at most once a minute; Debug otherwise | `Scheme` (`http`, `other`), `ClientAddress` | A remote plain-HTTP request is refused with 403 while HTTPS is required. Its credentials are never read. |
 | 1202 | `UntrustedForwardedHeaders` | Warning | `ClientAddress` | A refused plain-HTTP request carried forwarded headers that were not applied. Once per process. |
 
 ### Throttling (1800–1899)
@@ -121,11 +121,12 @@ Not part of the audit trail; listed so that the allocation is complete.
 
 ## User names in logs
 
-`AuditValues.UserName` logs a user name as sent only when it follows the user name rules (1 to 64 characters from `A-Z a-z 0-9 . _ -`, the rules of `UserNames`). Anything else is logged as `<invalid:xxxxxxxx>`: the first 4 bytes, in hexadecimal, of an HMAC-SHA256 of the UTF-8 value under a 256-bit key drawn at process start. So:
+A user name sent by a client is logged in clear only when it names an **existing account** (reasons `disabled` and `bad_password`), and then as stored in the security database. A name that matches no account is always logged as `<unknown:xxxxxxxx>` (`AuditValues.UnknownUserName`): the first 4 bytes, in hexadecimal, of an HMAC-SHA256 of the UTF-8 value under a 256-bit key drawn at process start. A password or an API key typed in the user name field can be made only of characters the user name rules allow (an API key token is), so following the rules is not enough to be logged. As a second barrier, `AuditValues.UserName` logs `<invalid:xxxxxxxx>` instead of any name that breaks the user name rules or contains the API key prefix `epq_`. So:
 
-- a password typed in the user name field is never logged, only a fingerprint that lets an operator see the same value being retried;
+- a password or an API key typed in the user name field is never logged, only a fingerprint that lets an operator see the same value being retried;
 - a user name with CR, LF or other control characters cannot forge log lines (log injection);
-- the fingerprint is not stable across restarts and cannot be precomputed for a guessed value.
+- the fingerprint is not stable across restarts and cannot be precomputed for a guessed value;
+- the price: an operator does not see which nonexistent names are tried (for example `admin`), only how often the same one is.
 
 ## What is never logged
 
@@ -139,7 +140,7 @@ Never, in any category, at any level, as a message, a structured property, a sco
 How this holds:
 
 - The failure messages given to `AuthenticateResult.Fail` are fixed strings (the ASP.NET Core authentication handler logs them).
-- Exception messages raised by ElPaqueto code never contain a credential; configuration binding errors, whose message repeats the value, are not logged (event 3102 instead). The admin commands never put a password in an exception.
+- Exception messages raised by ElPaqueto code are written not to contain a credential; configuration binding errors, whose message repeats the value, are not logged (event 3102 instead). The admin commands never put a password in an exception. Exceptions raised by libraries (database providers, for example) are logged as they are, with their stack, by event 2099 and by ASP.NET Core; their text is outside ElPaqueto's control.
 - Entity Framework Core's sensitive data logging stays off, so SQL parameter values are never logged.
 - `LoggingGuardTests` fails if any source under `src/` calls `UseHttpLogging`, `AddHttpLogging`, `UseW3CLogging`, `AddW3CLogging` or `EnableSensitiveDataLogging`.
 
@@ -150,9 +151,9 @@ If HTTP logging is ever added: `HttpLoggingOptions.RequestHeaders` is an **allow
 ## Tests
 
 - `tests/ElPaqueto.Security.Tests/Logging/RecordingLoggerProvider.cs`: an `ILoggerProvider` (with external scopes) that records the category, level, event id and name, formatted message, every structured property, every active scope and the full exception text of each entry. `LogRecords.AssertContainNone` searches all of it. Shared with `ElPaqueto.Tests` by a link in the project file.
-- `tests/ElPaqueto.Tests/AuditLoggingIntegrationTests.cs`: through the whole server pipeline at `Trace` level for every category, with a sentinel password unique to the run, drives a valid login, a wrong password, an unknown user, a disabled user, two malformed headers, a password typed as user name, a user name with CR/LF, valid API keys (header and Basic), a key with a wrong secret, a malformed key, a throttled login (trip and 429), two authorization denials (one with a request body holding the sentinel), a remote plain-HTTP request, and requests through the trusted loopback proxy. It checks each event, its level and its properties (the forwarded client address included), and that no entry of any category contains the password, its base64, any `Authorization` value sent or its base64 part, the API key tokens and secrets, or the connection strings.
+- `tests/ElPaqueto.Tests/AuditLoggingIntegrationTests.cs`: through the whole server pipeline at `Trace` level for every category, with a sentinel password unique to the run, drives a valid login, a wrong password, an unknown user, a disabled user, two malformed headers, a password typed as user name (with and without characters outside the rules), API keys typed as user name, a user name with CR/LF, valid API keys (header and Basic), a key with a wrong secret, a malformed key, a throttled login (trip and 429), two authorization denials (one with a request body holding the sentinel), a remote plain-HTTP request, and requests through the trusted loopback proxy. It checks each event, its level and its properties (the forwarded client address included), and that no entry of any category contains the password, its base64, any `Authorization` value sent or its base64 part, the API key tokens and secrets, or the connection strings.
 - `tests/ElPaqueto.Security.Tests/Auditing/AdminCommandAuditTests.cs`: every `admin` command, successful and refused, with sentinel passwords: one event per change, and no password, base64 of a password or stored hash in any entry.
 - `tests/ElPaqueto.Security.Tests/Auditing/AuditLoggingProcessTests.cs`: the built host with the shipped `appsettings.json`: audit events at `Information` appear on standard error, not on standard output; successes are not shown; no password is printed.
 - `AuditValuesTests`, `AuditLogCatalogueTests`, `LoggingGuardTests`: the user name policy, the catalogue rules and the guards above.
 
-The redaction tests were checked by mutation: logging the raw user name, the password, the token as key id, the `Authorization` header in a scope, the password in an exception message, a password hash in an administration event, a duplicate or undocumented id, or the proxy's address instead of the client's, each makes a test fail.
+The redaction tests were checked by mutation: logging the raw user name, logging an unknown user name in clear when it follows the rules, logging every plain-HTTP refusal at Warning, the password, the token as key id, the `Authorization` header in a scope, the password in an exception message, a password hash in an administration event, a duplicate or undocumented id, or the proxy's address instead of the client's, each makes a test fail.

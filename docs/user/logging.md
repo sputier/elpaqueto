@@ -18,7 +18,7 @@ Logging__Console__LogLevel__ElPaqueto.Security.Audit=Debug
 
 To keep the audit trail out of the console, set the same variable to `Warning` (failures only) or `None`.
 
-Passwords, password hashes, `Authorization` and `X-NuGet-ApiKey` header values, API key tokens, connection strings and request bodies are never logged, at any level. A user name that does not follow the user name rules (for example a password typed in the user name field, or a value with line breaks) is logged as `<invalid:xxxxxxxx>`, a fingerprint that is the same for the same value until the server restarts.
+Passwords, password hashes, `Authorization` and `X-NuGet-ApiKey` header values, API key tokens, connection strings and request bodies are never logged, at any level. A user name is logged in clear only when it names an existing account. Any other value (it may be a password or an API key typed in the user name field, or contain line breaks) is logged as `<unknown:xxxxxxxx>`, a fingerprint that is the same for the same value until the server restarts: you see that one value is retried, not what it is.
 
 ## What to monitor and alert on
 
@@ -26,11 +26,11 @@ Filter on the category `ElPaqueto.Security.Audit` and the event id (or name). Su
 
 | Signal | Events | What it usually means |
 | --- | --- | --- |
-| A burst of failed sign-ins from one address, or for one user name from several addresses | 1002 `AuthenticationFailed` (`unknown_user`, `bad_password`) | Password guessing, or a stale password in a NuGet configuration or credential provider. |
+| A burst of failed sign-ins from one address, or for one user name (or one `<unknown:...>` fingerprint) from several addresses | 1002 `AuthenticationFailed` (`unknown_user`, `bad_password`) | Password guessing, or a stale password in a NuGet configuration or credential provider. |
 | Throttling trips | 1801 `ThrottleTripped` | The same, past the throttling limits. Repeated trips for the same `Client` deserve a firewall rule. |
 | Refused API keys with a key id | 1003 `ApiKeyRejected` (`revoked`, `expired`, `owner_disabled`, `wrong_secret`) | A CI pipeline still uses an old key, or someone tries a leaked key id. |
 | Authorization denials | 1101 `AuthorizationDenied` | An account or key used beyond its permissions: misconfiguration, or a compromised low-privilege credential. |
-| Refused plain-HTTP requests | 1201 `TransportRejected`, 1202 `UntrustedForwardedHeaders` | A client or a reverse proxy is misconfigured (see [Running behind a reverse proxy](reverse-proxy.md)). |
+| Refused plain-HTTP requests (Warning at most once a minute, the others at Debug) | 1201 `TransportRejected`, 1202 `UntrustedForwardedHeaders` | A client or a reverse proxy is misconfigured (see [Running behind a reverse proxy](reverse-proxy.md)). |
 | Any startup security warning | 1901–1906 | The server runs with a weakened setting: check it was intended. |
 | Any user or key change | 2001–2009, 2101–2103 | Compare with your change records: an unexpected change means someone ran the `admin` commands. |
 | Failed admin commands | 2099 `AdminCommandFailed` | The security database could not be used. |

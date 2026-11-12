@@ -33,6 +33,10 @@ internal sealed class TransportSecurityMiddleware
     private readonly ILogger<Audit> _logger;
     private int _untrustedForwarderReported;
 
+    // Monotonic ticks of the last refusal logged at Warning: at most one per interval, the others at Debug, so that
+    // anonymous plain-HTTP requests (refused before any throttling) cannot flood the log.
+    private long _lastWarningTimestamp = long.MinValue;
+
     public TransportSecurityMiddleware(
         RequestDelegate next,
         IOptions<ElPaquetoSecurityOptions> options,
@@ -66,8 +70,13 @@ internal sealed class TransportSecurityMiddleware
             ReportUntrustedForwarder(context);
 
             // One line per refused request: the address is the client's after trusted forwarded-header processing.
-            AuditLog.TransportRejected(
-                _logger, AuditValues.Scheme(context.Request.Scheme), AuditValues.Client(context.Connection.RemoteIpAddress));
+            var level = TakeWarningSlot() ? LogLevel.Warning : LogLevel.Debug;
+            if (_logger.IsEnabled(level))
+            {
+                var scheme = AuditValues.Scheme(context.Request.Scheme);
+                var client = AuditValues.Client(context.Connection.RemoteIpAddress);
+                AuditLog.TransportRejected(_logger, level, scheme, client);
+            }
 
             var response = context.Response;
             response.StatusCode = StatusCodes.Status403Forbidden;
@@ -83,6 +92,17 @@ internal sealed class TransportSecurityMiddleware
         }
 
         return _next(context);
+    }
+
+    /// <summary>How often a refused plain-HTTP request is logged at Warning; the others are logged at Debug.</summary>
+    internal static readonly TimeSpan WarningInterval = TimeSpan.FromMinutes(1);
+
+    private bool TakeWarningSlot()
+    {
+        var now = Environment.TickCount64;
+        var last = Interlocked.Read(ref _lastWarningTimestamp);
+        return (last == long.MinValue || now - last >= (long)WarningInterval.TotalMilliseconds)
+            && Interlocked.CompareExchange(ref _lastWarningTimestamp, now, last) == last;
     }
 
     /// <summary>

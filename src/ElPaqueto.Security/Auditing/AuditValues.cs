@@ -22,6 +22,7 @@ internal static class AuditValues
     public const string ApiKeyMethod = ElPaquetoClaimTypes.ApiKeyMethod;
 
     private const string InvalidUserNamePrefix = "<invalid:";
+    private const string UnknownUserNamePrefix = "<unknown:";
 
     // Per process: a fingerprint correlates the attempts of one run without being a stable identifier of the
     // value, and nobody can precompute the fingerprint of a guessed password.
@@ -31,17 +32,12 @@ internal static class AuditValues
         ["GET", "HEAD", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"];
 
     /// <summary>
-    /// The user name as it may be logged: itself when it follows the user name rules (ASCII allow-list, at most
-    /// 64 characters), otherwise <c>&lt;invalid:xxxxxxxx&gt;</c>, a keyed fingerprint of the value.
+    /// The user name of an existing account as it may be logged: itself when it follows the user name rules (ASCII
+    /// allow-list, at most 64 characters) and does not look like an API key, otherwise <c>&lt;invalid:xxxxxxxx&gt;</c>,
+    /// a keyed fingerprint of the value.
     /// </summary>
-    /// <param name="userName">The user name as sent.</param>
+    /// <param name="userName">A user name read from the security database.</param>
     /// <returns>A value without control characters, spaces or anything outside the allow-list.</returns>
-    /// <remarks>
-    /// An invalid user name is never logged: it may be a password typed in the user name field, and it may
-    /// contain line breaks that would forge log lines. The fingerprint (the first 4 bytes of an HMAC-SHA256
-    /// under a key drawn at process start) still lets an operator tell repeated attempts with the same value
-    /// apart from different ones.
-    /// </remarks>
     public static string UserName(string? userName)
     {
         if (string.IsNullOrEmpty(userName))
@@ -49,13 +45,34 @@ internal static class AuditValues
             return None;
         }
 
-        if (UserNames.IsValid(userName))
+        // An API key token is made of allowed characters: a name containing its prefix is never logged as is.
+        if (UserNames.IsValid(userName) && !userName.Contains(ApiKeyToken.Prefix, StringComparison.OrdinalIgnoreCase))
         {
             return userName;
         }
 
-        var mac = HMACSHA256.HashData(FingerprintKey, Encoding.UTF8.GetBytes(userName));
-        return InvalidUserNamePrefix + Convert.ToHexStringLower(mac, 0, 4) + ">";
+        return InvalidUserNamePrefix + Fingerprint(userName) + ">";
+    }
+
+    /// <summary>
+    /// A user name sent by a client that matches no account: always <c>&lt;unknown:xxxxxxxx&gt;</c>, a keyed
+    /// fingerprint, never the value.
+    /// </summary>
+    /// <param name="userName">The user name as sent.</param>
+    /// <returns>The fingerprint, or <see cref="None"/> when there is no user name.</returns>
+    /// <remarks>
+    /// A value that matches no account may be a password or an API key typed in the user name field (both can be
+    /// made of allowed characters), or carry line breaks that would forge log lines. The fingerprint (the first
+    /// 4 bytes of an HMAC-SHA256 under a key drawn at process start) still lets an operator see the same value
+    /// being retried.
+    /// </remarks>
+    public static string UnknownUserName(string? userName)
+        => string.IsNullOrEmpty(userName) ? None : UnknownUserNamePrefix + Fingerprint(userName) + ">";
+
+    private static string Fingerprint(string value)
+    {
+        var mac = HMACSHA256.HashData(FingerprintKey, Encoding.UTF8.GetBytes(value));
+        return Convert.ToHexStringLower(mac, 0, 4);
     }
 
     /// <summary>The client address after trusted forwarded-header processing, or <see cref="None"/>.</summary>
