@@ -3,6 +3,8 @@ using ElPaqueto.Core;
 using ElPaqueto.Security.Data;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -26,6 +28,77 @@ public sealed class AuthDbContextTests : IDisposable
         var uniqueIndexes = await QueryNamesAsync(
             "SELECT name FROM sqlite_master WHERE type = 'index' AND sql LIKE 'CREATE UNIQUE INDEX%'");
         Assert.Contains("IX_Users_NormalizedUserName", uniqueIndexes);
+        Assert.Contains("ApiKeys", tables);
+        Assert.Contains("IX_ApiKeys_KeyId", uniqueIndexes);
+    }
+
+    [Fact]
+    public async Task Migrate_FromTheInitialSchemaWithUsers_AddsApiKeysAndKeepsTheUsers()
+    {
+        await using (var initial = _database.CreateContext())
+        {
+            await initial.GetService<IMigrator>().MigrateAsync("20261112031723_InitialAuthSchema");
+            Assert.DoesNotContain("ApiKeys", await QueryNamesAsync("SELECT name FROM sqlite_master WHERE type = 'table'"));
+
+            initial.Users.Add(AuthDatabaseFixture.NewUser("alice"));
+            initial.Users.Add(AuthDatabaseFixture.NewUser("bob"));
+            await initial.SaveChangesAsync();
+        }
+
+        await using var upgraded = _database.CreateContext();
+        Assert.Equal(["20261112033957_AddApiKeys"], await upgraded.Database.GetPendingMigrationsAsync());
+        await upgraded.Database.MigrateAsync();
+
+        Assert.Equal(2, await upgraded.Users.CountAsync());
+        var alice = await upgraded.Users.SingleAsync(u => u.UserName == "alice");
+        upgraded.ApiKeys.Add(NewApiKey(alice.Id));
+        await upgraded.SaveChangesAsync();
+        Assert.Equal(1, await upgraded.ApiKeys.CountAsync());
+    }
+
+    [Theory]
+    [InlineData(8)]
+    [InlineData(-1)]
+    public async Task UndefinedApiKeyPermissionBits_AreRejectedByTheDatabase(int permissions)
+    {
+        await using var context = await _database.CreateMigratedContextAsync();
+        var user = AuthDatabaseFixture.NewUser("alice");
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+
+        var key = NewApiKey(user.Id);
+        key.Permissions = (Permission)permissions;
+        context.ApiKeys.Add(key);
+
+        await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
+    }
+
+    [Fact]
+    public async Task ApiKeys_WithAWrongHashOrKeyIdLength_OrADuplicateKeyId_OrNoOwner_AreRejectedByTheDatabase()
+    {
+        await using (var seed = await _database.CreateMigratedContextAsync())
+        {
+            var user = AuthDatabaseFixture.NewUser("alice");
+            seed.Users.Add(user);
+            seed.ApiKeys.Add(NewApiKey(user.Id, "AAAAAAAAAAAA"));
+            await seed.SaveChangesAsync();
+        }
+
+        var userId = await ScalarTextAsync("SELECT Id FROM Users");
+
+        async Task AssertRejectedAsync(Action<ApiKey> change)
+        {
+            await using var context = _database.CreateContext();
+            var key = NewApiKey(Guid.Parse(userId));
+            change(key);
+            context.ApiKeys.Add(key);
+            await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
+        }
+
+        await AssertRejectedAsync(k => k.SecretHash = new byte[31]);
+        await AssertRejectedAsync(k => k.KeyId = "SHORT");
+        await AssertRejectedAsync(k => k.KeyId = "AAAAAAAAAAAA");
+        await AssertRejectedAsync(k => k.OwnerUserId = Guid.NewGuid());
     }
 
     [Fact]
@@ -220,6 +293,26 @@ public sealed class AuthDbContextTests : IDisposable
         }
 
         return names;
+    }
+
+    private static ApiKey NewApiKey(Guid ownerUserId, string keyId = "BBBBBBBBBBBB") => new()
+    {
+        Id = Guid.NewGuid(),
+        KeyId = keyId,
+        SecretHash = new byte[ApiKey.SecretHashLength],
+        OwnerUserId = ownerUserId,
+        Name = "ci-main",
+        Permissions = Permission.Read,
+        CreatedAt = DateTime.UtcNow,
+    };
+
+    private async Task<string> ScalarTextAsync(string sql)
+    {
+        await using var connection = new SqliteConnection($"Data Source={_database.DatabasePath}");
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        return Convert.ToString(await command.ExecuteScalarAsync(), CultureInfo.InvariantCulture)!;
     }
 
     private async Task<long> ScalarAsync(string sql)
