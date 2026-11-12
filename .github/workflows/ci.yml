@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+    branches: [develop, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+
+jobs:
+  build-test:
+    name: build-test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test --configuration Release --no-build --logger trx --results-directory TestResults
+
+      - name: Summarize test results
+        if: always()
+        shell: bash
+        run: |
+          total=0; executed=0; passed=0; failed=0; skipped=0
+          shopt -s nullglob
+          for f in TestResults/*.trx; do
+            counters=$(grep -o '<Counters [^>]*>' "$f" | head -n 1)
+            n() { printf '%s' "$counters" | sed -n "s/.* $1=\"\([0-9]*\)\".*/\1/p"; }
+            total=$((total + $(n total)))
+            executed=$((executed + $(n executed)))
+            passed=$((passed + $(n passed)))
+            failed=$((failed + $(n failed)))
+            skipped=$((skipped + $(n notExecuted)))
+          done
+          {
+            echo "### Test results (${{ matrix.os }})"
+            echo
+            echo "| Total | Executed | Passed | Failed | Skipped |"
+            echo "|---|---|---|---|---|"
+            echo "| $total | $executed | $passed | $failed | $skipped |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "executed=$executed" >> "$GITHUB_ENV"
+
+      - name: Fail when no test was executed
+        shell: bash
+        run: |
+          if [ "${executed:-0}" -eq 0 ]; then
+            echo "No test was executed: test discovery is broken." >&2
+            exit 1
+          fi
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-results-${{ matrix.os }}
+          path: TestResults/
+          retention-days: 7
+          if-no-files-found: warn
