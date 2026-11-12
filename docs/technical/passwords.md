@@ -17,7 +17,7 @@ Passwords are normalized to Unicode **NFKC** before hashing and verifying (NIST 
 
 `Verify(user, password)` returns `Failed`, `Success` or `SuccessRehashNeeded`.
 
-- `SuccessRehashNeeded` means the password is correct but its hash uses a lower iteration count or an older format. The caller hashes the password again and stores the new hash. The authentication handler does this after a successful login.
+- `SuccessRehashNeeded` means the password is correct but its hash uses a lower iteration count or an older format. The caller hashes the password again and stores the new hash. (The authentication handler that will do this after a successful login is not part of this change.)
 - **Unknown, disabled or hash-less user, or over-length password:** the submitted password is verified against a dummy hash created once at startup with the current parameters, then `Failed` is returned. The amount of work equals the known-user path, so response times do not reveal which user names exist. Tests assert this by counting calls to the hasher, not by timing.
 
 ## Policy
@@ -33,7 +33,7 @@ Every NuGet request carries Basic credentials, and a restore can issue hundreds 
 | Windows 11 workstation | about 86 ms |
 | Linux container (`mcr.microsoft.com/dotnet/sdk:10.0`, 8 CPUs) | about 129 ms |
 
-The authentication handler limits the amount of hashing per request (verification cache) and the throttling limits the rate of failed attempts. The cost is configurable down to 100000 iterations for small hosts.
+Limiting the amount of hashing per request (a verification cache) and the rate of failed attempts (throttling) is the job of later changes. Until they land, the cost is the only lever: it is configurable down to 100000 iterations for small hosts.
 
 ## What is not logged
 
