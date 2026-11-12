@@ -53,7 +53,7 @@ Please do not report security vulnerabilities in public issues. See the [securit
 
 ## 📄 License
 
-This project is licensed under the [MIT License](LICENSE).
+This project is licensed under the [MIT License](LICENSE). Third-party components and their licences are listed in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
 ## 📞 Contact
 
