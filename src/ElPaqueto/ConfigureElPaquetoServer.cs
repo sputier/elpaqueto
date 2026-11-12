@@ -14,11 +14,11 @@ public class ConfigureElPaquetoServer
     , IConfigureOptions<IISServerOptions>
 {
     public const string CorsPolicy = "AllowAll";
-    private readonly ElPaquetoOptions _baGetterOptions;
+    private readonly ElPaquetoOptions _elPaquetoOptions;
 
-    public ConfigureElPaquetoServer(IOptions<ElPaquetoOptions> baGetterOptions)
+    public ConfigureElPaquetoServer(IOptions<ElPaquetoOptions> elPaquetoOptions)
     {
-        _baGetterOptions = baGetterOptions.Value;
+        _elPaquetoOptions = elPaquetoOptions.Value;
     }
 
 
@@ -35,7 +35,7 @@ public class ConfigureElPaquetoServer
     public void Configure(FormOptions options)
     {
         // Allow packages up to ~8GiB in size
-        options.MultipartBodyLengthLimit = (long) _baGetterOptions.MaxPackageSizeGiB * int.MaxValue / 2;
+        options.MultipartBodyLengthLimit = (long) _elPaquetoOptions.MaxPackageSizeGiB * int.MaxValue / 2;
     }
 
     public void Configure(ForwardedHeadersOptions options)
@@ -49,6 +49,6 @@ public class ConfigureElPaquetoServer
 
     public void Configure(IISServerOptions options)
     {
-        options.MaxRequestBodySize = (long)_baGetterOptions.MaxPackageSizeGiB * int.MaxValue / 2;
+        options.MaxRequestBodySize = (long)_elPaquetoOptions.MaxPackageSizeGiB * int.MaxValue / 2;
     }
 }

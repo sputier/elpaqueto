@@ -272,6 +272,9 @@ __pycache__/
 **/elpaqueto.db
 **/elpaqueto.db-shm
 **/elpaqueto.db-wal
+**/bagetter.db
+**/bagetter.db-shm
+**/bagetter.db-wal
 
 .vscode/
 
