@@ -1,0 +1,3 @@
+# Exceptions to check_vulnerable_packages.py.
+# Format: <advisory id, e.g. GHSA-xxxx-xxxx-xxxx> | <expiry YYYY-MM-DD> | <reason (required)>
+# An expired entry fails the check: re-review it, then extend or remove it.

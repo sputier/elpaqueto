@@ -19,6 +19,50 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: "true"
 
 jobs:
+  hygiene:
+    name: hygiene
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # Full history: the commit and secret checks inspect the pushed range.
+          fetch-depth: 0
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore ElPaqueto.sln
+
+      - name: Select the commit range
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            range="$PR_BASE..$PR_HEAD"
+          elif [ "$EVENT_NAME" = "push" ] && [ -n "$PUSH_BEFORE" ] && [ "$PUSH_BEFORE" != "0000000000000000000000000000000000000000" ]; then
+            range="$PUSH_BEFORE..$GITHUB_SHA"
+          else
+            range="$GITHUB_SHA~1..$GITHUB_SHA"
+          fi
+          echo "HYGIENE_RANGE=$range" >> "$GITHUB_ENV"
+
+      - name: Run hygiene checks
+        env:
+          # Optional maintainer-supplied patterns, kept out of the repository.
+          HYGIENE_EXTRA_PATTERNS: ${{ vars.HYGIENE_EXTRA_PATTERNS }}
+        run: python3 eng/hygiene/run_all.py --range "$HYGIENE_RANGE"
+
   build-test:
     name: build-test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -47,6 +91,10 @@ jobs:
 
       - name: Build
         run: dotnet build --configuration Release --no-restore
+
+      - name: Check formatting (strict projects)
+        shell: bash
+        run: bash eng/format-strict.sh
 
       - name: Test
         run: dotnet test --configuration Release --no-build --logger trx --results-directory TestResults

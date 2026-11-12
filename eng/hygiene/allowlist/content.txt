@@ -1,0 +1,5 @@
+# Exceptions to check_content.py.
+# Format: <path glob> | <rule> | <reason (required)>
+# Rules: private-ip, internal-host, extra-pattern.
+
+src/ElPaqueto.Web/wwwroot/lib/jquery/AUTHORS.txt | internal-host | Vendored third-party author list, kept verbatim from the upstream library.
