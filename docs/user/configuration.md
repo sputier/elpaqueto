@@ -152,4 +152,82 @@ Health probes from other machines (an orchestrator, a load balancer, an uptime m
 
 `false` disables the check and logs a warning at startup. Use it only on an isolated test network.
 
+### `Security:Throttling`
+
+Failed sign-in attempts are counted in memory and, beyond a limit, refused for a while before any password is checked. See [sign-in throttling](../technical/throttling.md) for the design and its threat model.
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| `Security:Throttling:ClientFailureLimit` | `30` | Failures, for any user name, after which a client address is throttled. Between 1 and 1000. IPv6 addresses are counted by /64 network. |
+| `Security:Throttling:ClientWindow` | `00:10:00` | The window in which client failures are counted. Between `00:00:01` and `1.00:00:00`. |
+| `Security:Throttling:NetworkFailureLimit` | `300` | Failures, for any user name, from all the /64 networks of one IPv6 /48, after which that /48 is throttled. Counted in `ClientWindow`. IPv4 clients are not grouped. Between 1 and 10000. |
+| `Security:Throttling:PairFailureLimit` | `5` | Failures for one user name from one client after which that user name is throttled for that client. Between 1 and 1000. |
+| `Security:Throttling:PairWindow` | `00:15:00` | The window in which pair failures are counted. Between `00:00:01` and `1.00:00:00`. |
+| `Security:Throttling:AccountFailureLimit` | `50` | Failures for one user name, from all clients, after which that user name is throttled for the clients that failed for it in the last `PairWindow`. A client without such a failure, such as the account's owner, is not affected. Between 1 and 1000. |
+| `Security:Throttling:AccountWindow` | `01:00:00` | The window in which account failures are counted. Between `00:00:01` and `1.00:00:00`. |
+| `Security:Throttling:InitialThrottleDuration` | `00:01:00` | How long a counter refuses after its first trip. Each further trip doubles it. Between `00:00:01` and `1.00:00:00`, and not more than `MaximumThrottleDuration`. |
+| `Security:Throttling:MaximumThrottleDuration` | `00:15:00` | The longest throttle. Between `00:00:01` and `1.00:00:00`. There is no permanent lockout. |
+| `Security:Throttling:MaxTrackedEntries` | `50000` | Counters kept for each kind (client, pair, user name), which bounds memory whatever an attacker sends. Between 100 and 10000000. |
+| `Security:Throttling:MaxConcurrentVerifications` | `0` | Password hashes that may run at once; `0` means the processor count. Between 0 and 1024. |
+| `Security:Throttling:VerificationQueueLimit` | `100` | Verifications that may wait for a free slot, and attempts that may wait for another attempt of the same user name and client. Beyond it the answer is `503`. Between 0 and 10000. |
+| `Security:Throttling:BusyRetryAfter` | `00:00:05` | The `Retry-After` sent with that `503`. Between `00:00:01` and `00:10:00`. |
+
+Unknown, disabled and existing user names are counted the same way, and a successful sign-in resets only the counter of its own user name and client. The client address is the one left after trusted forwarded headers (`Security:ReverseProxy`): a client cannot change it with its own `X-Forwarded-For`.
+
+Known limitations:
+
+- Counters are per process and are lost when the server restarts.
+- Clients behind one NAT, or behind a proxy that is not listed in `Security:ReverseProxy`, share one address and therefore one client budget. Add proxy-level limits if you need more.
+
+#### Troubleshooting `429` and `503`
+
+- **`429 Too Many Requests`** means too many failed sign-ins from your address (or your IPv6 /48 network), for your user name from your address, or against your user name with a recent failure from your address. Nothing about your credentials is checked while it lasts, even correct ones. Wait for the number of seconds in `Retry-After` (at most `MaximumThrottleDuration`), then fix the credentials before retrying: a stale password in a NuGet configuration or a credential provider keeps failing on its own and keeps the throttle active. The server log shows one warning per trip, with the address and the counter kind.
+- **`503 Service Unavailable`** with `Retry-After` during sign-in means the server is already running as many password checks as it allows. It is transient; if it persists under normal load, raise `MaxConcurrentVerifications` or `VerificationQueueLimit`.
+
+How NuGet clients display a `429` or `503`, and whether they retry, has not been verified yet.
+
+### `Security:Cors`
+
+Which other web sites may call the server from a browser script. NuGet clients and the server's own web UI never need it.
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| `Security:Cors:AllowedOrigins` | empty | List of origins, such as `https://ui.example.test`: scheme, host and optional port, nothing else. Empty: no cross-origin access. |
+| `Security:Cors:AllowedMethods` | empty, meaning `GET`, `HEAD` | List of methods a script may use. Only `GET`, `HEAD`, `PUT`, `POST` and `DELETE` are accepted. A configured list replaces the default. |
+| `Security:Cors:AllowedHeaders` | empty, meaning `Authorization` | List of request headers a script may send, such as `X-NuGet-ApiKey`. A configured list replaces the default. |
+
+```bash
+export Security__Cors__AllowedOrigins__0="https://ui.example.test"
+```
+
+Origins are compared exactly: `https://ui.example.test` does not allow `http://ui.example.test`, `https://ui.example.test:8443` or a subdomain. The wildcard `*`, the `null` origin, a path (`https://ui.example.test/app`) and user information are rejected at startup. A trailing `/`, upper case and the default port are accepted and normalized.
+
+Cross-origin requests never run in credentials mode: the server never sends `Access-Control-Allow-Credentials`, so the Basic credentials a browser remembered for the web UI are never usable by another site's script. A script authenticates by setting the `Authorization` header itself. Preflight requests are answered before authentication is required, with approval only for an allowed origin, method and header list.
+
+### `Security:Hsts`
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| `Security:Hsts:Enabled` | `false` | Send `Strict-Transport-Security` on responses to HTTPS requests. |
+| `Security:Hsts:MaxAgeSeconds` | `31536000` (one year) | How long browsers remember to use HTTPS only. Between `0` and `63072000` (two years); `0` makes browsers forget it. |
+| `Security:Hsts:IncludeSubDomains` | `false` | Extend the policy to every subdomain of the server's host name. Enable it only if every subdomain serves HTTPS. |
+
+The header is sent only when the request is HTTPS after trusted forwarded headers (a trusted proxy reporting `X-Forwarded-Proto: https`, or `Security:PublicBaseUrl` set), and never for `localhost` or a loopback address. Leave it off when your reverse proxy already sends `Strict-Transport-Security` (see [Running behind a reverse proxy](reverse-proxy.md)).
+
+### Response headers and the web UI
+
+These are not settings, but they affect what a reverse proxy or a browser sees:
+
+- every response carries `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` and `X-Frame-Options: DENY`: the web UI cannot be embedded in another site;
+- HTML pages carry a `Content-Security-Policy` that allows scripts and styles from the server only (plus the inline scripts the UI uses), package icons from any `https` host and the UI's icon font from Microsoft's CDN; other responses carry a policy that forbids everything;
+- pages and error responses carry `Cache-Control: no-store`; package downloads and protocol responses keep their caching.
+
+The web UI needs `Read`. The browser shows its own credential prompt; there is no login page and no logout: close the browser to forget the credentials.
+
+Package READMEs and release notes are rendered from Markdown with HTML disabled: HTML they contain is shown as text, and links that do not use `http`, `https`, `mailto` or a relative URL are removed.
+
+The shipped `appsettings.json` sets `Statistics:ListConfiguredServices` to `false`, so the statistics page does not list the database, storage and search services. Set it to `true` to show them to every user with `Read`.
+
+See [web security](../technical/web-security.md) for the details and the limits of the content security policy.
+
 More settings are added to this page as the features that need them are released.

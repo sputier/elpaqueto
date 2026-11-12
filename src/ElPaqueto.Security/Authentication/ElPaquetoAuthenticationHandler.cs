@@ -3,6 +3,7 @@ using System.Text.Encodings.Web;
 using ElPaqueto.Security.ApiKeys;
 using ElPaqueto.Security.Data;
 using ElPaqueto.Security.Passwords;
+using ElPaqueto.Security.Throttling;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
@@ -38,9 +39,12 @@ internal sealed partial class ElPaquetoAuthenticationHandler(
     AuthDbContext database,
     IPasswordService passwords,
     IApiKeyService apiKeys,
-    VerificationCache verificationCache)
+    VerificationCache verificationCache,
+    ILoginThrottle throttle)
     : AuthenticationHandler<AuthenticationSchemeOptions>(options, loggerFactory, encoder)
 {
+    private const string AttemptRefused = "Attempt refused by throttling.";
+
     /// <summary>The header NuGet clients send the API key in, on push and delete.</summary>
     internal const string ApiKeyHeaderName = RequestCredentialSelector.ApiKeyHeaderName;
 
@@ -80,19 +84,50 @@ internal sealed partial class ElPaquetoAuthenticationHandler(
 
     protected override Task HandleChallengeAsync(AuthenticationProperties properties)
     {
+        // A throttled attempt is told when to retry, and is not asked for credentials again (ADR 0002, decision 11).
+        if (Context.Features.Get<RefusedAttemptFeature>() is { } refused)
+        {
+            Response.StatusCode = refused.Rejection.StatusCode;
+            Response.Headers.RetryAfter = refused.Rejection.RetryAfterHeaderValue;
+            return Task.CompletedTask;
+        }
+
         // A challenge, never a redirect: NuGet clients and scripts must get a plain 401.
         Response.StatusCode = StatusCodes.Status401Unauthorized;
         Response.Headers.WWWAuthenticate = "Basic realm=\"ElPaqueto\"";
         return Task.CompletedTask;
     }
 
-    // Throttling of failed attempts (issue #18) belongs here and in AuthenticatePasswordAsync: consulted before
-    // ValidateAsync, keyed by client address and key id, and told about each failure returned below.
+    private AuthenticateResult Refuse(ThrottleRejection rejection)
+    {
+        Context.Features.Set(new RefusedAttemptFeature(rejection));
+        return AuthenticateResult.Fail(AttemptRefused);
+    }
+
+    // A key has no user name to count against: its attempts are counted against the client (and its IPv6 network)
+    // only, whether the key came from the header or from a Basic password. The throttle is consulted before the key
+    // is even parsed, so a throttled client gets 429 without any validation or database access. Every failed
+    // validation counts; a success resets nothing, since a key attempt has no pair counter to reset.
     private async Task<AuthenticateResult> AuthenticateApiKeyAsync(string? token, string source)
     {
+        var client = Context.Connection.RemoteIpAddress;
+        if (throttle.Check(client, null) is { } throttled)
+        {
+            return Refuse(throttled);
+        }
+
+        // The slot reports the outcome and keeps a burst of parallel guesses from one client within its budget.
+        using var slot = await throttle.EnterVerificationAsync(client, null, Context.RequestAborted);
+        if (slot.Rejection is { } refused)
+        {
+            return Refuse(refused);
+        }
+
         var result = await apiKeys.ValidateAsync(token, Context.RequestAborted);
         if (!result.Succeeded)
         {
+            slot.Failed();
+
             // The reason and the public key id only: never the token. A value without the token format is logged at
             // Debug only, so that anonymous garbage cannot fill the logs; a well-formed key that is refused is worth
             // an Information line.
@@ -108,6 +143,7 @@ internal sealed partial class ElPaquetoAuthenticationHandler(
             return AuthenticateResult.Fail(InvalidCredentials);
         }
 
+        slot.Succeeded();
         var claims = new List<Claim>
         {
             new(ClaimTypes.NameIdentifier, result.OwnerUserId.ToString("D")),
@@ -124,6 +160,14 @@ internal sealed partial class ElPaquetoAuthenticationHandler(
 
     private async Task<AuthenticateResult> AuthenticatePasswordAsync(string userName, string password)
     {
+        var client = Context.Connection.RemoteIpAddress;
+
+        // Before any lookup or verification: a throttled attempt costs nothing and learns nothing.
+        if (throttle.Check(client, userName) is { } throttled)
+        {
+            return Refuse(throttled);
+        }
+
         User? user = null;
         if (UserNames.IsValid(userName))
         {
@@ -134,6 +178,20 @@ internal sealed partial class ElPaquetoAuthenticationHandler(
         // Unknown and disabled users are verified against a dummy hash inside the password service.
         if (user is { IsActive: true } && verificationCache.Contains(user, password))
         {
+            throttle.RecordSuccess(client, userName);
+            return SucceedWithPassword(user);
+        }
+
+        using var slot = await throttle.EnterVerificationAsync(client, userName, Context.RequestAborted);
+        if (slot.Rejection is { } refused)
+        {
+            return Refuse(refused);
+        }
+
+        // While this attempt waited, another one for the same user name and client may have succeeded.
+        if (user is { IsActive: true } && verificationCache.Contains(user, password))
+        {
+            slot.Succeeded();
             return SucceedWithPassword(user);
         }
 
@@ -141,14 +199,17 @@ internal sealed partial class ElPaquetoAuthenticationHandler(
         {
             case PasswordVerification.Success:
                 verificationCache.Remember(user!, password);
+                slot.Succeeded();
                 return SucceedWithPassword(user!);
 
             case PasswordVerification.SuccessRehashNeeded:
                 await UpgradeHashAsync(user!, password);
                 verificationCache.Remember(user!, password);
+                slot.Succeeded();
                 return SucceedWithPassword(user!);
 
             default:
+                slot.Failed();
                 return AuthenticateResult.Fail(InvalidCredentials);
         }
     }
@@ -207,4 +268,6 @@ internal sealed partial class ElPaquetoAuthenticationHandler(
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "API key authentication failed: {Reason} (no key id, sent as {CredentialSource}).")]
     private static partial void LogMalformedApiKeyRefused(ILogger logger, ApiKeyValidationFailure reason, string credentialSource);
+
+    private sealed record RefusedAttemptFeature(ThrottleRejection Rejection);
 }
