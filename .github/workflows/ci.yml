@@ -6,6 +6,8 @@ on:
   pull_request:
     branches: [develop, main]
   workflow_dispatch:
+  # Called by the release workflow, which validates the tagged commit before publishing.
+  workflow_call:
 
 permissions:
   contents: read
@@ -80,6 +82,10 @@ jobs:
       - name: Test upstream port script
         shell: bash
         run: bash eng/tests/port-upstream.test.sh
+
+      - name: Test release scripts
+        shell: bash
+        run: bash eng/tests/release.test.sh
 
       - name: Set up .NET
         uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0

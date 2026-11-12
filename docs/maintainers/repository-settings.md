@@ -18,7 +18,9 @@ changes a setting.
 | `.github/dependabot.yml` | Weekly version updates for NuGet, GitHub Actions, Docker and the npm documentation site, grouped per ecosystem, targeting `develop`. |
 | `.github/workflows/ci.yml` | Build and test on Linux and Windows (`build-test`). |
 | `.github/workflows/codeql.yml` | CodeQL analysis of C# (manual build) and of the workflows themselves, with the `security-extended` suite, on pull requests, pushes to `develop`/`main` and weekly. |
-| `.github/workflows/docker.yml` | Builds the container image on amd64 and arm64, runs the container smoke test, cross-builds arm64 from amd64, scans the image with Trivy (SARIF to code scanning on pushes only) and validates the Compose and reverse-proxy samples. Pushes no image. |
+| `.github/workflows/docker.yml` | Builds the container image on amd64 and arm64, runs the container smoke test, cross-builds arm64 from amd64, scans the image with Trivy and validates the Compose and reverse-proxy samples. Read-only, pushes no image; also called by the release workflow. |
+| `.github/workflows/docker-scan-report.yml` | On pushes to `develop` and `main`, uploads the Trivy scan of the image to code scanning (the only job with `security-events: write` outside CodeQL). |
+| `.github/workflows/release.yml` | Release on a `v*.*.*` tag or by hand (dry run by default): validation through `ci.yml` and `docker.yml`, rehearsal, then, after approval on the `release` environment, the image on GHCR, its attestations and the GitHub Release. See [releasing.md](releasing.md). |
 | `.github/workflows/dependency-review.yml` | Fails a pull request that adds a dependency with a known vulnerability of high or critical severity. |
 
 Every action used by a workflow is pinned to a full commit SHA, with the
@@ -102,6 +104,42 @@ Expected: the ruleset is listed with `enforcement: active`, its
 gh api repos/{owner}/{repo}/rulesets --jq '.[] | select(.target == "tag")'
 ```
 
+## Releases
+
+The release workflow and its procedure are described in
+[releasing.md](releasing.md).
+
+- [ ] An environment `release` exists, with required reviewers and a
+  deployment policy limited to the tag pattern `v*`.
+
+  ```sh
+  gh api repos/{owner}/{repo}/environments/release     --jq '{reviewers: [.protection_rules[] | select(.type == "required_reviewers") | .reviewers[].reviewer.login], policy: .deployment_branch_policy}'
+  gh api repos/{owner}/{repo}/environments/release/deployment-branch-policies     --jq '.branch_policies[] | {name, type}'
+  ```
+
+  Expected: at least one reviewer, `"custom_branch_policies": true`, and a
+  single policy `{"name": "v*", "type": "tag"}`.
+
+- [ ] The repository variable `RELEASE_REPOSITORY` names this repository.
+  Forks do not inherit it, so they cannot publish.
+
+  ```sh
+  gh variable get RELEASE_REPOSITORY
+  ```
+
+  Expected: `<owner>/<repository>`.
+
+- [ ] After the first release, the GHCR package `elpaqueto` is public, linked
+  to the repository, and grants the repository's workflows the write role
+  (*Package settings → Manage Actions access*).
+
+  ```sh
+  gh api /users/{owner}/packages/container/elpaqueto --jq '{visibility, repository: .repository.full_name}'
+  ```
+
+  Expected: `"visibility": "public"` and the repository's full name. For an
+  organization, use `/orgs/{owner}/packages/container/elpaqueto`.
+
 ## Code owners
 
 - [ ] `.github/CODEOWNERS` assigns `.github/`, `src/ElPaqueto.Security/`,
@@ -157,3 +195,4 @@ Expected: `{"errors":[]}`.
 | 2026-11-12 | Outside contributor approval | `first_time_contributors`: not yet at the expected value |
 | 2026-11-12 | Branch ruleset | exists for `main` only (pull request with one approval, no force push, no deletion); `develop` and required status checks not configured yet |
 | 2026-11-12 | Tag ruleset, `CODEOWNERS` | not configured yet |
+| 2026-11-12 | `release` environment, `RELEASE_REPOSITORY`, GHCR package | not configured yet (release workflow added) |

@@ -1,0 +1,326 @@
+name: Release
+
+# Publishes a release: the multi-platform container image on the GitHub Container Registry, its
+# attestations and the GitHub Release. Nothing else is published (no NuGet package, no other registry).
+#
+# Started by pushing a version tag, or manually. A manual run is a dry run unless "dry-run" is
+# unchecked, and a real manual release must be started on the tag ("Use workflow from"). A dry run
+# runs every check and rehearses the push against a registry local to the runner; it publishes nothing
+# and never reaches the "release" environment. Procedure: docs/maintainers/releasing.md.
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: Rehearse without publishing anything
+        type: boolean
+        default: true
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      dry-run: ${{ steps.resolve.outputs.dry_run }}
+      tag: ${{ steps.resolve.outputs.tag }}
+      version: ${{ steps.resolve.outputs.version }}
+      prerelease: ${{ steps.resolve.outputs.prerelease }}
+      image: ${{ steps.resolve.outputs.image }}
+      tags: ${{ steps.resolve.outputs.tags }}
+      notes-section: ${{ steps.resolve.outputs.notes_section }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # Full history with the tags and main: the tag must be reachable from main.
+          fetch-depth: 0
+
+      - name: Test the release scripts
+        run: bash eng/tests/release.test.sh
+
+      - name: Resolve the release
+        id: resolve
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          DRY_RUN: ${{ inputs.dry-run }}
+          RUN_NUMBER: ${{ github.run_number }}
+          REPOSITORY_OWNER: ${{ github.repository_owner }}
+          SHA: ${{ github.sha }}
+          MAIN_REF: origin/main
+        run: bash eng/release/resolve-release.sh
+
+      - name: Check that this repository publishes releases
+        # A fork, or a repository where the maintainer has not opted in, never publishes.
+        if: steps.resolve.outputs.dry_run == 'false'
+        env:
+          RELEASE_REPOSITORY: ${{ vars.RELEASE_REPOSITORY }}
+        run: |
+          if [ "$RELEASE_REPOSITORY" != "$GITHUB_REPOSITORY" ]; then
+            echo "::error::The repository variable RELEASE_REPOSITORY must be '$GITHUB_REPOSITORY' to publish a release (see docs/maintainers/releasing.md)."
+            exit 1
+          fi
+
+      - name: Summarize
+        env:
+          DRY_RUN: ${{ steps.resolve.outputs.dry_run }}
+          VERSION: ${{ steps.resolve.outputs.version }}
+          IMAGE: ${{ steps.resolve.outputs.image }}
+          TAGS: ${{ steps.resolve.outputs.tags }}
+          NOTES_SECTION: ${{ steps.resolve.outputs.notes_section }}
+        run: |
+          {
+            echo "### Release $VERSION"
+            echo
+            if [ "$DRY_RUN" = true ]; then echo "Dry run: nothing is published."; else echo "Real release: publishes after approval."; fi
+            echo
+            echo "- Image: \`$IMAGE\`"
+            echo "- Tags: \`$TAGS\`"
+            echo "- Changelog section: \`$NOTES_SECTION\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # The full validation of the commit, by the same workflows as pull requests and pushes.
+  ci:
+    name: ci
+    needs: verify
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci.yml
+
+  docker:
+    name: docker
+    needs: verify
+    permissions:
+      contents: read
+    uses: ./.github/workflows/docker.yml
+
+  rehearse:
+    name: rehearse
+    # Builds the release image with the release version, validates it, then pushes it with its
+    # attestations to a registry on the runner, with no credential: the exact publish path, minus GHCR.
+    needs: [verify, ci, docker]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.verify.outputs.version }}
+      REVISION: ${{ github.sha }}
+      SOURCE_URL: ${{ github.server_url }}/${{ github.repository }}
+      TAGS: ${{ needs.verify.outputs.tags }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install QEMU from the Ubuntu archive
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q qemu-user-static
+          grep -E '^flags: .*F' /proc/sys/fs/binfmt_misc/qemu-aarch64
+
+      - name: Create the builder
+        run: echo "BUILDER=$(bash eng/release/create-builder.sh)" >> "$GITHUB_ENV"
+
+      - name: Build the linux/amd64 image
+        run: bash eng/release/build-image.sh load elpaqueto:release
+
+      - name: Validate the image (version, smoke test, scan)
+        env:
+          SMOKE_LOG_DIR: ${{ runner.temp }}/smoke-logs
+        run: bash eng/release/validate-image.sh elpaqueto:release "$VERSION" "$REVISION" "$SOURCE_URL"
+
+      - name: Upload container logs
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: rehearse-container-logs
+          path: ${{ runner.temp }}/smoke-logs/
+          retention-days: 3
+          if-no-files-found: ignore
+
+      - name: Start a registry on the runner
+        run: |
+          docker run -d --name rehearsal-registry -p 127.0.0.1:5000:5000 \
+            registry:3@sha256:82f6ff4a7f982960c8aa51617fea3aabc485df6e55cce80d22deb1de36f1bc3c
+
+      - name: Push every platform with its attestations
+        id: push
+        env:
+          GHCR_IMAGE: ${{ needs.verify.outputs.image }}
+        run: |
+          image="localhost:5000/${GHCR_IMAGE#ghcr.io/}"
+          echo "IMAGE=$image" >> "$GITHUB_ENV"
+          IMAGE="$image" bash eng/release/build-image.sh push "$RUNNER_TEMP/metadata.json"
+
+      - name: Inspect the pushed image
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          bash eng/release/inspect-image.sh "$IMAGE" "$DIGEST" "$RUNNER_TEMP/image"
+          for tag in $TAGS; do
+            actual=$(docker buildx imagetools inspect "$IMAGE:$tag" --format '{{.Manifest.Digest}}')
+            if [ "$actual" != "$DIGEST" ]; then
+              echo "::error::tag $tag points to $actual instead of $DIGEST"
+              exit 1
+            fi
+            echo "ok: tag $tag"
+          done
+
+      - name: Write the release notes
+        env:
+          NOTES_SECTION: ${{ needs.verify.outputs.notes-section }}
+          GHCR_IMAGE: ${{ needs.verify.outputs.image }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          {
+            echo "### Release notes (rehearsal)"
+            echo
+            echo "The digest below is the rehearsal build's; the published build has its own."
+            echo
+            bash eng/release/release-notes.sh CHANGELOG.md "$NOTES_SECTION" "$GHCR_IMAGE" "$DIGEST"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  publish:
+    name: publish
+    needs: [verify, rehearse]
+    if: needs.verify.outputs.dry-run == 'false'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    # Required reviewers and a v* tag rule are configured on this environment (repository settings).
+    environment:
+      name: release
+      url: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ needs.verify.outputs.tag }}
+    permissions:
+      # Create the GitHub Release.
+      contents: write
+      # Push the image to the GitHub Container Registry.
+      packages: write
+      # Sign and store the attestations.
+      id-token: write
+      attestations: write
+    env:
+      TAG: ${{ needs.verify.outputs.tag }}
+      VERSION: ${{ needs.verify.outputs.version }}
+      PRERELEASE: ${{ needs.verify.outputs.prerelease }}
+      IMAGE: ${{ needs.verify.outputs.image }}
+      TAGS: ${{ needs.verify.outputs.tags }}
+      REVISION: ${{ github.sha }}
+      SOURCE_URL: ${{ github.server_url }}/${{ github.repository }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check the release inputs
+        run: |
+          # Defence in depth: the verify job already enforces these rules.
+          test "$GITHUB_REF_TYPE" = tag
+          test "$GITHUB_REF_NAME" = "$TAG"
+          test "$TAG" = "v$VERSION"
+
+      - name: Install QEMU from the Ubuntu archive
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q qemu-user-static
+          grep -E '^flags: .*F' /proc/sys/fs/binfmt_misc/qemu-aarch64
+
+      - name: Create the builder
+        run: echo "BUILDER=$(bash eng/release/create-builder.sh)" >> "$GITHUB_ENV"
+
+      # The image is built again on this runner: validate the build that is pushed, before the push.
+      - name: Build the linux/amd64 image
+        run: bash eng/release/build-image.sh load elpaqueto:release
+
+      - name: Validate the image (version, smoke test, scan)
+        env:
+          SMOKE_LOG_DIR: ${{ runner.temp }}/smoke-logs
+        run: bash eng/release/validate-image.sh elpaqueto:release "$VERSION" "$REVISION" "$SOURCE_URL"
+
+      - name: Upload container logs
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: publish-container-logs
+          path: ${{ runner.temp }}/smoke-logs/
+          retention-days: 3
+          if-no-files-found: ignore
+
+      - name: Log in to the GitHub Container Registry
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
+      - name: Push every platform with its attestations
+        id: push
+        run: bash eng/release/build-image.sh push "$RUNNER_TEMP/metadata.json"
+
+      - name: Inspect the pushed image
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          bash eng/release/inspect-image.sh "$IMAGE" "$DIGEST" "$RUNNER_TEMP/image"
+          {
+            echo "AMD64_DIGEST=$(awk '$1 == "linux/amd64" { print $2 }' "$RUNNER_TEMP/image/platforms.txt")"
+            echo "ARM64_DIGEST=$(awk '$1 == "linux/arm64" { print $2 }' "$RUNNER_TEMP/image/platforms.txt")"
+          } >> "$GITHUB_ENV"
+
+      - name: Attest the build provenance of the image
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+          create-storage-record: false
+
+      - name: Attest the SBOM of the linux/amd64 image
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ env.AMD64_DIGEST }}
+          sbom-path: ${{ runner.temp }}/image/sbom-linux-amd64.spdx.json
+          push-to-registry: true
+          create-storage-record: false
+
+      - name: Attest the SBOM of the linux/arm64 image
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ env.ARM64_DIGEST }}
+          sbom-path: ${{ runner.temp }}/image/sbom-linux-arm64.spdx.json
+          push-to-registry: true
+          create-storage-record: false
+
+      # The attestations are pushed to the registry with the login above.
+      - name: Log out of the GitHub Container Registry
+        if: always()
+        run: docker logout ghcr.io
+
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NOTES_SECTION: ${{ needs.verify.outputs.notes-section }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          notes=$(bash eng/release/release-notes.sh CHANGELOG.md "$NOTES_SECTION" "$IMAGE" "$DIGEST")
+          flags=()
+          if [ "$PRERELEASE" = true ]; then
+            flags+=(--prerelease --latest=false)
+          fi
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title "ElPaqueto $VERSION" --notes "$notes" --generate-notes "${flags[@]}"
