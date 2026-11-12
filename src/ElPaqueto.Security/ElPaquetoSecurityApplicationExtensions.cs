@@ -1,4 +1,5 @@
 using ElPaqueto.Core;
+using ElPaqueto.Security.Configuration;
 
 namespace ElPaqueto.Security;
 
@@ -13,12 +14,14 @@ public static class ElPaquetoSecurityApplicationExtensions
     /// <param name="app">The application to extend.</param>
     /// <returns>The same <paramref name="app"/> instance, to allow chaining.</returns>
     /// <remarks>
-    /// The module does not register anything yet. Authentication, authorization and API keys
+    /// Registers the validated <c>Security</c> options. Authentication, authorization and API keys
     /// are added by later changes behind this single entry point.
     /// </remarks>
     public static ElPaquetoApplication AddElPaquetoSecurity(this ElPaquetoApplication app)
     {
         ArgumentNullException.ThrowIfNull(app);
+
+        app.Services.AddElPaquetoOptions<ElPaquetoSecurityOptions>(ElPaquetoSecurityOptions.SectionName);
 
         return app;
     }
