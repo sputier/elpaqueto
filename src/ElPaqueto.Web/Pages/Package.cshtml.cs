@@ -24,9 +24,7 @@ public class PackageModel : PageModel
 
     static PackageModel()
     {
-        MarkdownPipeline = new MarkdownPipelineBuilder()
-            .UseAdvancedExtensions()
-            .Build();
+        MarkdownPipeline = PackageMarkdown.CreatePipeline();
     }
 
     public PackageModel(

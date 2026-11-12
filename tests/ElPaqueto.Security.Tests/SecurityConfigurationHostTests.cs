@@ -229,6 +229,41 @@ public sealed class SecurityConfigurationHostTests : IDisposable
         Assert.Contains(logs.Messages, m => m.Contains(expected, StringComparison.Ordinal));
     }
 
+    [Theory]
+    [InlineData("Security:Cors:AllowedOrigins:0", "*", "Security:Cors:AllowedOrigins:0")]
+    [InlineData("Security:Cors:AllowedMethods:0", "PATCH", "Security:Cors:AllowedMethods:0")]
+    [InlineData("Security:Cors:AllowedHeaders:0", "*", "Security:Cors:AllowedHeaders:0")]
+    [InlineData("Security:Cors", "https://ui.example.test", "Security:Cors is a section")]
+    [InlineData("Security:Cors:AllowedOrigins", "https://ui.example.test", "Security:Cors:AllowedOrigins is a list")]
+    [InlineData("Security:Cors:AllowedMethods", "GET", "Security:Cors:AllowedMethods is a list")]
+    [InlineData("Security:Cors:AllowedHeaders", "Authorization", "Security:Cors:AllowedHeaders is a list")]
+    [InlineData("Security:Hsts", "true", "Security:Hsts is a section")]
+    [InlineData("Security:Hsts:MaxAgeSeconds", "63072001", "Security:Hsts:MaxAgeSeconds")]
+    public void InvalidCorsOrHstsSetting_FailsAndNamesTheSetting(string key, string value, string expected)
+    {
+        using var host = BuildHost(out var logs, new Dictionary<string, string?> { [key] = value });
+
+        Assert.False(host.ValidateElPaquetoSecurityOptions());
+        Assert.Contains(logs.Messages, m => m.Contains(expected, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ValidCorsAndHstsSettings_PassValidation()
+    {
+        using var host = BuildHost(out var logs, new Dictionary<string, string?>
+        {
+            ["Security:Cors:AllowedOrigins:0"] = "https://ui.example.test",
+            ["Security:Cors:AllowedMethods:0"] = "GET",
+            ["Security:Cors:AllowedHeaders:0"] = "Authorization",
+            ["Security:Hsts:Enabled"] = "true",
+            ["Security:Hsts:MaxAgeSeconds"] = "86400",
+            ["Security:Hsts:IncludeSubDomains"] = "true",
+        });
+
+        Assert.True(host.ValidateElPaquetoSecurityOptions());
+        Assert.Empty(logs.Messages);
+    }
+
     [Fact]
     public void ValidProxyAndTransportSettings_PassValidation()
     {
