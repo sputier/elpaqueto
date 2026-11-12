@@ -28,6 +28,11 @@ public sealed class ElPaquetoSecurityOptions : IValidatableObject
     /// </summary>
     public SecurityPasswordOptions Passwords { get; set; } = new();
 
+    /// <summary>
+    /// Authentication behaviour. Section: <c>Security:Authentication</c>.
+    /// </summary>
+    public SecurityAuthenticationOptions Authentication { get; set; } = new();
+
     /// <inheritdoc />
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
@@ -37,6 +42,11 @@ public sealed class ElPaquetoSecurityOptions : IValidatableObject
         }
 
         foreach (var result in ValidateSection(Passwords, nameof(Passwords)))
+        {
+            yield return result;
+        }
+
+        foreach (var result in ValidateSection(Authentication, nameof(Authentication)))
         {
             yield return result;
         }

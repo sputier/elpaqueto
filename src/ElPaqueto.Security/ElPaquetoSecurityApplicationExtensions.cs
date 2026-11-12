@@ -1,7 +1,10 @@
+using ElPaqueto.Authentication;
 using ElPaqueto.Core;
+using ElPaqueto.Security.Authentication;
 using ElPaqueto.Security.Configuration;
 using ElPaqueto.Security.Data;
 using ElPaqueto.Security.Passwords;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -56,6 +59,22 @@ public static class ElPaquetoSecurityApplicationExtensions
             }));
         });
         services.AddSingleton<IPasswordService, PasswordService>();
+
+        // The scheme and policy names are the ones the inherited controllers already reference, so that
+        // no controller has to change (ADR 0002, decision 3).
+        services.AddSingleton<VerificationCache>();
+        services
+            .AddAuthentication(authentication =>
+            {
+                authentication.DefaultAuthenticateScheme = AuthenticationConstants.NugetBasicAuthenticationScheme;
+                authentication.DefaultChallengeScheme = AuthenticationConstants.NugetBasicAuthenticationScheme;
+            })
+            .AddScheme<AuthenticationSchemeOptions, ElPaquetoBasicAuthenticationHandler>(
+                AuthenticationConstants.NugetBasicAuthenticationScheme,
+                displayName: null,
+                configureOptions: null);
+        services.AddAuthorization(authorization =>
+            authorization.AddPolicy(AuthenticationConstants.NugetUserPolicy, policy => policy.RequireAuthenticatedUser()));
 
         return app;
     }
