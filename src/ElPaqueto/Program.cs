@@ -37,13 +37,40 @@ public class Program
             // Exit with a code instead of crashing: an unhandled exception aborts the process, which on
             // Linux can write a core dump containing process memory, connection strings included.
             // The host may be disposed or not built here, so write to the console like the runtime would.
-            // Exception messages are not printed: some repeat configuration values (the configuration
-            // binder quotes a value it cannot convert), which may be secrets. Types and stack traces locate
-            // the failure without them.
+            // A failure of the configuration binder quotes the value it could not convert, which may be a
+            // secret: its messages are not printed, only types and stack traces. Other errors are printed
+            // in full; ElPaqueto's own startup errors name paths and settings, never values.
             Console.Error.WriteLine("ElPaqueto stopped because of an unhandled error:");
-            WriteWithoutMessages(e);
+            if (IsConfigurationBindingFailure(e))
+            {
+                WriteWithoutMessages(e);
+            }
+            else
+            {
+                Console.Error.WriteLine(e);
+            }
+
             Environment.ExitCode = 1;
         }
+    }
+
+    /// <summary>
+    /// Whether the exception, or one of its inner exceptions, was thrown while binding configuration values
+    /// to options, in which case its message may repeat a configured value.
+    /// </summary>
+    public static bool IsConfigurationBindingFailure(Exception exception)
+    {
+        ArgumentNullException.ThrowIfNull(exception);
+
+        for (var current = exception; current is not null; current = current.InnerException)
+        {
+            if (current.StackTrace?.Contains("Microsoft.Extensions.Configuration.ConfigurationBinder", StringComparison.Ordinal) == true)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static void WriteWithoutMessages(Exception exception)
