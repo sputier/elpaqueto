@@ -58,7 +58,7 @@ The password must satisfy the [password policy](configuration.md#securitypasswor
 
 ## User names
 
-A user name has 1 to 64 characters taken from `A-Z`, `a-z`, `0-9`, `.`, `_` and `-`. User names are unique ignoring case: `Alice` and `alice` are the same user. The name keeps the case it was created with.
+A user name has 1 to 64 characters taken from `A-Z`, `a-z`, `0-9`, `.`, `_` and `-`. User names are unique ignoring case: `Alice` and `alice` are the same user. The name keeps the case it was created with. This is the same rule Basic authentication applies, so a user created by these commands can always sign in with its name.
 
 ## First administrator
 
