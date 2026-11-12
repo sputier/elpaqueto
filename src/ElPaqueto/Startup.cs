@@ -2,6 +2,7 @@ using System;
 using ElPaqueto.Authentication;
 using ElPaqueto.Core;
 using ElPaqueto.Core.Extensions;
+using ElPaqueto.Security;
 using ElPaqueto.Tencent;
 using ElPaqueto.Web;
 using ElPaqueto.Web.Authentication;
@@ -57,6 +58,7 @@ public class Startup
         //Add base authentication and authorization
         app.AddNugetBasicHttpAuthentication();
         app.AddNugetBasicHttpAuthorization();
+        app.AddElPaquetoSecurity();
 
         // Add database providers.
         app.AddAzureTableDatabase();
