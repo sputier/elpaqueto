@@ -39,4 +39,13 @@ export Security__Database__ConnectionString="Data Source=/data/db/auth.db"
 printf '%s' 'Data Source=/data/db/auth.db' > /run/secrets/Security__Database__ConnectionString
 ```
 
+### `Security:Passwords`
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| `Security:Passwords:IterationCount` | `210000` | PBKDF2-HMAC-SHA512 iterations for new password hashes. Between 100000 and 10000000. Hashes made with a lower count still verify and are re-hashed after a successful login. |
+| `Security:Passwords:MinimumLength` | `15` | Minimum password length, counted in characters after Unicode normalization. Between 12 and 256. |
+
+The maximum password length is fixed at 256 characters. The policy has no composition rules (no required digits or symbols): long passphrases are preferred. A password equal to the user name (ignoring case) is rejected. The policy applies when a password is set, never at login.
+
 More settings are added to this page as the features that need them are released.
