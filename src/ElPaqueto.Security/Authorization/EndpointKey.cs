@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.Routing;
 
@@ -35,7 +36,27 @@ internal static class EndpointKey
             return endpointName;
         }
 
-        var page = endpoint.Metadata.GetMetadata<PageActionDescriptor>()?.ViewEnginePath;
-        return string.IsNullOrEmpty(page) ? null : "page:" + page;
+        var page = endpoint.Metadata.GetMetadata<PageActionDescriptor>();
+        if (page is null || string.IsNullOrEmpty(page.ViewEnginePath))
+        {
+            return null;
+        }
+
+        // The view engine path does not contain the area: without it a page of an area would take the row
+        // of the root page that has the same name.
+        return string.IsNullOrEmpty(page.AreaName)
+            ? "page:" + page.ViewEnginePath
+            : "page:/" + page.AreaName + page.ViewEnginePath;
+    }
+
+    /// <summary>
+    /// Returns <c>Controller.Action</c> for a controller endpoint, or <see langword="null"/> for anything else.
+    /// </summary>
+    public static string? ActionOf(Endpoint endpoint)
+    {
+        ArgumentNullException.ThrowIfNull(endpoint);
+
+        var descriptor = endpoint.Metadata.GetMetadata<ControllerActionDescriptor>();
+        return descriptor is null ? null : descriptor.ControllerName + "." + descriptor.ActionName;
     }
 }

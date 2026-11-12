@@ -24,7 +24,11 @@ public static class PermissionClaimsExtensions
         }
 
         var granted = Permission.None;
-        foreach (var claim in user.FindAll(ElPaquetoClaimTypes.Permission))
+        var claims = user.Identities
+            .Where(identity => identity.IsAuthenticated)
+            .SelectMany(identity => identity.FindAll(ElPaquetoClaimTypes.Permission));
+
+        foreach (var claim in claims)
         {
             // Only the three defined names count: an unknown value grants nothing.
             if (Enum.TryParse<Permission>(claim.Value, ignoreCase: false, out var flag)

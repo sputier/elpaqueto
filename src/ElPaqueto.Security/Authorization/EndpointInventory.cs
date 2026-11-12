@@ -19,11 +19,7 @@ internal static class EndpointInventory
 
         return endpoints
             .Where(IsMatchable)
-            .Where(endpoint =>
-            {
-                var key = EndpointKey.Resolve(endpoint);
-                return key is null || !EndpointPermissionTable.TryGetRule(key, out _);
-            })
+            .Where(endpoint => !IsMapped(endpoint))
             .Select(endpoint => endpoint.DisplayName ?? "(unnamed endpoint)")
             .Distinct(StringComparer.Ordinal)
             .ToList();
@@ -48,6 +44,22 @@ internal static class EndpointInventory
             .Select(rule => rule.Key)
             .Where(key => !used.Contains(key))
             .ToList();
+    }
+
+    /// <summary>
+    /// Whether the endpoint has a row AND is the one the row is meant for: a route name is only a label.
+    /// </summary>
+    public static bool IsMapped(Endpoint endpoint)
+    {
+        ArgumentNullException.ThrowIfNull(endpoint);
+
+        var key = EndpointKey.Resolve(endpoint);
+        if (key is null || !EndpointPermissionTable.TryGetRule(key, out var rule))
+        {
+            return false;
+        }
+
+        return string.Equals(rule.Action, EndpointKey.ActionOf(endpoint), StringComparison.Ordinal);
     }
 
     // Conventional routing also builds one endpoint per route only to generate links: it never matches.

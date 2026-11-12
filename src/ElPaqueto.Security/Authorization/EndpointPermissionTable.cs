@@ -7,7 +7,16 @@ namespace ElPaqueto.Security.Authorization;
 /// <param name="Methods">The methods the row allows. Any other method is refused.</param>
 /// <param name="Required">Every flag in this value must be granted. Ignored for anonymous rows.</param>
 /// <param name="Anonymous">Whether the endpoint is reachable without authentication.</param>
-internal sealed record EndpointPermissionRule(string Key, string[] Methods, Permission Required, bool Anonymous = false);
+/// <param name="Action">
+/// For controller routes, the <c>Controller.Action</c> the row is meant for. A route name is only a label: an endpoint
+/// that reuses it for another action is refused instead of inheriting the row. <see langword="null"/> for pages and health.
+/// </param>
+internal sealed record EndpointPermissionRule(
+    string Key,
+    string[] Methods,
+    Permission Required,
+    bool Anonymous = false,
+    string? Action = null);
 
 /// <summary>
 /// The one table that decides the permission of every endpoint (ADR 0002, decision 5).
@@ -29,25 +38,25 @@ internal static class EndpointPermissionTable
     private static readonly EndpointPermissionRule[] AllRules =
     [
         // NuGet V3 protocol: reading (issue #25).
-        Read("index"),
-        Read("search"),
-        Read("autocomplete"),
-        Read("dependents"),
-        Read("registration-index"),
-        Read("registration-leaf"),
-        Read("package-versions"),
-        Read("package-download"),
-        Read("package-download-manifest"),
-        Read("package-download-readme"),
-        Read("package-download-icon"),
-        Read("symbol-download"),
-        Read("prefixed-symbol-download"),
+        Read("index", "ServiceIndex.Get"),
+        Read("search", "Search.Search"),
+        Read("autocomplete", "Search.Autocomplete"),
+        Read("dependents", "Search.Dependents"),
+        Read("registration-index", "PackageMetadata.RegistrationIndex"),
+        Read("registration-leaf", "PackageMetadata.RegistrationLeaf"),
+        Read("package-versions", "PackageContent.GetPackageVersions"),
+        Read("package-download", "PackageContent.DownloadPackage"),
+        Read("package-download-manifest", "PackageContent.DownloadNuspec"),
+        Read("package-download-readme", "PackageContent.DownloadReadme"),
+        Read("package-download-icon", "PackageContent.DownloadIcon"),
+        Read("symbol-download", "Symbol.Get"),
+        Read("prefixed-symbol-download", "Symbol.Get"),
 
         // Publishing and deleting (issue #26). Deleting also needs Admin when packages are deleted for good.
-        new("upload-package", ["PUT"], Permission.Publish),
-        new("upload-symbol", ["PUT"], Permission.Publish),
-        new("relist", ["POST"], Permission.Publish),
-        new(DeleteKey, ["DELETE"], Permission.Publish),
+        new("upload-package", ["PUT"], Permission.Publish, Action: "PackagePublish.Upload"),
+        new("upload-symbol", ["PUT"], Permission.Publish, Action: "Symbol.Upload"),
+        new("relist", ["POST"], Permission.Publish, Action: "PackagePublish.Relist"),
+        new(DeleteKey, ["DELETE"], Permission.Publish, Action: "PackagePublish.Delete"),
 
         // Web pages (issue #27).
         Read("page:/Index"),
@@ -68,5 +77,5 @@ internal static class EndpointPermissionTable
     public static bool TryGetRule(string key, out EndpointPermissionRule rule)
         => ByKey.TryGetValue(key, out rule!);
 
-    private static EndpointPermissionRule Read(string key) => new(key, Reads, Permission.Read);
+    private static EndpointPermissionRule Read(string key, string? action = null) => new(key, Reads, Permission.Read, Action: action);
 }

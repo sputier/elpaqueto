@@ -30,7 +30,11 @@ public static class HealthEndpoints
         ArgumentNullException.ThrowIfNull(endpoints);
         ArgumentNullException.ThrowIfNull(options);
 
-        var path = options.HealthCheck.Path.TrimEnd('/');
+        var path = options.HealthCheck.Path?.TrimEnd('/');
+        if (string.IsNullOrEmpty(path))
+        {
+            throw new InvalidOperationException("HealthCheck:Path must name a path below the root, such as /health: the root belongs to the home page.");
+        }
 
         endpoints
             .MapHealthChecks(path, Create(options, detailed: false))

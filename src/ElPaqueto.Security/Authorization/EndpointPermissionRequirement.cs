@@ -2,6 +2,7 @@ using System.Security.Claims;
 using ElPaqueto.Core;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
 namespace ElPaqueto.Security.Authorization;
@@ -21,9 +22,8 @@ internal sealed class EndpointPermissionRequirement : IAuthorizationRequirement;
 /// Failing for an unauthenticated caller makes the framework challenge (401); failing for an
 /// authenticated one makes it forbid (403).
 /// </remarks>
-internal sealed class EndpointPermissionHandler(
-    IHttpContextAccessor httpContextAccessor,
-    IOptionsMonitor<ElPaquetoOptions> options) : AuthorizationHandler<EndpointPermissionRequirement>
+internal sealed class EndpointPermissionHandler(IHttpContextAccessor httpContextAccessor)
+    : AuthorizationHandler<EndpointPermissionRequirement>
 {
     protected override Task HandleRequirementAsync(AuthorizationHandlerContext context, EndpointPermissionRequirement requirement)
     {
@@ -41,15 +41,22 @@ internal sealed class EndpointPermissionHandler(
         return Task.CompletedTask;
     }
 
-    private bool Decide(ClaimsPrincipal user, HttpContext? httpContext)
+    private static bool Decide(ClaimsPrincipal user, HttpContext? httpContext)
     {
         if (httpContext is null)
         {
             return false;
         }
 
-        var key = EndpointKey.Resolve(httpContext.GetEndpoint());
-        if (key is null || !EndpointPermissionTable.TryGetRule(key, out var rule))
+        var endpoint = httpContext.GetEndpoint();
+        var key = EndpointKey.Resolve(endpoint);
+        if (endpoint is null || key is null || !EndpointPermissionTable.TryGetRule(key, out var rule))
+        {
+            return false;
+        }
+
+        // A route name is only a label: an endpoint that reuses it for another action is denied.
+        if (!string.Equals(rule.Action, EndpointKey.ActionOf(endpoint), StringComparison.Ordinal))
         {
             return false;
         }
@@ -71,7 +78,8 @@ internal sealed class EndpointPermissionHandler(
 
         var required = rule.Required;
         if (key == EndpointPermissionTable.DeleteKey
-            && options.CurrentValue.PackageDeletionBehavior == PackageDeletionBehavior.HardDelete)
+            && httpContext.RequestServices.GetRequiredService<IOptionsSnapshot<ElPaquetoOptions>>().Value.PackageDeletionBehavior
+                == PackageDeletionBehavior.HardDelete)
         {
             // Deleting for good cannot be undone and can break consumers' restores.
             required |= Permission.Admin;
