@@ -497,25 +497,37 @@ public class ApiKeyAuthenticationIntegrationTests : IDisposable
     }
 
     [Fact]
-    public async Task TheLegacyApiKeySettings_NeitherOpenPublishingNorAuthenticate()
+    public void TheLegacyApiKeySettings_AreRefusedWithoutRepeatingTheirValues()
     {
         using var app = new ElPaquetoApplication(_output, inMemoryConfiguration: dict =>
         {
             dict["ApiKey"] = "legacy-single-key";
             dict["Authentication:ApiKeys:0:Key"] = "legacy-listed-key";
         });
+
+        var exception = Assert.Throws<Microsoft.Extensions.Options.OptionsValidationException>(
+            () => app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<ElPaquetoOptions>>().Value);
+
+        Assert.Contains(exception.Failures, f => f.Contains("'ApiKey'", StringComparison.Ordinal));
+        Assert.Contains(exception.Failures, f => f.Contains("'Authentication:ApiKeys:0:Key'", StringComparison.Ordinal));
+        Assert.DoesNotContain("legacy-single-key", exception.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("legacy-listed-key", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task WithoutTheLegacySettings_PublishingIsNotOpen()
+    {
         using var noSettings = new ElPaquetoApplication(_output);
 
-        foreach (var (host, value) in new[] { (app, "legacy-single-key"), (app, "legacy-listed-key"), (noSettings, "anything") })
-        {
-            using var client = host.CreateClientWithApiKey(value);
-            using var response = await client.PutAsync("api/v2/package", PackageContent());
-            Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        using var client = noSettings.CreateClientWithApiKey("anything");
+        using var response = await client.PutAsync("api/v2/package", PackageContent());
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
 
-            // The inherited service answered true here when no key was configured: anyone could publish.
-            using var scope = host.Services.CreateScope();
+        // The inherited service answered true here when no key was configured: anyone could publish.
+        using (var scope = noSettings.Services.CreateScope())
+        {
             Assert.False(await scope.ServiceProvider.GetRequiredService<Core.IAuthenticationService>()
-                .AuthenticateAsync(value, CancellationToken.None));
+                .AuthenticateAsync("anything", CancellationToken.None));
         }
 
         using var anonymous = noSettings.CreateAnonymousClient();

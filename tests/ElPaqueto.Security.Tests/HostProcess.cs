@@ -33,6 +33,12 @@ internal sealed class HostProcess : IDisposable
             startInfo.ArgumentList.Add(argument);
         }
 
+        // Settings inherited from the machine running the tests must not change what the host reads.
+        foreach (var inherited in startInfo.Environment.Keys.Where(IsIsolatedVariable).ToList())
+        {
+            startInfo.Environment.Remove(inherited);
+        }
+
         startInfo.Environment["DOTNET_NOLOGO"] = "true";
         startInfo.Environment["ASPNETCORE_URLS"] = "http://127.0.0.1:0";
         foreach (var (key, value) in environment)
@@ -164,6 +170,12 @@ internal sealed class HostProcess : IDisposable
 
         _process.Dispose();
     }
+
+    private static bool IsIsolatedVariable(string name)
+        => name.Equals("ApiKey", StringComparison.OrdinalIgnoreCase)
+            || name.StartsWith("Authentication__", StringComparison.OrdinalIgnoreCase)
+            || name.StartsWith("ELPAQUETO_", StringComparison.OrdinalIgnoreCase)
+            || name.StartsWith("BAGET_", StringComparison.OrdinalIgnoreCase);
 
     private void Append(string? line, bool standardOutput)
     {

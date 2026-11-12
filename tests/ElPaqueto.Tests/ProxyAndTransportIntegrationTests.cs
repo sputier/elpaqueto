@@ -372,10 +372,8 @@ public class ProxyAndTransportIntegrationTests
 
     private ElPaquetoApplication CreateWithCredentials(AuthenticationCounter counter)
     {
-        return new CountingApplication(_output, counter, dict =>
-        {
-            dict["Authentication:ApiKeys:0:Key"] = "test-api-key";
-        });
+        // "test-api-key" is not a valid key: these tests only count authentication attempts.
+        return new CountingApplication(_output, counter, _ => { });
     }
 
     private static string[] CredentialHeaders(string credentialHeader)

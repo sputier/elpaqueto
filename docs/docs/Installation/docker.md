@@ -11,10 +11,6 @@ This page describes the inherited BaGetter image. The ElPaqueto image (non-root 
 Create a file named `bagetter.env` to store BaGetter's configurations:
 
 ```shell
-# The following config is the API Key used to publish packages.
-# You should change this to a secret value to secure your server.
-ApiKey=NUGET-SERVER-API-KEY
-
 Storage__Type=FileSystem
 Storage__Path=/data
 Database__Type=Sqlite
@@ -73,8 +69,7 @@ dotnet nuget push -s http://localhost:5000/v3/index.json -k NUGET-SERVER-API-KEY
 
 :::warning
 
-The default API Key to publish packages is `NUGET-SERVER-API-KEY`.
-You should change this to a secret value to secure your server. See [Configure BaGetter](#configure-bagetter-optional).
+ElPaqueto has no default API key and does not read the `ApiKey` setting: publishing needs a user's API key. See [Upgrading from BaGetter](https://github.com/sputier/ElPaqueto/blob/develop/docs/user/upgrading-from-bagetter.md).
 
 :::
 
