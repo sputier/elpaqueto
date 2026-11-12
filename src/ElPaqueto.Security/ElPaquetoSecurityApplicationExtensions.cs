@@ -1,14 +1,18 @@
 using ElPaqueto.Authentication;
 using ElPaqueto.Core;
+using ElPaqueto.Security.ApiKeys;
 using ElPaqueto.Security.Authentication;
 using ElPaqueto.Security.Authorization;
 using ElPaqueto.Security.Configuration;
 using ElPaqueto.Security.Data;
 using ElPaqueto.Security.Passwords;
+using ElPaqueto.Security.Transport;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 
@@ -25,9 +29,10 @@ public static class ElPaquetoSecurityApplicationExtensions
     /// <param name="app">The application to extend.</param>
     /// <returns>The same <paramref name="app"/> instance, to allow chaining.</returns>
     /// <remarks>
-    /// Registers the validated <c>Security</c> options and the security database, which is migrated
-    /// before the server accepts requests. Authentication, authorization and API keys are added by
-    /// later changes behind this single entry point.
+    /// Registers the validated <c>Security</c> options, the security database, which is migrated
+    /// before the server accepts requests, password hashing, the API key service, authentication, and the
+    /// trusted-proxy configuration used by <see cref="ElPaquetoSecurityPipelineExtensions.UseElPaquetoForwardedHeaders"/>.
+    /// Authorization is added by a later change behind this single entry point.
     /// </remarks>
     public static ElPaquetoApplication AddElPaquetoSecurity(this ElPaquetoApplication app)
     {
@@ -90,6 +95,14 @@ public static class ElPaquetoSecurityApplicationExtensions
             authorization.AddPolicy(AuthenticationConstants.NugetUserPolicy, policy);
         });
         services.AddSingleton<IHostedService, EndpointInventoryStartupCheck>();
+
+        services.TryAddSingleton(TimeProvider.System);
+        services.AddSingleton<IApiKeyHashComparer, FixedTimeApiKeyHashComparer>();
+        services.AddSingleton<ApiKeyUsageTracker>();
+        services.AddScoped<IApiKeyService, ApiKeyService>();
+
+        services.AddSingleton<IPostConfigureOptions<ForwardedHeadersOptions>, ConfigureTrustedForwardedHeaders>();
+        services.AddSingleton<IHostedService, TransportStartupWarnings>();
 
         return app;
     }

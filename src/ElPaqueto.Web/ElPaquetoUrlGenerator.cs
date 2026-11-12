@@ -125,7 +125,7 @@ public class ElPaquetoUrlGenerator : IUrlGenerator
 
         return _linkGenerator.GetUriByRouteValues(
             _httpContextAccessor.HttpContext,
-            Routes.PackageDownloadRouteName,
+            Routes.PackageDownloadManifestRouteName,
             values: new
             {
                 Id = id,

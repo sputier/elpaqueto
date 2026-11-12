@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Security.Cryptography;
+using ElPaqueto.Security.ApiKeys;
 using ElPaqueto.Security.Configuration;
 using ElPaqueto.Security.Data;
 using Microsoft.AspNetCore.Identity;
@@ -125,6 +126,13 @@ internal sealed class PasswordService : IPasswordService
             && string.Equals(normalized, PasswordNormalization.Normalize(userName), StringComparison.OrdinalIgnoreCase))
         {
             errors.Add("The password must not be the same as the user name.");
+        }
+
+        // A Basic password with the API key format is validated as a key, never as a password: such a
+        // password could never be used, and accepting it would blur the two kinds of credentials.
+        if (ApiKeyToken.IsTokenFormat(password) || ApiKeyToken.IsTokenFormat(normalized))
+        {
+            errors.Add("The password must not have the format of an API key (epq_...).");
         }
 
         return errors;
