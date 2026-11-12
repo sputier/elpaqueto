@@ -1,6 +1,6 @@
 # Security configuration
 
-This page documents the settings of ElPaqueto's security module. Settings that come from the inherited server (database, storage, search, mirror, ...) are described in the [server configuration reference](../docs/configuration.md).
+This page documents the settings of ElPaqueto's security module. Settings that come from the inherited server (database, storage, search, mirror, ...) are described in the [server configuration reference](../docs/configuration.md). Users are created and managed with the [administration commands](administration.md).
 
 ## Sources and precedence
 
