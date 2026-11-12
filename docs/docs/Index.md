@@ -10,6 +10,11 @@ export const CenterImg = ({children, color}) => (
 
 # BaGetter
 
+:::caution
+This page comes from BaGetter's documentation site and is not maintained for ElPaqueto. Use the [ElPaqueto user documentation](https://github.com/sputier/ElPaqueto/blob/develop/docs/user/README.md).
+:::
+
+
 BaGetter (pronounced "ba getter") is a lightweight NuGet and symbol server. It is [open source](https://github.com/bagetter/BaGetter), cross-platform, and cloud ready!
 
 <CenterImg>

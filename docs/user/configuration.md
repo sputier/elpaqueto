@@ -1,6 +1,6 @@
-# Security configuration
+# Configuration
 
-This page documents the settings of ElPaqueto's security module. Settings that come from the inherited server (database, storage, search, mirror, ...) are described in the [server configuration reference](../docs/configuration.md). Users are created and managed with the [administration commands](administration.md).
+This page documents every setting of ElPaqueto's security module, then the [inherited server settings](#inherited-server-settings) an installation usually needs (database, storage, deletion, health check). A test fails when a `Security` setting of the code is missing from this page. Users are created and managed with the [administration commands](administration.md).
 
 ## Sources and precedence
 
@@ -237,6 +237,33 @@ The shipped `appsettings.json` sets `Statistics:ListConfiguredServices` to `fals
 See [web security](../technical/web-security.md) for the details and the limits of the content security policy.
 
 More settings are added to this page as the features that need them are released.
+
+## Inherited server settings
+
+These settings come from BaGetter and keep their names and behaviour. The table lists the ones an ElPaqueto installation usually needs; the inherited [server configuration reference](../docs/configuration.md) describes the others (search, mirror, retention, cloud storage providers), with the caveat that only the defaults below are tested by this project ([known limitations](known-limitations.md)).
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| `Database:Type` | `Sqlite` | Package database provider: `Sqlite`, `PostgreSql`, `SqlServer` or `AzureTable`. |
+| `Database:ConnectionString` | `Data Source=elpaqueto.db` (image: `Data Source=/data/db/elpaqueto.db`) | Connection string of the package database. Not the security database. |
+| `Storage:Type` | `FileSystem` | Package storage provider. |
+| `Storage:Path` | the working directory (image: `/data`) | Folder of the package and symbol files, for `FileSystem`. |
+| `PathBase` | not set | A path prefix when the feed is served below the root, such as `/nuget`. Forwarded prefixes (`X-Forwarded-Prefix`) are not supported. |
+| `PackageDeletionBehavior` | `Unlist` | What `dotnet nuget delete` does: `Unlist`, or `HardDelete`, which also requires the `Admin` permission. See [publishing](publishing.md#unlist-and-delete). |
+| `AllowPackageOverwrites` | `false` | `false`, `PrereleaseOnly` or `true`. When allowed, a push replaces an existing version instead of failing with `409`. |
+| `IsReadOnlyMode` | `false` | Refuse every push. |
+| `MaxPackageSizeGiB` | `8` | Largest accepted package, in GiB. |
+| `RunMigrationsAtStartup` | `true` | Migrate the package database at startup. The security database is always migrated. |
+| `HealthCheck:Path` | `/health` | Anonymous liveness endpoint; `<path>/details` requires `Admin`. Must not be `/`. |
+| `Statistics:EnableStatisticsPage` | `true` | Show the statistics page of the web UI (requires `Read`). |
+| `Statistics:ListConfiguredServices` | `false` in the shipped `appsettings.json` | List the database, storage and search providers on the statistics page. |
+| `Mirror:Enabled` | `false` | Fetch missing packages from `Mirror:PackageSource` (nuget.org by default). Needs outbound access. |
+
+Environment variables use the same names with `__`: `Database__ConnectionString`, `Storage__Path`, `PackageDeletionBehavior`.
+
+### Removed settings
+
+BaGetter's `ApiKey`, `Authentication:Credentials` and `Authentication:ApiKeys` stop the server when they have a value (see [Validation](#validation)). Replace them with users and API keys as described in [upgrading from BaGetter](upgrading-from-bagetter.md). `Mirror:Authentication` is a different setting and still works.
 
 ## Logging
 

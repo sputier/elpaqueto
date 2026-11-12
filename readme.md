@@ -1,97 +1,109 @@
-# BaGetter 🥖🛒
-
-BaGetter is a lightweight [NuGet] and [symbol] server, written in C#.
-It's forked from [BaGet] for progressive and community driven development.
-
-> **Development status:** ElPaqueto is a fork of BaGetter that is being turned into a private NuGet server with built-in authentication. Users are authenticated with HTTP Basic against a security database and every route is denied unless the caller holds the permission it needs. Not in place yet: API keys, throttling of failed login attempts and HTTPS enforcement. **Do not expose this server to untrusted networks yet.**
-
 <p align="center">
-  <img width="100%" src="https://user-images.githubusercontent.com/737941/50140219-d8409700-0258-11e9-94c9-dad24d2b48bb.png">
+  <img src="assets/branding/elpaqueto-logo-480.png" width="240" height="240" alt="ElPaqueto logo: a masked wrestler in a sombrero gives a thumbs-up and holds a parcel, above the words ElPaqueto, the package dealer you can trust.">
 </p>
 
-![Build status] [![Docker image version]][Docker link] [![Discord][Discord image]][Discord link]
+# ElPaqueto: the package dealer you can trust
 
-## 🚀 Getting Started
+[![CI](https://github.com/sputier/ElPaqueto/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/sputier/ElPaqueto/actions/workflows/ci.yml)
+[![Docker](https://github.com/sputier/ElPaqueto/actions/workflows/docker.yml/badge.svg?branch=develop)](https://github.com/sputier/ElPaqueto/actions/workflows/docker.yml)
 
-With Docker (no image is published yet):
+ElPaqueto is a private, self-hosted [NuGet] server with built-in authentication. It is based on [BaGetter] and keeps its package storage, its protocol support and its web UI, and adds users, permissions and API keys in front of every route.
 
-1. Build the image: `docker build -t elpaqueto:local .`
-2. Run it behind a TLS-terminating reverse proxy, with a volume on `/data`: see [Running ElPaqueto with Docker](docs/user/docker.md), [`docker-compose.example.yml`](docker-compose.example.yml) and [Running behind a reverse proxy or tunnel](docs/user/reverse-proxy.md)
+## Why
 
-Upgrading an existing BaGetter installation: see [Upgrading from BaGetter](docs/user/upgrading-from-bagetter.md) (BaGetter's `ApiKey` and `Authentication` settings stop the server).
+- **Deny by default.** Every route needs credentials, except the liveness endpoint and static files. A route that is not in the permission table is refused.
+- **Users with `Read`, `Publish` and `Admin` permissions**, stored with salted PBKDF2 password hashes. No default account and no default password.
+- **Per-user API keys** that can be scoped, given an expiry, rotated and revoked at once. Publishing needs a key; restore can use a key or a password.
+- **Stock NuGet clients.** HTTP Basic authentication and the `X-NuGet-ApiKey` header, as `dotnet nuget` already sends them. No plugin and no credential provider.
+- **No extra infrastructure.** No external identity provider: users and keys live in a separate SQLite database next to the packages, managed with command-line `admin` commands.
+- **Hardened by default**: HTTPS required for remote clients, trusted reverse proxies listed explicitly, sign-in throttling, security headers, an audit trail that never logs a secret, and a non-root container image built to run with a read-only root filesystem.
 
-With .NET:
+## Status
 
-1. Install the [.NET SDK]
-2. Download and extract [BaGetter's latest release]
-3. Start the service with `dotnet BaGetter.dll`
-4. Browse `http://localhost:5000/` in your browser
+ElPaqueto has **no release yet** (version `0.1.0-prerelease`) and no published container image: build it from this repository. The authentication, authorization, API key, transport and throttling features are implemented and tested; the end-to-end validation of clients and platforms is still in progress. Read the [known limitations](docs/user/known-limitations.md) before you deploy it.
 
-With IIS ([official microsoft documentation](https://learn.microsoft.com/aspnet/core/host-and-deploy/iis)):
+## Quick start (Docker, local evaluation)
 
-1. Install the [hosting bundle](https://dotnet.microsoft.com/permalink/dotnetcore-current-windows-runtime-bundle-installer)
-2. Download the [zip release](https://github.com/bagetter/BaGetter/releases) of BaGetter
-3. Unpack the zip file contents to a folder of your choice
-4. Create a new or configure an existing IIS site to point its physical path to the folder where you unpacked the zip file
+These commands run the server on your machine only, over plain HTTP. They need Docker, the .NET SDK and a Bash-compatible shell.
 
-For more information, please refer to the [documentation].
+```bash
+# 1. Build the image and start the server, reachable from this machine only.
+docker build -t elpaqueto:local .
+docker volume create elpaqueto-data
+docker run -d --name elpaqueto \
+  --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges \
+  -v elpaqueto-data:/data -p 127.0.0.1:8080:8080 \
+  -e Security__Transport__RequireHttps=false \
+  elpaqueto:local
 
-### Building from source
+# 2. Create the first administrator, then a user who publishes. Each password is prompted for.
+docker exec -it elpaqueto dotnet ElPaqueto.dll admin bootstrap --username admin
+docker exec -it elpaqueto dotnet ElPaqueto.dll admin user create alice --permissions publisher
 
-Building requires the **.NET 10 SDK** (the pinned version is in `global.json`; check yours with `dotnet --list-sdks`). If `dotnet` reports `A compatible .NET SDK was not found`, install the .NET 10 SDK. See `CONTRIBUTING.md` for details.
+# 3. Create an API key for alice. It is printed once: here, into a file only you can read.
+(umask 077 && docker exec elpaqueto dotnet ElPaqueto.dll admin key create \
+  --user alice --name laptop --permissions read,publish --expires 30d > elpaqueto.key)
 
-## 📦 Features
+# 4. In your solution folder: add the source, give it the key, push and restore.
+#    (Skip "dotnet new nugetconfig" if the folder already has a NuGet.Config.)
+dotnet new nugetconfig
+dotnet nuget add source http://localhost:8080/v3/index.json --name elpaqueto --allow-insecure-connections
+export NuGetPackageSourceCredentials_elpaqueto="Username=apikey;Password=$(cat elpaqueto.key)"
+dotnet nuget push <package>.nupkg --source elpaqueto --api-key "$(cat elpaqueto.key)"
+dotnet restore
+```
 
-* **Cross-platform**: runs on Windows, macOS, and Linux!
-* **ARM** (64bit) **support**. You can host your NuGets on a device like Raspberry Pi!
-* **Cloud native**: supports [Docker][Docker doc link], [AWS][AWS doc link], [Google Cloud][GCP doc link], [Alibaba Cloud][Aliyun doc link]，[Tencent Cloud][Tencent doc link]
-* **Offline support**: [Mirror a NuGet server][Read through caching] to speed up builds and enable offline downloads
+`Security__Transport__RequireHttps=false` and `--allow-insecure-connections` are for this loopback evaluation only: the key travels in clear on every request. Remove both before anyone else can reach the server. The web UI is at <http://localhost:8080/>; the browser asks for alice's user name and password.
 
-## 🤝 Contributing
+## Production
 
-We welcome contributions! Check out the [Contributing Guide](CONTRIBUTING.md) to get started.
+HTTPS is required. Run the container behind a TLS-terminating reverse proxy or tunnel, tell ElPaqueto which proxy to trust and the public URL of the feed, and keep the default `Security:Transport:RequireHttps=true`:
 
-## 🔒 Security
+- [Installation](docs/user/installation.md) and [Docker](docs/user/docker.md): hardening flags, volumes, health check, secrets;
+- [`docker-compose.example.yml`](docker-compose.example.yml): a Compose deployment behind a proxy;
+- [Running behind a reverse proxy or tunnel](docs/user/reverse-proxy.md): nginx, Caddy, Traefik and tunnel examples;
+- [Backup and restore](docs/user/backup.md) and [upgrading](docs/user/upgrading.md).
 
-Please do not report security vulnerabilities in public issues. See the [security policy](SECURITY.md) for how to report them privately.
+Already running BaGetter? Read [Upgrading from BaGetter](docs/user/upgrading-from-bagetter.md) first: BaGetter's `ApiKey` and `Authentication` settings stop ElPaqueto at startup, and users and keys must be created again.
 
-## 📄 License
+## Documentation
 
-This project is licensed under the [MIT License](LICENSE). Third-party components and their licences are listed in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+- [User documentation](docs/user/README.md): installation, configuration, administration, client setup, publishing, troubleshooting.
+- [Technical documentation](docs/technical/README.md): architecture, request pipeline, security design, threat model, testing.
+- [Architecture decision records](docs/adr/README.md).
+- [Documentation index](docs/readme.md).
 
-## 📞 Contact
+The inherited BaGetter documentation site under `docs/docs/` is not maintained for ElPaqueto yet: prefer the pages above.
 
-If you have questions, feel free to open an [issue] or join our [Discord Server][Discord link] for discussions.
+## Building from source
 
-## 🤝🏼 Contributors
+Building needs the **.NET 10 SDK** (the exact version is pinned in `global.json`):
 
-Thanks to everyone who helps to make BaGetter better!
+```bash
+dotnet build ElPaqueto.sln
+dotnet test ElPaqueto.sln
+```
 
-<a href="https://github.com/bagetter/BaGetter/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=bagetter/BaGetter" />
-</a>
+See [CONTRIBUTING.md](CONTRIBUTING.md) for running the server from source and for the rules of a pull request.
 
+## Origin and license
 
-[Build status]: https://img.shields.io/github/actions/workflow/status/bagetter/BaGetter/.github/workflows/main.yml?logo=github&logoColor=fff
+ElPaqueto is a fork of [BaGetter] (MIT), itself a fork of [BaGet] (MIT). ElPaqueto:
 
-[Docker image version]: https://img.shields.io/docker/v/bagetter/bagetter?logo=docker&logoColor=fff&label=version
-[Docker link]: https://hub.docker.com/r/bagetter/bagetter
-[Docker doc link]: https://www.bagetter.com/docs/Installation/docker
+- renamed every project, namespace, assembly and default name from BaGetter to ElPaqueto ([ADR 0001](docs/adr/0001-project-identity-and-rebranding-scope.md));
+- replaced BaGetter's optional shared API key and plain-text credentials with users, permissions and API keys stored hashed in a dedicated security database, and made every route deny by default ([ADR 0002](docs/adr/0002-authentication-architecture.md));
+- added the transport, proxy, throttling, header and audit-logging protections described in the [technical documentation](docs/technical/README.md), and a hardened container image.
 
-[Discord image]: https://img.shields.io/discord/1181167608427450388?logo=discord&logoColor=fff
-[Discord link]: https://discord.gg/XsAmm6f2hZ
+Upstream changes are ported as described in [Porting upstream changes](docs/upstream-porting.md). BaGetter and BaGet are not affiliated with ElPaqueto and do not endorse it.
+
+The source code is licensed under the [MIT License](LICENSE); the upstream copyright notices are kept there. Third-party components are listed in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). The ElPaqueto logo is **not** covered by a stated licence yet: see [assets/branding](assets/branding/README.md).
+
+## Contributing and security
+
+Contributions are welcome: read [CONTRIBUTING.md](CONTRIBUTING.md) first.
+
+Report vulnerabilities privately, as described in the [security policy](SECURITY.md). Never in a public issue, pull request or discussion.
 
 [NuGet]: https://learn.microsoft.com/nuget/what-is-nuget
-[symbol]: https://docs.microsoft.com/en-us/windows/desktop/debug/symbol-servers-and-symbol-stores
-[.NET SDK]: https://www.microsoft.com/net/download
-[Issue]: https://github.com/bagetter/BaGetter/issues
+[BaGetter]: https://github.com/bagetter/BaGetter
 [BaGet]: https://github.com/loic-sharma/BaGet
-
-[BaGetter's latest release]: https://github.com/bagetter/BaGetter/releases
-
-[Documentation]: https://www.bagetter.com/
-[Read through caching]: https://www.bagetter.com/docs/configuration#enable-read-through-caching
-[AWS doc link]: https://www.bagetter.com/docs/Installation/aws
-[GCP doc link]: https://www.bagetter.com/docs/Installation/gcp
-[Aliyun doc link]: https://www.bagetter.com/docs/Installation/aliyun
-[Tencent doc link]: https://www.bagetter.com/docs/Installation/tencent

@@ -1,41 +1,17 @@
-# Website
+# ElPaqueto documentation
 
-This website is built using [Docusaurus](https://docusaurus.io/), a modern static website generator.
+| Section | For | Start with |
+| --- | --- | --- |
+| [User documentation](user/README.md) | People who install, configure and use the server | [Installation](user/installation.md) |
+| [Technical documentation](technical/README.md) | Contributors, reviewers, porters of upstream changes | [Architecture](technical/architecture.md) |
+| [Architecture decision records](adr/README.md) | Anyone who wants to know why | [ADR 0002: authentication architecture](adr/0002-authentication-architecture.md) |
+| [Porting upstream changes](upstream-porting.md) | Maintainers porting BaGetter changes | Section 4, porting procedure |
+| [Maintainer notes](maintainers/) | Maintainers | [Repository settings](maintainers/repository-settings.md), [hygiene checks](maintainers/hygiene-checks.md) |
 
-### Installation
+Contributing rules are in [CONTRIBUTING.md](../CONTRIBUTING.md), and the vulnerability reporting process in [SECURITY.md](../SECURITY.md).
 
-```
-$ yarn
-```
+## Inherited documentation site
 
-### Local Development
+`docs/docs/` and the Docusaurus configuration in this folder (`docusaurus.config.ts`, `sidebars.ts`, `src/`, `static/`, `package.json`) come from BaGetter's documentation website. They are **not maintained for ElPaqueto** and are not published: some pages still describe BaGetter's behaviour or cloud deployments that ElPaqueto does not test. Whether they are removed, or kept and rebuilt, is still to be decided. Use the Markdown pages above.
 
-```
-$ yarn start
-```
-
-This command starts a local development server and opens up a browser window. Most changes are reflected live without having to restart the server.
-
-### Build
-
-```
-$ yarn build
-```
-
-This command generates static content into the `build` directory and can be served using any static contents hosting service.
-
-### Deployment
-
-Using SSH:
-
-```
-$ USE_SSH=true yarn deploy
-```
-
-Not using SSH:
-
-```
-$ GIT_USER=<Your GitHub username> yarn deploy
-```
-
-If you are using GitHub pages for hosting, this command is a convenient way to build the website and push to the `gh-pages` branch.
+To preview the inherited site locally, with [Node.js](https://nodejs.org/) and Yarn: `yarn` then `yarn start` in this folder.

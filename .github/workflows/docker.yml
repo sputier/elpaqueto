@@ -2,6 +2,8 @@ name: Docker
 
 # Builds the container image, checks its runtime contract with a smoke test, scans it for known
 # vulnerabilities and validates the Compose and reverse-proxy samples. Nothing is pushed to any registry.
+# Every job is read-only: the release workflow calls this workflow, and the scan report to code
+# scanning, which needs a write scope, lives in docker-scan-report.yml.
 
 on:
   push:
@@ -9,6 +11,8 @@ on:
   pull_request:
     branches: [develop, main]
   workflow_dispatch:
+  # Called by the release workflow, which validates the tagged commit before publishing.
+  workflow_call:
 
 permissions:
   contents: read
@@ -159,41 +163,6 @@ jobs:
 
       - name: Scan (fails on HIGH and CRITICAL findings that have a fix)
         run: bash eng/docker/scan-image.sh "$RUNNER_TEMP/image/elpaqueto-image.tar"
-
-  scan-report:
-    name: scan-report
-    # Publishes the scan to code scanning. Pushes only: pull requests never get write access.
-    if: github.event_name == 'push'
-    needs: image
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    permissions:
-      contents: read
-      # Required by the SARIF upload, granted to this job alone.
-      security-events: write
-    steps:
-      - name: Check out
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Download the image
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: image-amd64
-          path: ${{ runner.temp }}/image
-
-      - name: Install Trivy and its vulnerability database
-        run: bash eng/docker/scan-image.sh --prepare
-
-      - name: Write the SARIF report
-        run: bash eng/docker/scan-image.sh "$RUNNER_TEMP/image/elpaqueto-image.tar" --format sarif --output "$RUNNER_TEMP/trivy.sarif" --exit-code 0
-
-      - name: Upload the SARIF report
-        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
-        with:
-          sarif_file: ${{ runner.temp }}/trivy.sarif
-          category: container-image
 
   samples:
     name: samples

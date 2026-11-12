@@ -16,8 +16,11 @@ If `dotnet` reports `A compatible .NET SDK was not found`, the installed SDK doe
 
 1. Clone the repository
 2. Navigate to `src/ElPaqueto`
-3. Start the service with `dotnet run`
-4. Open the URL `http://localhost:5000/v3/index.json` in your browser
+3. Create a first administrator: `dotnet run -- admin bootstrap --username dev` (the password is prompted for). The security database `auth.db` is created in that folder; it is git-ignored.
+4. Start the service with `dotnet run`. The launch profile listens on `http://localhost:50561/` in the `Development` environment: never expose it, its error page shows request headers.
+5. Open `http://localhost:50561/` in your browser and sign in with that user.
+
+The architecture, the request pipeline and the security design are described in the [technical documentation](docs/technical/README.md); [testing](docs/technical/testing.md) explains the test levels.
 
 ## Repository layout
 
@@ -158,7 +161,7 @@ Most of the code comes from BaGetter. Upstream fixes are ported into ElPaqueto, 
 - **Avoid gratuitous refactoring, reformatting, file moves and renames** of inherited files, even when they would improve the code.
 - **List every inherited file you changed** in the pull request, with the impact on upstream porting.
 
-The background for these rules is tracked in the project identity and rebranding scope decision ([#5]), the authentication architecture decision ([#6]) and the upstream synchronization process ([#13]), which will add `docs/upstream-porting.md`.
+The background for these rules is tracked in the project identity and rebranding scope decision ([#5]), the authentication architecture decision ([#6]) and the upstream synchronization process ([#13]): see [Porting upstream changes](docs/upstream-porting.md) and the [upstream touch map](docs/technical/upstream-touch-map.md), which lists every inherited file ElPaqueto changed. Update the touch map when your pull request changes an inherited file.
 
 ## Security
 
@@ -167,13 +170,19 @@ The background for these rules is tracked in the project identity and rebranding
 - **Redact logs and configuration** before you attach them to an issue or a pull request.
 - **Never commit secrets**, even in tests or samples. Use obvious placeholder values.
 
+## Logo and branding
+
+The ElPaqueto name and logo identify this project. The logo files are in [`assets/branding`](assets/branding/README.md); their licence is not decided yet and is **not** the MIT License of the code. A fork or a derived work must not use the logo or present itself as the official ElPaqueto project. Regenerate the logo derivatives with `eng/branding/make_derivatives.py` rather than editing them by hand.
+
 ## Code of conduct
 
 ElPaqueto has no code of conduct yet: one will be adopted once the project has its own reporting channel. Until then, be respectful and constructive in issues, pull requests and reviews.
 
 ## Releases
 
-No release automation exists yet: the inherited upstream workflows that published packages, Docker images and documentation were removed. Nothing is published automatically from this repository until a dedicated release workflow is added.
+A release is a version tag on `main`. The release workflow (`.github/workflows/release.yml`) validates the tagged commit, then, after a maintainer's approval, publishes the container image to the GitHub Container Registry with its attestations and creates the GitHub Release. No NuGet package and no image on another registry is published. Pull requests and branch pushes never run it. The procedure, the versioning policy and the repository settings it needs are in [docs/maintainers/releasing.md](docs/maintainers/releasing.md).
+
+Add a line to the `## [Unreleased]` section of [CHANGELOG.md](CHANGELOG.md) in every pull request with a user-visible change.
 
 [.NET SDK]: https://www.microsoft.com/net/download
 [Node.js]: https://nodejs.org/
