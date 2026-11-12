@@ -48,7 +48,11 @@ public class AdminCommandAuthenticationIntegrationTests : IDisposable
         }, seedTestUser: false);
     }
 
-    public void Dispose() => _app.Dispose();
+    public void Dispose()
+    {
+        _app.Dispose();
+        _commands.Dispose();
+    }
 
     [Fact]
     public async Task TheBootstrappedAdministrator_AuthenticatesWithBasic()
