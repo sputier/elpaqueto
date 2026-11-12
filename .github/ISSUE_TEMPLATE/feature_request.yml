@@ -1,0 +1,36 @@
+name: Feature request
+description: Propose a new feature or a change in behaviour.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion. Please discuss the proposal in this issue before opening a pull request.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What problem does this solve? Who is affected, and how do they work around it today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: The behaviour you would like, including configuration and NuGet client impact where relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other solutions or workarounds you considered, and why they are not enough.
+    validations:
+      required: false
+  - type: textarea
+    id: upstream-impact
+    attributes:
+      label: Impact on upstream porting
+      description: ElPaqueto ports changes from upstream BaGetter. Can this live in a new project, or does it require changes to inherited files? List the inherited files you expect to change, if any.
+    validations:
+      required: true
