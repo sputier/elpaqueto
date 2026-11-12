@@ -1,3 +1,7 @@
 # Not a secret: a made-up example of the API key token format in docs/technical/api-keys.md,
 # committed in 109a241 and replaced by a low-entropy placeholder in the next commit (#31).
 109a24104c6ca978da20742dea50ed507c068826:docs/technical/api-keys.md:generic-api-key:8
+
+# Not a secret: a made-up token-shaped test constant in CredentialClaimsTests, committed in ffd18d8 and
+# split into parts in the next fix commit (#32).
+ffd18d83aa1c233907ce9b5350244973e8a149f6:tests/ElPaqueto.Security.Tests/CredentialClaimsTests.cs:generic-api-key:16

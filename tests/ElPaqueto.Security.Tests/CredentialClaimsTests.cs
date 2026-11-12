@@ -12,8 +12,9 @@ namespace ElPaqueto.Security.Tests;
 public class CredentialClaimsTests
 {
     private const string KeyId = "AbCdEfGh1234";
-    private const string Token = "epq_" + KeyId + "_0123456789012345678901234567890123456789abc";
-    private const string OtherToken = "epq_ZZZZZZZZZZZZ_0123456789012345678901234567890123456789abc";
+    // Built at run time from a low-entropy filler: a token-shaped literal would trip the secret scanner.
+    private static readonly string Token = $"epq_{KeyId}_{new string('a', ApiKeyToken.SecretLength)}";
+    private static readonly string OtherToken = $"epq_{new string('Z', ApiKeyToken.KeyIdLength)}_{new string('a', ApiKeyToken.SecretLength)}";
 
     private static ClaimsIdentity Identity(string? method, string? source, string? keyId, params string[] permissions)
     {
