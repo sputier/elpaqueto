@@ -1,0 +1,103 @@
+name: Bug report
+description: Report something that does not work as documented.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug.
+
+        **Security vulnerabilities must not be reported here.** Follow the [security policy](https://github.com/sputier/ElPaqueto/security/policy) instead.
+
+        Never paste passwords, API keys, `Authorization` headers, connection strings or tokens. Replace them with placeholders such as `<api-key>`.
+  - type: input
+    id: version
+    attributes:
+      label: ElPaqueto version
+      description: Version, container image tag or commit SHA.
+      placeholder: e.g. 0.1.0, develop at 1a2b3c4
+    validations:
+      required: true
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment
+      options:
+        - Docker
+        - Other (describe in Additional context)
+    validations:
+      required: true
+  - type: dropdown
+    id: reverse-proxy
+    attributes:
+      label: Reverse proxy
+      options:
+        - None
+        - nginx
+        - Caddy
+        - Traefik
+        - Other (describe in Additional context)
+    validations:
+      required: true
+  - type: input
+    id: client
+    attributes:
+      label: Client tool and version
+      description: The NuGet client involved and its version, for example the output of `dotnet --version`, `nuget.exe help`, or the Visual Studio version.
+      placeholder: e.g. .NET SDK 10.0.100 (dotnet CLI), nuget.exe 6.x, Visual Studio 17.x
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      description: The OS of the client and, if different, of the server.
+      placeholder: e.g. client Windows 11, server Ubuntu 24.04
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Commands, configuration (with secrets removed) and requests needed to reproduce the problem.
+      placeholder: |
+        1. Start the server with ...
+        2. Run `dotnet nuget push ...`
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: Include HTTP status codes and error messages.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant server and client logs, with secrets removed. This field is rendered as code, so no backticks are needed.
+      render: shell
+    validations:
+      required: false
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Anything else that may help, such as the database and storage providers in use.
+    validations:
+      required: false
+  - type: checkboxes
+    id: redaction
+    attributes:
+      label: Secrets
+      options:
+        - label: I removed passwords, API keys, `Authorization` headers and connection strings from everything above.
+          required: true

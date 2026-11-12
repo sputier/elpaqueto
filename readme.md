@@ -47,9 +47,13 @@ Building requires the **.NET 10 SDK** (the pinned version is in `global.json`; c
 
 We welcome contributions! Check out the [Contributing Guide](CONTRIBUTING.md) to get started.
 
+## 🔒 Security
+
+Please do not report security vulnerabilities in public issues. See the [security policy](SECURITY.md) for how to report them privately.
+
 ## 📄 License
 
-This project is licensed under the [MIT License](LICENSE).
+This project is licensed under the [MIT License](LICENSE). Third-party components and their licences are listed in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
 ## 📞 Contact
 
