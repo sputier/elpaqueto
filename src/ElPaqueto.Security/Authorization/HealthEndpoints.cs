@@ -15,6 +15,9 @@ namespace ElPaqueto.Security.Authorization;
 /// </remarks>
 public static class HealthEndpoints
 {
+    /// <summary>The liveness path used when the configuration has no <c>HealthCheck</c> section.</summary>
+    public const string DefaultPath = "/health";
+
     /// <summary>
     /// Maps the liveness endpoint at the configured path and the detailed one below it.
     /// </summary>
@@ -24,37 +27,40 @@ public static class HealthEndpoints
     /// <remarks>
     /// The liveness endpoint is anonymous and answers with the overall status only: container
     /// orchestrators need it. <c>/details</c> requires the Admin permission and adds the status of each check.
+    /// Without a <c>HealthCheck</c> section, the path is <see cref="DefaultPath"/>.
     /// </remarks>
     public static IEndpointRouteBuilder MapElPaquetoHealthChecks(this IEndpointRouteBuilder endpoints, ElPaquetoOptions options)
     {
         ArgumentNullException.ThrowIfNull(endpoints);
         ArgumentNullException.ThrowIfNull(options);
 
-        var path = options.HealthCheck.Path?.TrimEnd('/');
+        // Without a HealthCheck section the binder leaves the property null: use the shipped defaults.
+        var healthCheck = options.HealthCheck ?? new Core.HealthCheckOptions { Path = DefaultPath };
+        var path = healthCheck.Path?.TrimEnd('/');
         if (string.IsNullOrEmpty(path))
         {
             throw new InvalidOperationException("HealthCheck:Path must name a path below the root, such as /health: the root belongs to the home page.");
         }
 
         endpoints
-            .MapHealthChecks(path, Create(options, detailed: false))
+            .MapHealthChecks(path, Create(options, healthCheck.StatusPropertyName, detailed: false))
             .WithName(EndpointPermissionTable.HealthKey);
 
         endpoints
-            .MapHealthChecks(path + "/details", Create(options, detailed: true))
+            .MapHealthChecks(path + "/details", Create(options, healthCheck.StatusPropertyName, detailed: true))
             .WithName(EndpointPermissionTable.HealthDetailsKey);
 
         return endpoints;
     }
 
-    private static HealthCheckOptions Create(ElPaquetoOptions options, bool detailed) => new()
+    private static HealthCheckOptions Create(ElPaquetoOptions options, string statusPropertyName, bool detailed) => new()
     {
         ResponseWriter = async (context, report) =>
         {
             await report.FormatAsJson(
                 context.Response.Body,
                 detailed,
-                options.HealthCheck.StatusPropertyName,
+                statusPropertyName,
                 context.RequestAborted);
         },
         Predicate = check => check.IsConfigured(options),
