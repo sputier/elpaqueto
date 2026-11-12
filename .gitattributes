@@ -51,3 +51,5 @@
 *.sln text=auto eol=crlf
 
 *.sh eol=lf
+# Byte-exact test fixtures for eng/port-upstream.sh
+eng/tests/fixtures/** -text
