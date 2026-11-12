@@ -25,7 +25,7 @@ Not addressed: distributed counters, CAPTCHA, permanent lockout requiring an adm
 
 - **Why the account counter only refuses clients that failed.** A distributed attacker cannot be stopped per client, so a per-account ceiling is needed; but a ceiling that refused everyone would hand the attacker a lockout. Once the ceiling trips, every client that has guessed wrong for that user name recently is refused, and each new attacking address gets one guess before it is refused too. The owner, signing in from an address with no recent failure for the account, is never refused by this counter. If the owner did mistype from that address, it is refused until its own pair failure is older than the pair window (15 minutes by default) or until the account throttle ends, whichever is first.
 - **IPv6 by /64, and by /48.** One subscriber usually gets a whole /64; counting single IPv6 addresses would let one client rotate through billions of them. A site, a rented server or a tunnel broker account often gets a /48, which holds 65536 /64 networks: the network counter keeps rotating through them from multiplying the budget. Its limit is higher than the client limit, because one /48 can hold many legitimate clients (an office, a campus). IPv4 addresses seen through a dual-stack socket (`::ffff:a.b.c.d`) are unmapped and counted as IPv4, never grouped. A request without an address (a Unix socket) is counted in one shared bucket.
-- **User names** are normalized like the stored ones (upper-case invariant) and kept as a 128-bit prefix of their SHA-256: a long or random user name costs the same few bytes as any other, and no user name is kept in clear in memory or written to the logs.
+- **User names** are normalized like the stored ones (upper-case invariant) and kept as a 128-bit prefix of their SHA-256: a long or random user name costs the same few bytes as any other, and no user name is kept in clear in memory by the throttle. Trip events never name a user; the sign-in failures that lead to them do (audit event 1002, see [audit logging](audit-logging.md)).
 
 ## Algorithm
 
@@ -72,7 +72,7 @@ How the NuGet clients (`dotnet restore`, `dotnet nuget push`, Visual Studio) rep
 
 ## Logging
 
-Each trip is logged once, at warning level, with event id 1801, the counter kind (`Client`, `Network`, `Pair`, `Account`) and the client (its IPv4 address, IPv6 /64, or IPv6 /48 for the network counter), never the user name or anything from the credentials. Refused attempts are not logged one by one, so a flood does not flood the log. Client addresses can be personal data: operators keep these logs under the same retention rules as their access logs.
+Each trip is logged once, at warning level, as audit event 1801 `ThrottleTripped` (category `ElPaqueto.Security.Audit`, see [audit logging](audit-logging.md)), with the counter kind (`Client`, `Network`, `Pair`, `Account`) and the client (its IPv4 address, IPv6 /64, or IPv6 /48 for the network counter), never the user name or anything from the credentials. Refused attempts are logged one by one at `Debug` only (event 1004 `AuthenticationThrottled`), so a flood does not flood the log with the shipped settings. Client addresses can be personal data: operators keep these logs under the same retention rules as their access logs.
 
 ## Limits
 

@@ -210,7 +210,7 @@ docker compose run --rm elpaqueto admin user reset-password ci --password-file /
 - Dates are UTC, ISO 8601, with seven fractional digits and a `Z` suffix.
 - The output never contains a password hash.
 
-Log lines from the console logger also go to standard output: keep the default log level (`Warning`) or send logs elsewhere when a script parses the JSON.
+With the shipped settings, log lines go to standard error, so standard output holds the JSON only. If you replace `appsettings.json`, keep `Logging:Console:LogToStandardErrorThreshold` at `Trace` (see [Logging and monitoring](logging.md)).
 
 ## Exit codes
 
@@ -224,4 +224,4 @@ Every `admin` command uses the same exit codes:
 | `3` | Precondition failed, for example an administrator already exists. Nothing was changed. |
 | `4` | The user does not exist. |
 
-Results are written to standard output, errors and prompts to standard error. Log messages go to the logging providers configured for the server: by default the console logger, which writes to standard output, at level `Warning` and above. The structured events of the administration commands (category `ElPaqueto.Security.Administration`) are at level `Information`, so they are not shown by default; set `Logging__Console__LogLevel__ElPaqueto.Security.Administration=Information`, or configure another provider, to keep them.
+Results are written to standard output, errors and prompts to standard error. Log messages go to the logging providers configured for the server: by default the console logger, which writes to standard error. The structured events of the administration commands are part of the security audit trail (category `ElPaqueto.Security.Audit`, level `Information`), which the shipped settings show: each change prints one line, such as `First administrator admin (...) created by the bootstrap command.` See [Logging and monitoring](logging.md) to route or silence them.

@@ -36,7 +36,7 @@ JSON output is written field by field with `Utf8JsonWriter` from `UserSummary`, 
 
 ## Logging
 
-State-changing operations log one structured event through `UserAdministrationLog` (`LoggerMessage` source generator, category `ElPaqueto.Security.Administration`):
+State-changing operations log one structured event through `UserAdministrationLog` (`LoggerMessage` source generator). These events are part of the security audit trail: category `ElPaqueto.Security.Audit`, block 2000–2099 of the [event catalogue](audit-logging.md):
 
 | Event id | Name | Level | Fields |
 | --- | --- | --- | --- |
@@ -51,7 +51,7 @@ State-changing operations log one structured event through `UserAdministrationLo
 | 2009 | `ConcurrentChangeRejected` | Warning | `UserName` |
 | 2099 | `AdminCommandFailed` | Error | `Command`, exception |
 
-Passwords and hashes are never fields. EF Core does not log parameter values (sensitive data logging stays off). A sentinel test captures every log at `Trace` level and every output stream and asserts that neither the password nor the stored hash appears.
+Passwords and hashes are never fields. EF Core does not log parameter values (sensitive data logging stays off). A sentinel test captures every log at `Trace` level and every output stream and asserts that neither the password nor the stored hash appears; `AdminCommandAuditTests` runs every command and also searches structured properties, scopes and exception text.
 
 ## Tests
 
