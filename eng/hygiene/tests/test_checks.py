@@ -99,6 +99,69 @@ jobs:
         text = self.GOOD + "      # - uses: actions/setup-node@v4 on self-hosted\n"
         self.assertEqual(check_workflows.check_workflow("wf.yml", text), [])
 
+    RELEASE = f"""name: release
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        type: boolean
+        default: true
+permissions: {{}}
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@{SHA} # v1
+"""
+
+    def test_publishing_workflow_on_tags_and_dispatch_passes(self):
+        self.assertEqual(check_workflows.check_workflow("release.yml", self.RELEASE), [])
+        tags_only = self.RELEASE.replace("  workflow_dispatch:\n    inputs:\n      dry-run:\n        type: boolean\n        default: true\n", "")
+        self.assertEqual(check_workflows.check_workflow("release.yml", tags_only), [])
+
+    def test_publishing_scope_with_other_triggers_fails(self):
+        for trigger in (
+            "  pull_request:\n",
+            "  pull_request_target:\n",
+            "  workflow_call:\n",
+            "  workflow_run:\n    workflows: [CI]\n",
+            "  schedule:\n    - cron: '0 0 * * 0'\n",
+            "  issue_comment:\n",
+        ):
+            with self.subTest(trigger=trigger):
+                text = self.RELEASE.replace("  workflow_dispatch:\n", trigger + "  workflow_dispatch:\n")
+                self.assertIn("publish-trigger", rules(check_workflows.check_workflow("release.yml", text)))
+
+    def test_publishing_scope_on_branch_push_fails(self):
+        for push in ("  push:\n    branches: [main]\n", "  push:\n    tags: ['v*']\n    branches: [main]\n", "  push:\n"):
+            with self.subTest(push=push):
+                text = self.RELEASE.replace("  push:\n    tags: ['v*.*.*']\n", push)
+                self.assertEqual(rules(check_workflows.check_workflow("release.yml", text)), ["publish-trigger"])
+        inline = self.RELEASE.replace(
+            "on:\n  push:\n    tags: ['v*.*.*']\n  workflow_dispatch:\n    inputs:\n      dry-run:\n        type: boolean\n        default: true\n",
+            "on: [push, workflow_dispatch]\n",
+        )
+        self.assertEqual(rules(check_workflows.check_workflow("release.yml", inline)), ["publish-trigger"])
+
+    def test_each_publishing_scope_is_detected(self):
+        for scope in ("contents: write", "packages: write", "id-token: write", "attestations: write"):
+            with self.subTest(scope=scope):
+                text = self.GOOD.replace("permissions:\n  contents: read\n", f"permissions:\n  {scope}\n")
+                self.assertEqual(rules(check_workflows.check_workflow("wf.yml", text)), ["publish-trigger", "publish-trigger"])
+        write_all = self.GOOD.replace("permissions:\n  contents: read\n", "permissions: write-all\n")
+        self.assertIn("publish-trigger", rules(check_workflows.check_workflow("wf.yml", write_all)))
+
+    def test_read_and_security_events_scopes_are_not_publishing(self):
+        text = self.GOOD.replace("permissions:\n  contents: read\n", "permissions:\n  contents: read\n  security-events: write\n  packages: read\n")
+        self.assertEqual(check_workflows.check_workflow("wf.yml", text), [])
+
 
 class ProjectLayoutTests(unittest.TestCase):
     SLN = 'Project("{X}") = "A", "src\\A\\A.csproj", "{Y}"\nEndProject\n'

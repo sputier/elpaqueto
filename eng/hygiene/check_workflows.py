@@ -9,7 +9,12 @@ Fails when a workflow under .github/workflows/:
 - runs on a ``self-hosted`` runner;
 - is triggered by ``pull_request`` and references a secret other than
   ``GITHUB_TOKEN`` (or passes ``secrets: inherit``). This is stricter than a
-  per-job rule on purpose: a job condition is easy to get wrong.
+  per-job rule on purpose: a job condition is easy to get wrong;
+- grants a publishing scope (``contents``, ``packages``, ``id-token`` or
+  ``attestations`` set to ``write``, or ``write-all``) while it can be
+  triggered by anything other than a tag push or ``workflow_dispatch``. A
+  publishing workflow is never run by a pull request, a branch push, a
+  schedule or another workflow (``workflow_call``, ``workflow_run``).
 """
 
 from __future__ import annotations
@@ -27,6 +32,10 @@ DIGEST_PIN = re.compile(r"@sha256:[0-9a-f]{64}$")
 TOP_LEVEL_KEY = re.compile(r"^([A-Za-z_][\w-]*|'on'|\"on\"):")
 SECRET_REF = re.compile(r"\bsecrets\.([A-Za-z_][A-Za-z0-9_]*)")
 SECRETS_INHERIT = re.compile(r"^\s*secrets:\s*inherit\b")
+PUBLISH_SCOPE = re.compile(
+    r"^\s*(?:(?:contents|packages|id-token|attestations)\s*:\s*write|permissions\s*:\s*write-all)\b"
+)
+PUBLISH_EVENTS = {"push", "workflow_dispatch"}
 
 
 def strip_comment(line: str) -> str:
@@ -64,6 +73,29 @@ def triggers(lines: list[str]) -> set[str]:
     return events
 
 
+def on_block(lines: list[str]) -> list[str]:
+    """Lines of the top-level ``on:`` key, its own line included."""
+    block: list[str] = []
+    inside = False
+    for raw in lines:
+        line = strip_comment(raw).rstrip()
+        if not line.strip():
+            continue
+        top = TOP_LEVEL_KEY.match(line)
+        if top:
+            inside = top.group(1).strip("'\"") in ("on", "true")
+        if inside:
+            block.append(line)
+    return block
+
+
+def push_is_tags_only(lines: list[str]) -> bool:
+    """True when the ``push`` trigger is filtered on tags and not on branches."""
+    block = on_block(lines)
+    keys = {m.group(1) for l in block if (m := re.match(r"^\s+([A-Za-z_-]+)\s*:", l))}
+    return "tags" in keys and not keys & {"branches", "branches-ignore", "tags-ignore"}
+
+
 def check_workflow(path: str, text: str) -> list[Violation]:
     violations: list[Violation] = []
     lines = text.splitlines()
@@ -79,6 +111,28 @@ def check_workflow(path: str, text: str) -> list[Violation]:
             Violation(path, "workflow-trigger", "'pull_request_target' is not allowed")
         )
     pr_triggered = "pull_request" in events
+
+    publish_lines = [n for n, raw in enumerate(lines, 1) if PUBLISH_SCOPE.match(strip_comment(raw))]
+    if publish_lines:
+        other_events = sorted(events - PUBLISH_EVENTS)
+        if other_events:
+            violations.append(
+                Violation(
+                    path,
+                    "publish-trigger",
+                    f"grants a publishing scope but is also triggered by: {', '.join(other_events)}",
+                    publish_lines[0],
+                )
+            )
+        if "push" in events and not push_is_tags_only(lines):
+            violations.append(
+                Violation(
+                    path,
+                    "publish-trigger",
+                    "grants a publishing scope but its push trigger is not limited to tags",
+                    publish_lines[0],
+                )
+            )
 
     for number, raw in enumerate(lines, 1):
         line = strip_comment(raw)
