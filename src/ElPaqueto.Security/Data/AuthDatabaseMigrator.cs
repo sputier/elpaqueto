@@ -1,3 +1,4 @@
+using ElPaqueto.Security.Auditing;
 using ElPaqueto.Security.Configuration;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -9,7 +10,8 @@ namespace ElPaqueto.Security.Data;
 internal sealed partial class AuthDatabaseMigrator(
     IServiceScopeFactory scopeFactory,
     IOptions<ElPaquetoSecurityOptions> options,
-    ILogger<AuthDatabaseMigrator> logger) : IAuthDatabaseMigrator
+    ILogger<AuthDatabaseMigrator> logger,
+    ILogger<Audit> audit) : IAuthDatabaseMigrator
 {
     public async Task MigrateAsync(CancellationToken cancellationToken = default)
     {
@@ -52,27 +54,25 @@ internal sealed partial class AuthDatabaseMigrator(
         {
             foreach (var path in AuthDatabaseFile.RestrictToOwner(connectionString))
             {
-                LogNarrowed(logger, path);
+                AuditLog.DatabasePermissionsNarrowed(audit, path);
             }
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            LogCannotNarrow(logger);
+            AuditLog.DatabasePermissionsNotNarrowed(audit);
         }
     }
 
-    [LoggerMessage(Level = LogLevel.Debug, Message = "The security database is up to date.")]
+    [LoggerMessage(EventId = 3201, EventName = "SecurityDatabaseUpToDate", Level = LogLevel.Debug,
+        Message = "The security database is up to date.")]
     private static partial void LogUpToDate(ILogger logger);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Applying {Count} pending migration(s) to the security database.")]
+    [LoggerMessage(EventId = 3202, EventName = "SecurityDatabaseMigrating", Level = LogLevel.Information,
+        Message = "Applying {Count} pending migration(s) to the security database.")]
     private static partial void LogMigrating(ILogger logger, int count);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "The security database file '{Path}' was readable or writable by other users: its permissions were narrowed to the owner.")]
-    private static partial void LogNarrowed(ILogger logger, string path);
-
-    [LoggerMessage(Level = LogLevel.Warning, Message = "The permissions of the security database could not be narrowed to the owner. Restrict access to the file and its -wal and -shm files, for example with chmod 600.")]
-    private static partial void LogCannotNarrow(ILogger logger);
-
-    [LoggerMessage(Level = LogLevel.Information, Message = "On Windows the security database inherits the permissions of its folder: restrict the folder to the service account.")]
+    // A hint, not a finding: it is logged on every start on Windows, so it stays out of the audit trail.
+    [LoggerMessage(EventId = 3203, EventName = "SecurityDatabasePermissionsInherited", Level = LogLevel.Information,
+        Message = "On Windows the security database inherits the permissions of its folder: restrict the folder to the service account.")]
     private static partial void LogWindowsPermissions(ILogger logger);
 }

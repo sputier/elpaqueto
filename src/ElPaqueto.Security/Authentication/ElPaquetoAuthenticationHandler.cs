@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 using ElPaqueto.Security.ApiKeys;
+using ElPaqueto.Security.Auditing;
 using ElPaqueto.Security.Data;
 using ElPaqueto.Security.Passwords;
 using ElPaqueto.Security.Throttling;
@@ -53,6 +54,9 @@ internal sealed partial class ElPaquetoAuthenticationHandler(
 
     private static readonly Permission[] Flags = [Permission.Read, Permission.Publish, Permission.Admin];
 
+    // The audit trail (docs/technical/audit-logging.md): reasons, ids and the client address, never a credential.
+    private readonly ILogger _audit = loggerFactory.CreateLogger<Audit>();
+
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
         // Exactly one credential decides; the selection order is in RequestCredentialSelector. Every branch below
@@ -71,16 +75,36 @@ internal sealed partial class ElPaquetoAuthenticationHandler(
         };
     }
 
+    // Malformed credentials are refused before throttling, so they are logged at Debug only: anyone can send them.
     private AuthenticateResult Refuse(RequestCredential credential)
     {
+        var client = ClientAddress;
         if (credential.Source is { } source)
         {
             // Two API key header values.
-            LogMalformedApiKeyRefused(Logger, ApiKeyValidationFailure.Malformed, source);
+            var reason = AuditValues.Reason(ApiKeyValidationFailure.Malformed);
+            AuditLog.ApiKeyRejected(_audit, LogLevel.Debug, reason, AuditValues.None, source, client);
+        }
+        else
+        {
+            AuditLog.AuthenticationFailed(
+                _audit, LogLevel.Debug, AuditValues.PasswordMethod, AuthenticationFailureReason.Malformed, AuditValues.None, client);
         }
 
         return AuthenticateResult.Fail(InvalidCredentials);
     }
+
+    // Debug, and checked first: this runs for nearly every request.
+    private void LogSucceeded(Guid userId, string method, string keyId)
+    {
+        if (_audit.IsEnabled(LogLevel.Debug))
+        {
+            AuditLog.AuthenticationSucceeded(_audit, userId, method, keyId, ClientAddress);
+        }
+    }
+
+    // After trusted forwarded-header processing: the address of the client, not of the reverse proxy.
+    private string ClientAddress => AuditValues.Client(Context.Connection.RemoteIpAddress);
 
     protected override Task HandleChallengeAsync(AuthenticationProperties properties)
     {
@@ -98,8 +122,9 @@ internal sealed partial class ElPaquetoAuthenticationHandler(
         return Task.CompletedTask;
     }
 
-    private AuthenticateResult Refuse(ThrottleRejection rejection)
+    private AuthenticateResult Refuse(ThrottleRejection rejection, string method)
     {
+        AuditLog.AuthenticationThrottled(_audit, method, rejection.StatusCode, ClientAddress, rejection.RetryAfterHeaderValue);
         Context.Features.Set(new RefusedAttemptFeature(rejection));
         return AuthenticateResult.Fail(AttemptRefused);
     }
@@ -113,14 +138,14 @@ internal sealed partial class ElPaquetoAuthenticationHandler(
         var client = Context.Connection.RemoteIpAddress;
         if (throttle.Check(client, null) is { } throttled)
         {
-            return Refuse(throttled);
+            return Refuse(throttled, AuditValues.ApiKeyMethod);
         }
 
         // The slot reports the outcome and keeps a burst of parallel guesses from one client within its budget.
         using var slot = await throttle.EnterVerificationAsync(client, null, Context.RequestAborted);
         if (slot.Rejection is { } refused)
         {
-            return Refuse(refused);
+            return Refuse(refused, AuditValues.ApiKeyMethod);
         }
 
         var result = await apiKeys.ValidateAsync(token, Context.RequestAborted);
@@ -130,15 +155,15 @@ internal sealed partial class ElPaquetoAuthenticationHandler(
 
             // The reason and the public key id only: never the token. A value without the token format is logged at
             // Debug only, so that anonymous garbage cannot fill the logs; a well-formed key that is refused is worth
-            // an Information line.
-            if (result.KeyId is null)
-            {
-                LogMalformedApiKeyRefused(Logger, result.Failure, source);
-            }
-            else
-            {
-                LogApiKeyRefused(Logger, result.Failure, result.KeyId, source);
-            }
+            // a warning (key attempts are throttled, so their number is bounded).
+            var reason = AuditValues.Reason(result.Failure);
+            AuditLog.ApiKeyRejected(
+                _audit,
+                result.KeyId is null ? LogLevel.Debug : LogLevel.Warning,
+                reason,
+                result.KeyId ?? AuditValues.None,
+                source,
+                ClientAddress);
 
             return AuthenticateResult.Fail(InvalidCredentials);
         }
@@ -155,6 +180,7 @@ internal sealed partial class ElPaquetoAuthenticationHandler(
 
         // The effective permissions: the key's, intersected with the owner's current ones.
         AddPermissionClaims(claims, result.EffectivePermissions);
+        LogSucceeded(result.OwnerUserId, AuditValues.ApiKeyMethod, result.KeyId!);
         return Succeed(claims);
     }
 
@@ -165,7 +191,7 @@ internal sealed partial class ElPaquetoAuthenticationHandler(
         // Before any lookup or verification: a throttled attempt costs nothing and learns nothing.
         if (throttle.Check(client, userName) is { } throttled)
         {
-            return Refuse(throttled);
+            return Refuse(throttled, AuditValues.PasswordMethod);
         }
 
         User? user = null;
@@ -185,7 +211,7 @@ internal sealed partial class ElPaquetoAuthenticationHandler(
         using var slot = await throttle.EnterVerificationAsync(client, userName, Context.RequestAborted);
         if (slot.Rejection is { } refused)
         {
-            return Refuse(refused);
+            return Refuse(refused, AuditValues.PasswordMethod);
         }
 
         // While this attempt waited, another one for the same user name and client may have succeeded.
@@ -210,8 +236,24 @@ internal sealed partial class ElPaquetoAuthenticationHandler(
 
             default:
                 slot.Failed();
+                LogPasswordFailure(user, userName);
                 return AuthenticateResult.Fail(InvalidCredentials);
         }
+    }
+
+    // The reason category, and the user name only when it follows the user name rules: a value outside them may be a
+    // password typed in the wrong field, or carry line breaks, and is logged as a fingerprint.
+    private void LogPasswordFailure(User? user, string userName)
+    {
+        var reason = user switch
+        {
+            null => AuthenticationFailureReason.UnknownUser,
+            { IsActive: false } => AuthenticationFailureReason.Disabled,
+            _ => AuthenticationFailureReason.BadPassword,
+        };
+
+        var loggedName = AuditValues.UserName(userName);
+        AuditLog.AuthenticationFailed(_audit, LogLevel.Warning, AuditValues.PasswordMethod, reason, loggedName, ClientAddress);
     }
 
     private AuthenticateResult SucceedWithPassword(User user)
@@ -224,6 +266,7 @@ internal sealed partial class ElPaquetoAuthenticationHandler(
         };
 
         AddPermissionClaims(claims, user.Permissions);
+        LogSucceeded(user.Id, AuditValues.PasswordMethod, AuditValues.None);
         return Succeed(claims);
     }
 
@@ -260,14 +303,9 @@ internal sealed partial class ElPaquetoAuthenticationHandler(
         }
     }
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "The upgraded password hash of user {UserId} could not be stored; it will be retried at the next login.")]
+    [LoggerMessage(EventId = 3001, EventName = "PasswordRehashNotStored", Level = LogLevel.Warning,
+        Message = "The upgraded password hash of user {UserId} could not be stored; it will be retried at the next login.")]
     private static partial void LogRehashNotStored(ILogger logger, Guid userId);
-
-    [LoggerMessage(Level = LogLevel.Information, Message = "API key authentication failed: {Reason} (key id {KeyId}, sent as {CredentialSource}).")]
-    private static partial void LogApiKeyRefused(ILogger logger, ApiKeyValidationFailure reason, string keyId, string credentialSource);
-
-    [LoggerMessage(Level = LogLevel.Debug, Message = "API key authentication failed: {Reason} (no key id, sent as {CredentialSource}).")]
-    private static partial void LogMalformedApiKeyRefused(ILogger logger, ApiKeyValidationFailure reason, string credentialSource);
 
     private sealed record RefusedAttemptFeature(ThrottleRejection Rejection);
 }

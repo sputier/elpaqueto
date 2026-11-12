@@ -626,7 +626,7 @@ public sealed class LoginThrottleTests : IDisposable
         public override long GetTimestamp() => TimeSpan.FromHours(1).Ticks + Elapsed.Ticks;
     }
 
-    private sealed class TestLogger : ILogger<LoginThrottle>
+    private sealed class TestLogger : ILogger<Audit>
     {
         private readonly List<(LogLevel Level, string Message)> _entries = [];
 

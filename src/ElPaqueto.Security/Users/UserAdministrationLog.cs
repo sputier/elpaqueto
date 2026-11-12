@@ -1,3 +1,4 @@
+using ElPaqueto.Security.Auditing;
 using Microsoft.Extensions.Logging;
 
 namespace ElPaqueto.Security.Users;
@@ -6,10 +7,14 @@ namespace ElPaqueto.Security.Users;
 /// Structured log events of user administration, one per state-changing operation and per refusal
 /// that matters for security. Event ids are stable. Messages name the user, never a password or hash.
 /// </summary>
+/// <remarks>
+/// Part of the audit trail (block 2000-2099, see <see cref="AuditLog"/>): logged under the audit category.
+/// User names here come from the security database or passed the user name rules.
+/// </remarks>
 internal static partial class UserAdministrationLog
 {
     /// <summary>The logging category of these events.</summary>
-    public const string Category = "ElPaqueto.Security.Administration";
+    public const string Category = AuditLog.Category;
 
     [LoggerMessage(EventId = 2001, EventName = "AdministratorBootstrapped", Level = LogLevel.Information,
         Message = "First administrator {UserName} ({UserId}) created by the bootstrap command.")]

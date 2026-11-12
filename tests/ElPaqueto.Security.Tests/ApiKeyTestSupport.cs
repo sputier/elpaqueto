@@ -181,7 +181,7 @@ internal sealed class ApiKeyServiceHarness(AuthDatabaseFixture database, TimeSpa
             logging.AddProvider(Logs);
         });
 
-        return new ApiKeyService(context, Clock, Comparer, Tracker, factory.CreateLogger<ApiKeyService>());
+        return new ApiKeyService(context, Clock, Comparer, Tracker, factory.CreateLogger<ApiKeyService>(), factory.CreateLogger<Audit>());
     }
 
     public async Task<Guid> AddUserAsync(string userName, Permission permissions, bool active = true)

@@ -247,7 +247,7 @@ public class TransportSecurityTests
     [Fact]
     public async Task StartupWarnings_HttpsNotRequired_IsLogged()
     {
-        var logger = new ListLogger<TransportStartupWarnings>();
+        var logger = new ListLogger<Audit>();
         var warnings = CreateWarnings(new ElPaquetoSecurityOptions { Transport = new SecurityTransportOptions { RequireHttps = false } }, logger, ["http://localhost:5000"]);
 
         await warnings.StartingAsync(CancellationToken.None);
@@ -260,7 +260,7 @@ public class TransportSecurityTests
     [Fact]
     public async Task StartupWarnings_NoPublicBaseUrlBeyondLoopback_IsLogged()
     {
-        var logger = new ListLogger<TransportStartupWarnings>();
+        var logger = new ListLogger<Audit>();
         var warnings = CreateWarnings(new ElPaquetoSecurityOptions(), logger, ["http://[::]:8080"]);
 
         await warnings.StartingAsync(CancellationToken.None);
@@ -275,7 +275,7 @@ public class TransportSecurityTests
     [InlineData(null, "http://127.0.0.1:5000")]
     public async Task StartupWarnings_SafeConfiguration_LogsNothing(string? publicBaseUrl, string address)
     {
-        var logger = new ListLogger<TransportStartupWarnings>();
+        var logger = new ListLogger<Audit>();
         var warnings = CreateWarnings(new ElPaquetoSecurityOptions { PublicBaseUrl = publicBaseUrl }, logger, [address]);
 
         await warnings.StartingAsync(CancellationToken.None);
@@ -405,7 +405,7 @@ public class TransportSecurityTests
 
     private static TransportStartupWarnings CreateWarnings(
         ElPaquetoSecurityOptions options,
-        ILogger<TransportStartupWarnings> logger,
+        ILogger<Audit> logger,
         string[] addresses)
     {
         var services = new ServiceCollection()
@@ -417,7 +417,7 @@ public class TransportSecurityTests
 
     private static TransportSecurityMiddleware CreateMiddleware(ElPaquetoSecurityOptions options, RequestDelegate next)
     {
-        return new TransportSecurityMiddleware(next, Options.Create(options), NullLogger<TransportSecurityMiddleware>.Instance);
+        return new TransportSecurityMiddleware(next, Options.Create(options), NullLogger<Audit>.Instance);
     }
 
     private static DefaultHttpContext CreateContext(string scheme, string remoteAddress)

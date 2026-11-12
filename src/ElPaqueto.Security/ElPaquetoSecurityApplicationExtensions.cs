@@ -1,6 +1,7 @@
 using ElPaqueto.Authentication;
 using ElPaqueto.Core;
 using ElPaqueto.Security.ApiKeys;
+using ElPaqueto.Security.Auditing;
 using ElPaqueto.Security.Authentication;
 using ElPaqueto.Security.Authorization;
 using ElPaqueto.Security.Cli;
@@ -115,6 +116,7 @@ public static class ElPaquetoSecurityApplicationExtensions
 
         services.AddSingleton<IPostConfigureOptions<ForwardedHeadersOptions>, ConfigureTrustedForwardedHeaders>();
         services.AddSingleton<IHostedService, TransportStartupWarnings>();
+        services.AddSingleton<IHostedService, DevelopmentEnvironmentWarning>();
 
         services.AddCors();
         services.AddSingleton<IConfigureOptions<CorsOptions>, ConfigureElPaquetoCors>();
