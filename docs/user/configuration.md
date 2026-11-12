@@ -54,6 +54,6 @@ The maximum password length is fixed at 256 characters. The policy has no compos
 | --- | --- | --- |
 | `Security:Authentication:VerificationCacheTtl` | `00:05:00` | How long a successful password verification is remembered in memory, as a time span up to `01:00:00`. `00:00:00` disables the cache. A disabled user, changed permissions and a changed password always apply to the next request: the cache only keeps an unchanged, valid password cheap. |
 
-**Upgrading from BaGetter:** the inherited settings `Authentication:Credentials` (plain-text users) and `ApiKey`/`Authentication:ApiKeys` are no longer used for users. Users are stored, hashed, in the security database. Until the administration commands are available, no user can be created: the server then answers 401 to every request.
+**Upgrading from BaGetter:** the inherited settings `Authentication:Credentials` (plain-text users) are no longer used: users are stored, hashed, in the security database, and a request that carries credentials only authenticates if the user exists there. The legacy `ApiKey` and `Authentication:ApiKeys` settings are not retired yet: they still gate publishing, and publishing is open to everyone while neither is set. Until deny-by-default authorization and API keys are released, **do not expose the server to untrusted networks**.
 
 More settings are added to this page as the features that need them are released.
