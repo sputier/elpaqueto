@@ -43,4 +43,7 @@
     <None Include="../packageIcon.png" Pack="true" PackagePath="" Visible="false" />
   </ItemGroup>
 
+  <!-- Strict baseline for ElPaqueto-authored projects only (see eng/ElPaqueto.Build.props) -->
+  <Import Project="$(MSBuildThisFileDirectory)../eng/ElPaqueto.Build.props" />
+
 </Project>
