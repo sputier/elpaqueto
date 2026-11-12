@@ -85,6 +85,10 @@ With `--read-only`, mount a writable `/tmp` (`--tmpfs /tmp`, or a volume):
 
 A tmpfs lives in memory and Docker does not limit its size by default. Size it for the largest package you accept (`MaxPackageSizeGiB`, 8 GiB by default), for example `--tmpfs /tmp:size=2g` with a matching `MaxPackageSizeGiB`, or mount a volume on `/tmp` for large packages.
 
+### Logs
+
+The server writes its logs, the security audit trail included, to the console: `docker logs` shows them. Set a size limit on the logging driver and ship the logs to your collector as described in [Logging and monitoring](logging.md#shipping-logs-from-docker).
+
 ### Data protection keys
 
 ASP.NET Core data protection (antiforgery tokens of the web pages) keeps its keys in memory in the container: the log shows `Using an in-memory repository. Keys will not be persisted to storage.` at startup. After a restart, a web form opened before the restart must be reloaded. NuGet clients are not affected.

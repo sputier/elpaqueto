@@ -217,7 +217,10 @@ public class ThrottlingIntegrationTests
         Assert.Contains("Pair", trip.Message, StringComparison.Ordinal);
         Assert.DoesNotContain(captured, entry => entry.Message.Contains(password, StringComparison.Ordinal));
         Assert.DoesNotContain(captured, entry => entry.Message.Contains(credentials, StringComparison.Ordinal));
-        Assert.DoesNotContain(captured, entry => entry.Message.Contains("user-name-marker", StringComparison.Ordinal));
+
+        // The trip never names the user; only the sign-in failures do, by design of the audit trail (#22).
+        Assert.DoesNotContain("user-name-marker", trip.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(captured, entry => entry.Id.Id != 1002 && entry.Message.Contains("user-name-marker", StringComparison.Ordinal));
     }
 
     private static WebApplicationFactory<Startup> WithServices(

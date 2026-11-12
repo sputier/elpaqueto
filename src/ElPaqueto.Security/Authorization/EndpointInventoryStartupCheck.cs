@@ -1,3 +1,4 @@
+using ElPaqueto.Security.Auditing;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -10,9 +11,9 @@ namespace ElPaqueto.Security.Authorization;
 /// denied, so the warning tells the operator, and the developer who ported a route, why it answers
 /// 401 or 403.
 /// </summary>
-internal sealed partial class EndpointInventoryStartupCheck(
+internal sealed class EndpointInventoryStartupCheck(
     IServiceProvider services,
-    ILogger<EndpointInventoryStartupCheck> logger) : IHostedLifecycleService
+    ILogger<Audit> logger) : IHostedLifecycleService
 {
     public Task StartedAsync(CancellationToken cancellationToken)
     {
@@ -26,7 +27,7 @@ internal sealed partial class EndpointInventoryStartupCheck(
 
         foreach (var name in EndpointInventory.FindUnmapped(endpoints))
         {
-            LogUnmapped(logger, name);
+            AuditLog.EndpointNotMapped(logger, name);
         }
 
         return Task.CompletedTask;
@@ -41,7 +42,4 @@ internal sealed partial class EndpointInventoryStartupCheck(
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
     public Task StoppedAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-
-    [LoggerMessage(Level = LogLevel.Warning, Message = "The endpoint '{Endpoint}' has no entry in the permission table and is denied to everyone.")]
-    private static partial void LogUnmapped(ILogger logger, string endpoint);
 }

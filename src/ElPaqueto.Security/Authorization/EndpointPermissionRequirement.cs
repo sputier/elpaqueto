@@ -1,9 +1,11 @@
 using System.Security.Claims;
 using ElPaqueto.Core;
+using ElPaqueto.Security.Auditing;
 using ElPaqueto.Security.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace ElPaqueto.Security.Authorization;
@@ -22,66 +24,87 @@ internal sealed class EndpointPermissionRequirement : IAuthorizationRequirement;
 /// <remarks>
 /// Permissions are read from the claims built by authentication: this handler never queries a database.
 /// Failing for an unauthenticated caller makes the framework challenge (401); failing for an
-/// authenticated one makes it forbid (403).
+/// authenticated one makes it forbid (403), and is logged to the audit trail. Unauthenticated failures are not
+/// logged: every NuGet client starts with an anonymous request.
 /// </remarks>
-internal sealed class EndpointPermissionHandler(IHttpContextAccessor httpContextAccessor)
+internal sealed class EndpointPermissionHandler(IHttpContextAccessor httpContextAccessor, ILogger<Audit> audit)
     : AuthorizationHandler<EndpointPermissionRequirement>
 {
     protected override Task HandleRequirementAsync(AuthorizationHandlerContext context, EndpointPermissionRequirement requirement)
     {
         var httpContext = context.Resource as HttpContext ?? httpContextAccessor.HttpContext;
+        var decision = Decide(context.User, httpContext);
 
-        if (Decide(context.User, httpContext))
+        if (decision.Allowed)
         {
             context.Succeed(requirement);
         }
         else
         {
+            if (httpContext is not null && context.User.Identity?.IsAuthenticated == true)
+            {
+                LogDenied(context.User, httpContext, decision);
+            }
+
             context.Fail();
         }
 
         return Task.CompletedTask;
     }
 
-    private static bool Decide(ClaimsPrincipal user, HttpContext? httpContext)
+    private void LogDenied(ClaimsPrincipal user, HttpContext httpContext, Decision decision)
+    {
+        AuditLog.AuthorizationDenied(
+            audit,
+            user.FindFirstValue(ClaimTypes.NameIdentifier) ?? AuditValues.None,
+            user.FindFirstValue(ElPaquetoClaimTypes.AuthenticationMethod) ?? AuditValues.None,
+            user.FindFirstValue(ElPaquetoClaimTypes.ApiKeyId) ?? AuditValues.None,
+            AuditValues.HttpMethod(httpContext.Request.Method),
+            decision.Endpoint ?? AuditValues.None,
+            decision.Reason!,
+            decision.Required,
+            AuditValues.Client(httpContext.Connection.RemoteIpAddress));
+    }
+
+    private static Decision Decide(ClaimsPrincipal user, HttpContext? httpContext)
     {
         if (httpContext is null)
         {
-            return false;
+            return Decision.Deny(null, AuthorizationDenialReason.UnmappedEndpoint);
         }
 
         var endpoint = httpContext.GetEndpoint();
         var key = EndpointKey.Resolve(endpoint);
         if (endpoint is null || key is null || !EndpointPermissionTable.TryGetRule(key, out var rule))
         {
-            return false;
+            return Decision.Deny(key, AuthorizationDenialReason.UnmappedEndpoint);
         }
 
         // A route name is only a label: an endpoint that reuses it for another action is denied.
         if (!string.Equals(rule.Action, EndpointKey.ActionOf(endpoint), StringComparison.Ordinal))
         {
-            return false;
+            return Decision.Deny(key, AuthorizationDenialReason.RouteMismatch);
         }
 
         if (!rule.Methods.Contains(httpContext.Request.Method, StringComparer.OrdinalIgnoreCase))
         {
-            return false;
+            return Decision.Deny(key, AuthorizationDenialReason.MethodNotAllowed, rule.Required);
         }
 
         if (rule.Anonymous)
         {
-            return true;
+            return Decision.Allow;
         }
 
         if (user.Identity?.IsAuthenticated != true)
         {
-            return false;
+            return Decision.Deny(key, AuthorizationDenialReason.MissingPermission, rule.Required);
         }
 
         // Writes: only an API key sent in X-NuGet-ApiKey, never a password or a key sent as a Basic password.
         if (rule.RequiresApiKeyHeader && user.ApiKeyIdFromHeader() is null)
         {
-            return false;
+            return Decision.Deny(key, AuthorizationDenialReason.ApiKeyHeaderRequired, rule.Required);
         }
 
         var required = rule.Required;
@@ -93,6 +116,17 @@ internal sealed class EndpointPermissionHandler(IHttpContextAccessor httpContext
             required |= Permission.Admin;
         }
 
-        return user.GrantedPermissions().HasFlag(required);
+        return user.GrantedPermissions().HasFlag(required)
+            ? Decision.Allow
+            : Decision.Deny(key, AuthorizationDenialReason.MissingPermission, required);
+    }
+
+    /// <summary>The outcome of <see cref="Decide"/>; for a denial, what the audit trail records.</summary>
+    private readonly record struct Decision(bool Allowed, string? Endpoint, string? Reason, Permission Required)
+    {
+        public static Decision Allow => new(true, null, null, Permission.None);
+
+        public static Decision Deny(string? endpoint, string reason, Permission required = Permission.None)
+            => new(false, endpoint, reason, required);
     }
 }

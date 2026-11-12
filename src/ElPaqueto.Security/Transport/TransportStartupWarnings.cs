@@ -1,4 +1,5 @@
 using System.Net;
+using ElPaqueto.Security.Auditing;
 using ElPaqueto.Security.Configuration;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
@@ -14,16 +15,16 @@ namespace ElPaqueto.Security.Transport;
 /// Logs the startup warnings of the transport policy: HTTPS not required, and no public base URL
 /// on a server that listens beyond loopback.
 /// </summary>
-internal sealed partial class TransportStartupWarnings(
+internal sealed class TransportStartupWarnings(
     IOptions<ElPaquetoSecurityOptions> options,
     IServiceProvider services,
-    ILogger<TransportStartupWarnings> logger) : IHostedLifecycleService
+    ILogger<Audit> logger) : IHostedLifecycleService
 {
     public Task StartingAsync(CancellationToken cancellationToken)
     {
         if (!options.Value.Transport.RequireHttps)
         {
-            LogHttpsNotRequired(logger);
+            AuditLog.HttpsNotRequired(logger);
         }
 
         return Task.CompletedTask;
@@ -40,7 +41,7 @@ internal sealed partial class TransportStartupWarnings(
 
             if (addresses is not null && !AreLoopbackOnly(addresses))
             {
-                LogNoPublicBaseUrl(logger);
+                AuditLog.PublicBaseUrlMissing(logger);
             }
         }
 
@@ -101,14 +102,4 @@ internal sealed partial class TransportStartupWarnings(
 
         return IPAddress.TryParse(host.Trim('[', ']'), out var ip) && TransportSecurityMiddleware.IsLocal(ip);
     }
-
-    [LoggerMessage(
-        Level = LogLevel.Warning,
-        Message = "Security:Transport:RequireHttps is false: remote clients can send credentials over plain HTTP. Use this only on an isolated test network.")]
-    private static partial void LogHttpsNotRequired(ILogger logger);
-
-    [LoggerMessage(
-        Level = LogLevel.Warning,
-        Message = "Security:PublicBaseUrl is not set and the server listens beyond loopback: the URLs it gives NuGet clients are built from the request's Host header. Set Security:PublicBaseUrl to the URL clients use.")]
-    private static partial void LogNoPublicBaseUrl(ILogger logger);
 }
