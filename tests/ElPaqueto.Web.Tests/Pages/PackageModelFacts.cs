@@ -332,6 +332,53 @@ public class PackageModelFacts
             _target.Readme.Value);
     }
 
+    [Theory]
+    [InlineData("<script>alert(1)</script>", "<script")]
+    [InlineData("<img src=x onerror=alert(1)>", "<img src=x")]
+    [InlineData("<iframe src=\"https://evil.example.com\"></iframe>", "<iframe")]
+    [InlineData("<a href=\"#\" onclick=\"alert(1)\">x</a>", "onclick=\"")]
+    [InlineData("[x](javascript:alert(1))", "href=\"javascript:")]
+    [InlineData("[x](https://example.com){onclick=\"alert(1)\"}", "onclick=\"")]
+    public async Task ReadmeAndReleaseNotes_CarryNothingExecutable(string payload, string forbidden)
+    {
+        using var readmeStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(payload));
+        var package = CreatePackage("1.0.0", hasReadme: true);
+        package.ReleaseNotes = payload;
+
+        _packages
+            .Setup(m => m.FindPackagesAsync("testpackage", _cancellation))
+            .ReturnsAsync(new List<Package> { package });
+
+        _content
+            .Setup(c => c.GetPackageReadmeStreamOrNullAsync(
+                "testpackage",
+                It.Is<NuGetVersion>(v => v.OriginalVersion == "1.0.0"),
+                _cancellation))
+            .ReturnsAsync(readmeStream);
+
+        await _target.OnGetAsync("testpackage", "1.0.0", _cancellation);
+
+        Assert.DoesNotContain(forbidden, _target.Readme.Value, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(forbidden, _target.ParsedReleaseNotes.Value, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ReleaseNotes_StillRenderMarkdown()
+    {
+        var package = CreatePackage("1.0.0");
+        package.ReleaseNotes = "* **Fixed** a [bug](https://example.com/issue)";
+
+        _packages
+            .Setup(m => m.FindPackagesAsync("testpackage", _cancellation))
+            .ReturnsAsync(new List<Package> { package });
+
+        await _target.OnGetAsync("testpackage", "1.0.0", _cancellation);
+
+        Assert.Equal(
+            "<ul>\n<li><strong>Fixed</strong> a <a href=\"https://example.com/issue\">bug</a></li>\n</ul>\n",
+            _target.ParsedReleaseNotes.Value);
+    }
+
     private Package CreatePackage(
         string version,
         long downloads = 0,
