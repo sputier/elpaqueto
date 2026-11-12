@@ -42,7 +42,7 @@ internal sealed partial class ElPaquetoAuthenticationHandler(
     : AuthenticationHandler<AuthenticationSchemeOptions>(options, loggerFactory, encoder)
 {
     /// <summary>The header NuGet clients send the API key in, on push and delete.</summary>
-    public const string ApiKeyHeaderName = "X-NuGet-ApiKey";
+    internal const string ApiKeyHeaderName = "X-NuGet-ApiKey";
 
     // Fixed strings: the base class logs them, so they must never contain request data.
     private const string InvalidCredentials = "Invalid credentials.";
@@ -58,7 +58,7 @@ internal sealed partial class ElPaquetoAuthenticationHandler(
             // A client sends one key; several are ambiguous, hence a failure rather than a pick.
             if (apiKeyValues.Count > 1)
             {
-                LogApiKeyRefused(Logger, ApiKeyValidationFailure.Malformed, "(none)", ElPaquetoClaimTypes.ApiKeyHeaderSource);
+                LogMalformedApiKeyRefused(Logger, ApiKeyValidationFailure.Malformed, ElPaquetoClaimTypes.ApiKeyHeaderSource);
                 return AuthenticateResult.Fail(InvalidCredentials);
             }
 
@@ -102,8 +102,18 @@ internal sealed partial class ElPaquetoAuthenticationHandler(
         var result = await apiKeys.ValidateAsync(token, Context.RequestAborted);
         if (!result.Succeeded)
         {
-            // The reason and the public key id only: never the token.
-            LogApiKeyRefused(Logger, result.Failure, result.KeyId ?? "(none)", source);
+            // The reason and the public key id only: never the token. A value without the token format is logged at
+            // Debug only, so that anonymous garbage cannot fill the logs; a well-formed key that is refused is worth
+            // an Information line.
+            if (result.KeyId is null)
+            {
+                LogMalformedApiKeyRefused(Logger, result.Failure, source);
+            }
+            else
+            {
+                LogApiKeyRefused(Logger, result.Failure, result.KeyId, source);
+            }
+
             return AuthenticateResult.Fail(InvalidCredentials);
         }
 
@@ -203,4 +213,7 @@ internal sealed partial class ElPaquetoAuthenticationHandler(
 
     [LoggerMessage(Level = LogLevel.Information, Message = "API key authentication failed: {Reason} (key id {KeyId}, sent as {CredentialSource}).")]
     private static partial void LogApiKeyRefused(ILogger logger, ApiKeyValidationFailure reason, string keyId, string credentialSource);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "API key authentication failed: {Reason} (no key id, sent as {CredentialSource}).")]
+    private static partial void LogMalformedApiKeyRefused(ILogger logger, ApiKeyValidationFailure reason, string credentialSource);
 }

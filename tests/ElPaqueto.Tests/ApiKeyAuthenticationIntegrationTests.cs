@@ -435,6 +435,26 @@ public class ApiKeyAuthenticationIntegrationTests : IDisposable
     // ---- The inline check of the inherited write actions -------------------------------------------------------
 
     [Fact]
+    public void TheHandlerReadsTheHeaderTheInheritedControllersRead()
+    {
+        Assert.Equal(Web.HttpRequestExtensions.ApiKeyHeader, ElPaqueto.Security.Authentication.ElPaquetoAuthenticationHandler.ApiKeyHeaderName);
+    }
+
+    [Fact]
+    public async Task AnInvalidKey_OnTheAnonymousLivenessRoute_GrantsNothingAndIsServedAnonymously()
+    {
+        // Authentication fails, but the liveness row is anonymous: the failure only turns into 401 where a
+        // principal is required. Nothing beyond the overall status is revealed.
+        using var client = _app.CreateClientWithApiKey("epq_not-a-key");
+
+        using var liveness = await client.GetAsync("health");
+        using var details = await client.GetAsync("health/details");
+
+        Assert.Equal(HttpStatusCode.OK, liveness.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, details.StatusCode);
+    }
+
+    [Fact]
     public void TheInlineCheck_IsTheNewServiceAndNotTheInheritedOne()
     {
         using var scope = _app.Services.CreateScope();
@@ -550,8 +570,10 @@ public class ApiKeyAuthenticationIntegrationTests : IDisposable
             Assert.DoesNotContain(captured, line => line.Contains(Convert.ToBase64String(Encoding.UTF8.GetBytes("apikey:" + token)), StringComparison.Ordinal));
         }
 
-        Assert.Contains(captured, line => line.Contains(revoked.Key.KeyId, StringComparison.Ordinal) && line.Contains("Revoked", StringComparison.Ordinal));
-        Assert.Contains(captured, line => line.Contains(valid.Key.KeyId, StringComparison.Ordinal) && line.Contains("WrongSecret", StringComparison.Ordinal));
+        // The handler's own lines ("sent as ..."), not only the service's Debug lines.
+        Assert.Contains(captured, line => line.Contains(revoked.Key.KeyId, StringComparison.Ordinal) && line.Contains("Revoked", StringComparison.Ordinal) && line.Contains("sent as x-nuget-apikey", StringComparison.Ordinal));
+        Assert.Contains(captured, line => line.Contains(revoked.Key.KeyId, StringComparison.Ordinal) && line.Contains("Revoked", StringComparison.Ordinal) && line.Contains("sent as basic-password", StringComparison.Ordinal));
+        Assert.Contains(captured, line => line.Contains(valid.Key.KeyId, StringComparison.Ordinal) && line.Contains("WrongSecret", StringComparison.Ordinal) && line.Contains("sent as", StringComparison.Ordinal));
     }
 
     // ---- Helpers --------------------------------------------------------------------------------------------
@@ -577,6 +599,12 @@ public class ApiKeyAuthenticationIntegrationTests : IDisposable
         if (result.Succeeded)
         {
             context.User = result.Principal;
+        }
+
+        // Positive control: the capture does see the commands that authentication ran.
+        if (context.Request.Headers.ContainsKey(TestUserExtensions.ApiKeyHeader) || context.Request.Headers.ContainsKey("Authorization"))
+        {
+            Assert.True(CountDatabaseCommands(logs) > 0, "The log capture saw no SQL command at all.");
         }
 
         scope.ServiceProvider.GetRequiredService<IHttpContextAccessor>().HttpContext = context;

@@ -70,7 +70,7 @@ A key holds some of its owner's permissions (`Read`, `Publish`, `Admin`) and nev
 
 - **Push, delete, unlist, relist and symbol push need a key with `Publish` sent as the API key** (the `X-NuGet-ApiKey` header): `dotnet nuget push <package> --source <source> --api-key <key>`. A user password, or a key sent as the source password, is refused (403) for these operations even with `Publish`.
 - **Restore and every other read** can use a key with `Read` as the password of the source credentials, with any non-empty user name (`apikey` by convention). The user name is ignored.
-- `dotnet nuget push` first reads the service index with the source credentials, then pushes with the API key: the source credentials need `Read`, the API key needs `Publish`. One key holding both can be used for both, or two keys can be used. Prefer a `Read`-only key for restore jobs and a separate `Publish` key for publishing jobs.
+- `dotnet nuget push` to a V3 source reads the service index with the source credentials (unless it is in the NuGet HTTP cache), then pushes with the API key: the source credentials need `Read`, the API key needs `Publish`. One key holding both can be used for both, or two keys can be used. Prefer a `Read`-only key for restore jobs and a separate `Publish` key for publishing jobs.
 
 For CI, keep the key out of `NuGet.Config` and inject it from the CI secret store:
 

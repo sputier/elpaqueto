@@ -18,7 +18,8 @@ namespace ElPaqueto.Security.ApiKeys;
 /// </para>
 /// <para>
 /// The endpoint policy has already demanded exactly this before the action runs, so for an authorized write
-/// the answer is always <see langword="true"/>: this is defence in depth only. The legacy <c>ApiKey</c> and
+/// the answer is always <see langword="true"/>: this is defence in depth only, not the full rule (a hard delete,
+/// for example, also needs <see cref="Permission.Admin"/>, which only the endpoint policy checks). The legacy <c>ApiKey</c> and
 /// <c>Authentication:ApiKeys</c> settings play no part, and no configuration opens publishing to everyone.
 /// </para>
 /// </remarks>

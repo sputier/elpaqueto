@@ -11,7 +11,7 @@ A key is accepted in two places, both handled by the authentication handler ([au
 | `X-NuGet-ApiKey: <token>` | `dotnet nuget push --api-key`, `dotnet nuget delete --api-key` | every route the key's effective permissions open, **including writes** | `x-nuget-apikey` |
 | Basic password, any non-empty user name (`apikey` by convention) | restore and every other request that uses the source credentials of `NuGet.Config` or `NuGetPackageSourceCredentials_<source>` | every route the key's effective permissions open, **except writes** | `basic-password` |
 
-- When `X-NuGet-ApiKey` is present it alone decides, even if `Authorization` carries valid credentials, and an invalid value fails the request with 401. Two values fail.
+- When `X-NuGet-ApiKey` is present it alone decides, even if `Authorization` carries valid credentials, and an invalid value fails authentication: 401 on every protected route. Two values fail.
 - Writes (push, symbol push, unlist/delete, relist) need a key with `Publish` **in the header**. A key with `Publish` sent only as a Basic password, or a user password with `Publish`, gets 403 ([authorization](authorization.md)). Stock NuGet clients send the header only on push and delete, and Basic credentials on every other request, so a CI push job gives the source credentials `Read` (a user password or a `Read` key as Basic password, for the service index) and `--api-key` a `Publish` key; one key with `Read` and `Publish` can serve both.
 - The user name sent with a key is ignored: the key names its owner. It cannot lend the permissions of the user it names.
 - Every key failure (malformed, unknown, wrong secret, revoked, expired, owner disabled) gives the same 401 as a wrong password. The reason is logged with the key id only.

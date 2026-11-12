@@ -6,7 +6,7 @@ Authentication is implemented by `ElPaquetoAuthenticationHandler` (`src/ElPaquet
 
 Exactly one credential decides a request, chosen in this order ([ADR 0002](../adr/0002-authentication-architecture.md), decision 6):
 
-1. **`X-NuGet-ApiKey` present** (sent by `dotnet nuget push` and `dotnet nuget delete`): the key alone decides and `Authorization` is ignored. An invalid, revoked or expired key, a key whose owner is disabled, or **two `X-NuGet-ApiKey` values**, fail authentication (401), even if valid Basic credentials are also present. A header with an empty value is present, so it fails too.
+1. **`X-NuGet-ApiKey` present** (sent by `dotnet nuget push` and `dotnet nuget delete`): the key alone decides and `Authorization` is ignored. An invalid, revoked or expired key, a key whose owner is disabled, or **two `X-NuGet-ApiKey` values**, fail authentication, even if valid Basic credentials are also present: every protected route then answers 401 (the anonymous liveness endpoint is still served, and grants nothing). A header with an empty value is present, so it fails too.
 2. **`Authorization: Basic`**, parsed strictly (below). If the password has the exact API key token format (`ApiKeyToken.IsTokenFormat`, see [API keys](api-keys.md)), it is validated **as an API key only**: the user name must be non-empty (the parser refuses an empty one) and is otherwise ignored, so it can never select another user. Any other password is verified **as the user's password only**. No value is ever tried both ways: a token-shaped password is never looked up as a user password, and the password policy refuses passwords with that shape ([passwords](passwords.md)).
 3. **Anything else** (no credentials, another scheme): no result, and a protected endpoint answers with the challenge.
 
@@ -14,7 +14,7 @@ Every failure, whichever credential and whatever the reason, gives the same 401:
 
 A key builds this principal: the owner's user id and user name, the authentication method `api_key`, the key's public key id, where the key was read from (`x-nuget-apikey` for the header, `basic-password` for a Basic password), and one claim per **effective** permission: the key's permissions intersected with the owner's **current** permissions, recomputed by `IApiKeyService.ValidateAsync` on every request. Write routes accept only a key read from the header ([authorization](authorization.md)). The validation itself (constant-time comparison, revocation, expiry, disabled owner, debounced last-use timestamp) is described in [API keys](api-keys.md).
 
-A refused key is logged at `Information` level by the handler, with the reason, the public key id (when the value had the token format) and where it was read from; never the token. Throttling of failed attempts is a separate change: the handler is structured so that it can be consulted before each validation and told about each failure, by client address and key id or user name.
+A refused key that has the token format is logged at `Information` level by the handler, with the reason, the public key id and where it was read from; a value without the token format (or two header values) is logged at `Debug` only, so that anonymous garbage cannot fill the logs. The token is never logged. Throttling of failed attempts is a separate change: the handler is structured so that it can be consulted before each validation and told about each failure, by client address and key id or user name.
 
 ## Password flow
 
