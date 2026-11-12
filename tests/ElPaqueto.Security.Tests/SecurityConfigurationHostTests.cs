@@ -135,8 +135,34 @@ public sealed class SecurityConfigurationHostTests : IDisposable
         });
 
         Assert.False(host.ValidateElPaquetoSecurityOptions());
-        Assert.Contains(logs.Messages, m => m.Contains("Security:Database:ConnectionString", StringComparison.Ordinal));
+        Assert.Contains(logs.Messages, m => m.Contains("Security:Database is a section", StringComparison.Ordinal));
         Assert.All(logs.Messages, m => Assert.DoesNotContain("/data/db/auth.db", m, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void PlainValueWhereThePasswordsSectionIsExpected_IsRejected()
+    {
+        using var host = BuildHost(out var logs, new Dictionary<string, string?>
+        {
+            ["Security:Passwords"] = "210000",
+        });
+
+        Assert.False(host.ValidateElPaquetoSecurityOptions());
+        Assert.Contains(logs.Messages, m => m.Contains("Security:Passwords", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void NonNumericIterationCount_FailsWithoutEchoingTheValue()
+    {
+        const string secretMarker = "s3cr3t-marker";
+        using var host = BuildHost(out var logs, new Dictionary<string, string?>
+        {
+            ["Security:Passwords:IterationCount"] = secretMarker,
+        });
+
+        Assert.False(host.ValidateElPaquetoSecurityOptions());
+        Assert.NotEmpty(logs.Messages);
+        Assert.All(logs.Messages, m => Assert.DoesNotContain(secretMarker, m, StringComparison.Ordinal));
     }
 
     private IHost BuildHost(

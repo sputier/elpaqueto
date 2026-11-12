@@ -119,4 +119,48 @@ public class ElPaquetoSecurityOptionsTests
         Assert.True(result.Failed);
         Assert.Contains(result.Failures!, f => f.Contains("Security:Database:ConnectionString", StringComparison.Ordinal));
     }
+
+    [Theory]
+    [InlineData(99_999)]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(10_000_001)]
+    public void IterationCountOutsideTheAcceptedRange_IsRejected(int iterations)
+    {
+        var options = new ElPaquetoSecurityOptions
+        {
+            Passwords = new SecurityPasswordOptions { IterationCount = iterations },
+        };
+
+        var result = Validator.Validate(name: null, options);
+
+        Assert.True(result.Failed);
+        Assert.Contains(result.Failures!, f => f.Contains("Security:Passwords:IterationCount", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData(11)]
+    [InlineData(257)]
+    public void MinimumLengthOutsideTheAcceptedRange_IsRejected(int minimumLength)
+    {
+        var options = new ElPaquetoSecurityOptions
+        {
+            Passwords = new SecurityPasswordOptions { MinimumLength = minimumLength },
+        };
+
+        var result = Validator.Validate(name: null, options);
+
+        Assert.True(result.Failed);
+        Assert.Contains(result.Failures!, f => f.Contains("Security:Passwords:MinimumLength", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void PasswordDefaults_FollowTheDocumentedValues()
+    {
+        var options = new ElPaquetoSecurityOptions();
+
+        Assert.Equal(210_000, options.Passwords.IterationCount);
+        Assert.Equal(15, options.Passwords.MinimumLength);
+        Assert.True(Validator.Validate(name: null, options).Succeeded);
+    }
 }
