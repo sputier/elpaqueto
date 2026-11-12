@@ -123,4 +123,48 @@ Health probes from other machines (an orchestrator, a load balancer, an uptime m
 
 `false` disables the check and logs a warning at startup. Use it only on an isolated test network.
 
+### `Security:Cors`
+
+Which other web sites may call the server from a browser script. NuGet clients and the server's own web UI never need it.
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| `Security:Cors:AllowedOrigins` | empty | List of origins, such as `https://ui.example.test`: scheme, host and optional port, nothing else. Empty: no cross-origin access. |
+| `Security:Cors:AllowedMethods` | empty, meaning `GET`, `HEAD` | List of methods a script may use. Only `GET`, `HEAD`, `PUT`, `POST` and `DELETE` are accepted. A configured list replaces the default. |
+| `Security:Cors:AllowedHeaders` | empty, meaning `Authorization` | List of request headers a script may send, such as `X-NuGet-ApiKey`. A configured list replaces the default. |
+
+```bash
+export Security__Cors__AllowedOrigins__0="https://ui.example.test"
+```
+
+Origins are compared exactly: `https://ui.example.test` does not allow `http://ui.example.test`, `https://ui.example.test:8443` or a subdomain. The wildcard `*`, the `null` origin, a path (`https://ui.example.test/app`) and user information are rejected at startup. A trailing `/`, upper case and the default port are accepted and normalized.
+
+Cross-origin requests never run in credentials mode: the server never sends `Access-Control-Allow-Credentials`, so the Basic credentials a browser remembered for the web UI are never usable by another site's script. A script authenticates by setting the `Authorization` header itself. Preflight requests are answered before authentication is required, with approval only for an allowed origin, method and header list.
+
+### `Security:Hsts`
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| `Security:Hsts:Enabled` | `false` | Send `Strict-Transport-Security` on responses to HTTPS requests. |
+| `Security:Hsts:MaxAgeSeconds` | `31536000` (one year) | How long browsers remember to use HTTPS only. Between `0` and `63072000` (two years); `0` makes browsers forget it. |
+| `Security:Hsts:IncludeSubDomains` | `false` | Extend the policy to every subdomain of the server's host name. Enable it only if every subdomain serves HTTPS. |
+
+The header is sent only when the request is HTTPS after trusted forwarded headers (a trusted proxy reporting `X-Forwarded-Proto: https`, or `Security:PublicBaseUrl` set), and never for `localhost` or a loopback address. Leave it off when your reverse proxy already sends `Strict-Transport-Security` (see [Running behind a reverse proxy](reverse-proxy.md)).
+
+### Response headers and the web UI
+
+These are not settings, but they affect what a reverse proxy or a browser sees:
+
+- every response carries `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` and `X-Frame-Options: DENY`: the web UI cannot be embedded in another site;
+- HTML pages carry a `Content-Security-Policy` that allows scripts and styles from the server only (plus the inline scripts the UI uses), package icons from any `https` host and the UI's icon font from Microsoft's CDN; other responses carry a policy that forbids everything;
+- pages and error responses carry `Cache-Control: no-store`; package downloads and protocol responses keep their caching.
+
+The web UI needs `Read`. The browser shows its own credential prompt; there is no login page and no logout: close the browser to forget the credentials.
+
+Package READMEs and release notes are rendered from Markdown with HTML disabled: HTML they contain is shown as text, and links that do not use `http`, `https`, `mailto` or a relative URL are removed.
+
+The shipped `appsettings.json` sets `Statistics:ListConfiguredServices` to `false`, so the statistics page does not list the database, storage and search services. Set it to `true` to show them to every user with `Read`.
+
+See [web security](../technical/web-security.md) for the details and the limits of the content security policy.
+
 More settings are added to this page as the features that need them are released.
