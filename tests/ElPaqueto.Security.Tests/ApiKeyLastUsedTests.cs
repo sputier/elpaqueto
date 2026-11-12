@@ -116,6 +116,12 @@ public sealed class ApiKeyLastUsedTests : IDisposable
         Assert.True(result.Succeeded);
         Assert.Null((await _harness.LoadKeyAsync(token.Key.KeyId)).LastUsedAt);
         Assert.Contains(_harness.Logs.Lines, l => l.StartsWith("Warning", StringComparison.Ordinal) && l.Contains(token.Key.KeyId, StringComparison.Ordinal));
+
+        // The failed write gave its claim back: the next use retries without waiting for the interval.
+        await _harness.ExecuteSqlAsync("DROP TRIGGER fail_api_key_update;");
+        _harness.Clock.Advance(TimeSpan.FromSeconds(1));
+        Assert.True((await _harness.ValidateAsync(token.Token)).Succeeded);
+        Assert.Equal(_harness.Now, (await _harness.LoadKeyAsync(token.Key.KeyId)).LastUsedAt);
     }
 
     [Fact]
@@ -157,8 +163,24 @@ public sealed class ApiKeyLastUsedTests : IDisposable
         Assert.True(tracker.TryClaimWrite(first, null, now.AddMinutes(5)));
         Assert.False(tracker.TryClaimWrite(Guid.NewGuid(), now.AddMinutes(-1), now));
 
-        // A clock that went backwards never causes a burst of writes.
-        Assert.False(tracker.TryClaimWrite(Guid.NewGuid(), now.AddMinutes(10), now));
+        // A stored timestamp in the future (clock moved backwards) does not block writes until the clock
+        // catches up, and the in-memory claim still limits them to one per interval.
+        var skewed = Guid.NewGuid();
+        Assert.True(tracker.TryClaimWrite(skewed, now.AddMinutes(10), now));
+        Assert.False(tracker.TryClaimWrite(skewed, now.AddMinutes(10), now.AddMinutes(1)));
+    }
+
+    [Fact]
+    public void Tracker_ReleasedClaim_CanBeTakenAgain()
+    {
+        var tracker = ApiKeyServiceHarness.NewTracker(Interval);
+        var now = ApiKeyServiceHarness.Start.UtcDateTime;
+        var key = Guid.NewGuid();
+
+        Assert.True(tracker.TryClaimWrite(key, null, now));
+        tracker.ReleaseClaim(key, now);
+
+        Assert.True(tracker.TryClaimWrite(key, null, now.AddSeconds(1)));
     }
 
     [Fact]

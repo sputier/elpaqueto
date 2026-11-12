@@ -479,6 +479,45 @@ public sealed class ApiKeyServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ConcurrentRotationsOfTheSameKey_ProduceExactlyOneNewKey()
+    {
+        var owner = await _harness.AddUserAsync("alice", ReadPublish);
+        var old = await _harness.CreateKeyAsync(owner, ReadPublish);
+
+        async Task<ApiKeyCreated?> RotateAsync()
+        {
+            await using var context = _harness.CreateContext();
+            try
+            {
+                return await _harness.CreateService(context).RotateAsync(old.Key.KeyId, null);
+            }
+            catch (ApiKeyRequestException)
+            {
+                return null;
+            }
+        }
+
+        // The SQLite provider runs its "async" calls synchronously: one thread per rotation.
+        var results = await Task.WhenAll(Enumerable.Range(0, 4).Select(_ => Task.Run(RotateAsync)));
+
+        var winner = Assert.Single(results, r => r is not null);
+        var keys = await ListAsync(owner);
+        Assert.Equal(2, keys.Count);
+        Assert.Single(keys, k => k.RevokedAt is null);
+        Assert.True((await _harness.ValidateAsync(winner!.Token)).Succeeded);
+        Assert.Equal(ApiKeyValidationFailure.Revoked, (await _harness.ValidateAsync(old.Token)).Failure);
+    }
+
+    [Fact]
+    public void ThePermissionFlags_FitTheDatabaseCheckConstraint()
+    {
+        // CK_Users_Permissions and CK_ApiKeys_Permissions accept 0..7: a new flag needs a migration.
+        var all = Enum.GetValues<Permission>().Aggregate(Permission.None, (acc, p) => acc | p);
+
+        Assert.Equal(7, (int)all);
+    }
+
+    [Fact]
     public async Task Rotate_ARevokedOrUnknownKey_Fails()
     {
         var owner = await _harness.AddUserAsync("alice", ReadPublish);

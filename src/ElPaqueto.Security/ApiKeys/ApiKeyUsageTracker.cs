@@ -26,6 +26,7 @@ internal sealed class ApiKeyUsageTracker(IOptions<ElPaquetoSecurityOptions> opti
     private readonly TimeSpan _interval = options.Value.ApiKeys.LastUsedUpdateInterval;
     private readonly Dictionary<Guid, DateTime> _claims = [];
     private readonly Lock _lock = new();
+    private DateTime _nextPruneAt = DateTime.MinValue;
 
     public TimeSpan Interval => _interval;
 
@@ -39,25 +40,43 @@ internal sealed class ApiKeyUsageTracker(IOptions<ElPaquetoSecurityOptions> opti
     /// <returns><see langword="true"/> when the caller must write.</returns>
     public bool TryClaimWrite(Guid apiKeyId, DateTime? storedLastUsedAt, DateTime now)
     {
-        if (storedLastUsedAt is { } stored && now - stored < _interval)
+        if (storedLastUsedAt is { } stored && IsRecent(stored, now))
         {
             return false;
         }
 
         lock (_lock)
         {
-            if (_claims.TryGetValue(apiKeyId, out var claimed) && now - claimed < _interval)
+            if (_claims.TryGetValue(apiKeyId, out var claimed) && IsRecent(claimed, now))
             {
                 return false;
             }
 
-            if (_claims.Count >= PruneThreshold)
+            if (_claims.Count >= PruneThreshold && now >= _nextPruneAt)
             {
                 Prune(now);
+                _nextPruneAt = now + _interval;
             }
 
             _claims[apiKeyId] = now;
             return true;
+        }
+    }
+
+    /// <summary>
+    /// Gives up a claim whose write failed, so that the next use tries again instead of waiting for
+    /// the end of the interval.
+    /// </summary>
+    /// <param name="apiKeyId">The key.</param>
+    /// <param name="claimedAt">The time passed to <see cref="TryClaimWrite"/>.</param>
+    public void ReleaseClaim(Guid apiKeyId, DateTime claimedAt)
+    {
+        lock (_lock)
+        {
+            if (_claims.TryGetValue(apiKeyId, out var claimed) && claimed == claimedAt)
+            {
+                _claims.Remove(apiKeyId);
+            }
         }
     }
 
@@ -66,14 +85,20 @@ internal sealed class ApiKeyUsageTracker(IOptions<ElPaquetoSecurityOptions> opti
     /// <returns>The threshold for the conditional update.</returns>
     public DateTime StaleBefore(DateTime now) => now - _interval;
 
+    // A timestamp in the future (clock moved backwards, or set by a host with a skewed clock) does not
+    // suppress writes until the clock catches up: the in-memory claim still limits them to one per interval.
+    private bool IsRecent(DateTime then, DateTime now)
+    {
+        var elapsed = now - then;
+        return elapsed >= TimeSpan.Zero && elapsed < _interval;
+    }
+
+    // Runs at most once per interval, so a table full of fresh claims is not rescanned on every call.
     private void Prune(DateTime now)
     {
-        foreach (var (key, claimed) in _claims.ToList())
+        foreach (var key in _claims.Where(claim => !IsRecent(claim.Value, now)).Select(claim => claim.Key).ToList())
         {
-            if (now - claimed >= _interval)
-            {
-                _claims.Remove(key);
-            }
+            _claims.Remove(key);
         }
     }
 }

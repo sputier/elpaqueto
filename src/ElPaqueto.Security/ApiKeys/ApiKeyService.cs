@@ -102,9 +102,9 @@ internal sealed partial class ApiKeyService(
             throw new ApiKeyRequestException("The key does not exist.");
         }
 
-        // SQLite starts this transaction with BEGIN IMMEDIATE: it holds the writer lock from the read on,
-        // so two rotations of the same key are serialized. Nothing is committed unless both the new key
-        // is stored and the old one is revoked.
+        // Nothing is committed unless both the new key is stored and the old one is revoked. Two concurrent
+        // rotations of the same key cannot both succeed: the revocation below is conditional, and the loser
+        // fails and rolls back its new key.
         await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
 
         var old = await context.ApiKeys
@@ -133,7 +133,7 @@ internal sealed partial class ApiKeyService(
 
         if (revoked != 1)
         {
-            // Unreachable while the transaction holds the writer lock; rolled back on dispose otherwise.
+            // Another rotation or revocation won the race; the new key is rolled back on dispose.
             throw new ApiKeyRequestException("The key was revoked concurrently: create a new key instead.");
         }
 
@@ -341,7 +341,13 @@ internal sealed partial class ApiKeyService(
         catch (Exception e) when (e is DbException or DbUpdateException)
         {
             // Bookkeeping only: a busy database must not turn a valid key into a refusal.
+            usageTracker.ReleaseClaim(id, now);
             LogLastUseNotRecorded(logger, keyId, e.GetType().Name);
+        }
+        catch (OperationCanceledException)
+        {
+            usageTracker.ReleaseClaim(id, now);
+            throw;
         }
     }
 
