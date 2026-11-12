@@ -34,10 +34,21 @@ Run the same commands locally before you open a pull request:
 ```bash
 dotnet restore
 dotnet build --configuration Release --no-restore
-dotnet test --configuration Release --no-build
+dotnet test --configuration Release --no-build --filter "Category!=EndToEnd"
 ```
 
 A failing test must be fixed or explained in the pull request. Do not skip or disable it to make a check pass.
+
+### End-to-end tests
+
+`tests/ElPaqueto.EndToEnd.Tests` starts the published server as a child process and drives it with the real `dotnet` CLI (`dotnet nuget push`, `dotnet restore`, `dotnet build`, `dotnet test`, ...) in isolated NuGet folders. These tests are slow, so they carry `[Trait("Category", "EndToEnd")]`: the `build-test` job of the `CI` workflow excludes them with `--filter "Category!=EndToEnd"`, and the `e2e` job runs them on Ubuntu and Windows. Run them locally after a build, in the same configuration:
+
+```bash
+dotnet build --configuration Release
+dotnet test tests/ElPaqueto.EndToEnd.Tests --configuration Release --no-build
+```
+
+A run takes several minutes and needs Internet access for one test (it restores `xunit` from nuget.org). The tests never touch your own NuGet configuration, caches or the repository tree: everything is written below a temporary directory that is deleted at the end. The server is reached over plain HTTP on `127.0.0.1`, which the server allows for loopback and NuGet accepts because the harness adds the source with `--allow-insecure-connections`; TLS is not tested there. Running `dotnet test` on the whole solution also runs them; add `--filter "Category!=EndToEnd"` to skip them. See [End-to-end tests](docs/technical/e2e-tests.md).
 
 ## Container image
 
