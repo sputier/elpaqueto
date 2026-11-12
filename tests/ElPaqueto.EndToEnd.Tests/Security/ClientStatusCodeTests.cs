@@ -1,13 +1,15 @@
 using System.Diagnostics;
+using System.Net;
 using System.Text.RegularExpressions;
 using ElPaqueto.EndToEnd.Tests.Harness;
 
 namespace ElPaqueto.EndToEnd.Tests.Security;
 
 /// <summary>
-/// What the real <c>dotnet</c> client does with the throttling answers (#39 concerns): how many requests a
-/// refused restore sends, what it reports for 429 and whether it waits for <c>Retry-After</c>. The server runs
-/// with the default throttling settings. The facts are recorded in docs/technical/e2e-tests.md.
+/// What the real <c>dotnet</c> client does with the throttling answers (#39 concerns, #99): how many requests a
+/// refused restore sends, that retrying a stale password does not throttle the user, what the client reports for
+/// 429 and whether it waits for <c>Retry-After</c>. The server runs with the default throttling settings. The facts
+/// are recorded in docs/technical/e2e-tests.md.
 /// </summary>
 [Trait("Category", "EndToEnd")]
 public sealed partial class ThrottledClientTests : EndToEndTest<ThrottledClientTests.Setup>, IClassFixture<ThrottledClientTests.Setup>
@@ -18,33 +20,79 @@ public sealed partial class ThrottledClientTests : EndToEndTest<ThrottledClientT
     }
 
     [Fact]
-    public async Task ARestoreWithAStalePassword_TripsTheDefaultThrottleByItself_ThenTheRightPasswordGets429()
+    public async Task ARestoreWithAStalePassword_FailsWith401_IsCountedOnce_AndTheRightPasswordWorksRightAfter()
     {
         var name = UniqueName("stale");
         var user = await Admin.CreateUserAsync(name, "reader");
         var stale = await ClientAsync(new UserCredential(name, Secrets.Register("stale-" + user.Password)));
         var logStart = Fixture.Server.Log.Length;
 
-        var refused = await RestoreAsync(stale);
+        // Two commands with the stale password, as a developer would retry.
+        var first = await RestoreAsync(stale);
+        var second = await RestoreAsync(stale);
 
-        // NuGet retries a 401 with the same stored credentials: one restore sends more failed sign-ins than
-        // the default PairFailureLimit (5), so the user is throttled by a single command, and the last answer
-        // the client reports is 429, not 401.
-        var failures = PasswordFailures(name).Count(Fixture.Server.Log[logStart..]);
-        var statuses = IndexStatuses(Fixture.Server.Log[logStart..]);
-        Output.WriteLine($"One restore with a wrong password: {failures} failed sign-ins; index.json answers: {string.Join(", ", statuses)}.");
-        refused.ShouldFail().ShouldContain("429 (Too Many Requests)");
-        Assert.Equal(5, failures);
-        Assert.True(Fixture.Server.Log[logStart..].Contains("Sign-in throttling tripped on the Pair counter", StringComparison.Ordinal), "The server did not log a trip of the Pair counter.");
+        // NuGet retries a 401 with the same stored credentials (six credentialed attempts per command): the server
+        // counts the identical attempt once, so the user is not throttled and the client reports the real cause.
+        var log = Fixture.Server.Log[logStart..];
+        var failures = PasswordFailures(name).Count(log);
+        var statuses = IndexStatuses(log);
+        Output.WriteLine($"Two restores with a wrong password: {failures} counted failed sign-in(s); index.json answers: {string.Join(", ", statuses)}.");
+        foreach (var refused in new[] { first, second })
+        {
+            refused.ShouldFail().ShouldContain("NU1301").ShouldContain("401 (Unauthorized)").ShouldNotContain("429");
+        }
 
-        // The right password is refused too while the throttle lasts, and the client does not wait for Retry-After (60 s).
+        Assert.Equal(1, failures);
+        Assert.DoesNotContain("429", statuses);
+        Assert.True(statuses.Count(s => s == "401") >= 12, $"Expected the client to retry the refused request; index.json answers: {string.Join(", ", statuses)}.");
+        Assert.False(log.Contains("Sign-in throttling tripped", StringComparison.Ordinal), "A stale password tripped the throttle.");
+
+        // The right password, from the same address, right after.
         var good = await ClientAsync(user);
         logStart = Fixture.Server.Log.Length;
+        var restored = await RestoreAsync(good);
+        statuses = IndexStatuses(Fixture.Server.Log[logStart..]);
+        Output.WriteLine($"Restore with the right password right after: index.json answers: {string.Join(", ", statuses)}.");
+        restored.ShouldSucceed();
+        Assert.Contains("200", statuses);
+        Assert.DoesNotContain("429", statuses);
+    }
+
+    [Fact]
+    public async Task DistinctWrongPasswords_StillTripTheDefaultThrottle_AndTheClientThenReports429WithoutWaiting()
+    {
+        var name = UniqueName("guessed");
+        var user = await Admin.CreateUserAsync(name, "reader");
+        var index = Fixture.Api.Url("v3/index.json");
+
+        // Five distinct guesses, the default PairFailureLimit, the first four repeated: only the distinct ones count,
+        // and the fifth trips the pair.
+        for (var i = 0; i < 5; i++)
+        {
+            var guess = new UserCredential(name, Secrets.Register($"guess-{i}-{user.Password}"));
+            for (var repeat = 0; repeat < (i < 4 ? 3 : 1); repeat++)
+            {
+                using var refused = await Fixture.Api.SendAsync(ServerApi.Request(HttpMethod.Get, index, guess));
+                Assert.Equal(HttpStatusCode.Unauthorized, refused.StatusCode);
+            }
+        }
+
+        using (var throttledRequest = await Fixture.Api.SendAsync(ServerApi.Request(HttpMethod.Get, index, user)))
+        {
+            Assert.Equal(HttpStatusCode.TooManyRequests, throttledRequest.StatusCode);
+            Assert.InRange(throttledRequest.Headers.RetryAfter?.Delta ?? TimeSpan.Zero, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(60));
+        }
+
+        Assert.True(Fixture.Server.Log.Contains("Sign-in throttling tripped on the Pair counter", StringComparison.Ordinal), "The server did not log a trip of the Pair counter.");
+
+        // The right password is refused while the throttle lasts, and the client does not wait for Retry-After (60 s).
+        var good = await ClientAsync(user);
+        var logStart = Fixture.Server.Log.Length;
         var stopwatch = Stopwatch.StartNew();
         var throttled = await RestoreAsync(good);
         stopwatch.Stop();
 
-        statuses = IndexStatuses(Fixture.Server.Log[logStart..]);
+        var statuses = IndexStatuses(Fixture.Server.Log[logStart..]);
         Output.WriteLine($"Restore with the right password while throttled: {stopwatch.Elapsed.TotalSeconds:0.0} s; index.json answers: {string.Join(", ", statuses)}.");
         throttled.ShouldFail().ShouldContain("429 (Too Many Requests)");
         Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(55), "The client waited for the throttle to end.");
@@ -62,6 +110,7 @@ public sealed partial class ThrottledClientTests : EndToEndTest<ThrottledClientT
     private static List<string> IndexStatuses(string log)
         => IndexAnswer().Matches(log).Select(m => m.Groups[1].Value).ToList();
 
+    // Counted failures only: the repetitions of one already counted are logged at Debug, below the harness's level.
     private static Regex PasswordFailures(string userName)
         => new($@"Authentication with password failed: bad_password \(user {Regex.Escape(userName)}\)", RegexOptions.CultureInvariant);
 

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 using ElPaqueto.Security.ApiKeys;
@@ -41,6 +42,7 @@ internal sealed partial class ElPaquetoAuthenticationHandler(
     IPasswordService passwords,
     IApiKeyService apiKeys,
     VerificationCache verificationCache,
+    VerificationTiming verificationTiming,
     ILoginThrottle throttle,
     ILogger<Audit> audit)
     : AuthenticationHandler<AuthenticationSchemeOptions>(options, loggerFactory, encoder)
@@ -54,6 +56,10 @@ internal sealed partial class ElPaquetoAuthenticationHandler(
     private const string InvalidCredentials = "Invalid credentials.";
 
     private static readonly Permission[] Flags = [Permission.Read, Permission.Publish, Permission.Admin];
+
+    // The credential state of every unknown or disabled user name (CredentialAttempt): one value for all of them, as
+    // long as a stored hash, so that their attempts are fingerprinted like any other.
+    private static readonly string NoCredentialState = new('-', 84);
 
     // The audit trail (docs/technical/audit-logging.md): reasons, ids and the client address, never a credential.
     private readonly ILogger<Audit> _audit = audit;
@@ -141,7 +147,9 @@ internal sealed partial class ElPaquetoAuthenticationHandler(
     // A key has no user name to count against: its attempts are counted against the client (and its IPv6 network)
     // only, whether the key came from the header or from a Basic password. The throttle is consulted before the key
     // is even parsed, so a throttled client gets 429 without any validation or database access. Every failed
-    // validation counts; a success resets nothing, since a key attempt has no pair counter to reset.
+    // validation counts, once per identical token and window; a success resets nothing, since a key attempt has no
+    // pair counter to reset. A repeated key is still validated: it is cheap, and the key or its owner may have
+    // changed since.
     private async Task<AuthenticateResult> AuthenticateApiKeyAsync(string? token, string source)
     {
         var client = Context.Connection.RemoteIpAddress;
@@ -151,7 +159,8 @@ internal sealed partial class ElPaquetoAuthenticationHandler(
         }
 
         // The slot reports the outcome and keeps a burst of parallel guesses from one client within its budget.
-        using var slot = await throttle.EnterVerificationAsync(client, null, Context.RequestAborted);
+        using var slot = await throttle.EnterVerificationAsync(
+            client, null, new CredentialAttempt(token ?? string.Empty, string.Empty), Context.RequestAborted);
         if (slot.Rejection is { } refused)
         {
             return Refuse(refused, AuditValues.ApiKeyMethod);
@@ -160,15 +169,16 @@ internal sealed partial class ElPaquetoAuthenticationHandler(
         var result = await apiKeys.ValidateAsync(token, Context.RequestAborted);
         if (!result.Succeeded)
         {
-            slot.Failed();
+            var counted = slot.Failed();
 
             // The reason and the public key id only: never the token. A value without the token format is logged at
             // Debug only, so that anonymous garbage cannot fill the logs; a well-formed key that is refused is worth
-            // a warning (key attempts are throttled, so their number is bounded).
+            // a warning (key attempts are throttled, so their number is bounded), once: its repetitions, which the
+            // throttle does not count, are logged at Debug.
             var reason = AuditValues.Reason(result.Failure);
             AuditLog.ApiKeyRejected(
                 _audit,
-                result.KeyId is null ? LogLevel.Debug : LogLevel.Warning,
+                result.KeyId is null || !counted ? LogLevel.Debug : LogLevel.Warning,
                 reason,
                 result.KeyId ?? AuditValues.None,
                 source,
@@ -217,7 +227,11 @@ internal sealed partial class ElPaquetoAuthenticationHandler(
             return SucceedWithPassword(user);
         }
 
-        using var slot = await throttle.EnterVerificationAsync(client, userName, Context.RequestAborted);
+        // What decides the verification besides the password: the stored hash of an active user, else one value
+        // for every unknown or disabled user name, which keeps them indistinguishable here too.
+        var state = user is { IsActive: true, PasswordHash.Length: > 0 } ? user.PasswordHash : NoCredentialState;
+        using var slot = await throttle.EnterVerificationAsync(
+            client, userName, new CredentialAttempt(password, state), Context.RequestAborted);
         if (slot.Rejection is { } refused)
         {
             return Refuse(refused, AuditValues.PasswordMethod);
@@ -230,7 +244,22 @@ internal sealed partial class ElPaquetoAuthenticationHandler(
             return SucceedWithPassword(user);
         }
 
-        switch (passwords.Verify(user, password))
+        // The same password, for the same account state, already failed from this client: verifying it again
+        // would fail again. Answered without a hash, so that a client retrying a stale password costs no processor
+        // time, after the time a verification takes.
+        if (slot.RepeatsACountedFailure)
+        {
+            var counted = slot.Failed();
+            LogPasswordFailure(user, userName, counted);
+            await Task.Delay(verificationTiming.Typical, Context.RequestAborted).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            return AuthenticateResult.Fail(InvalidCredentials);
+        }
+
+        var started = Stopwatch.GetTimestamp();
+        var verification = passwords.Verify(user, password);
+        verificationTiming.Record(started);
+
+        switch (verification)
         {
             case PasswordVerification.Success:
                 verificationCache.Remember(user!, password);
@@ -244,16 +273,23 @@ internal sealed partial class ElPaquetoAuthenticationHandler(
                 return SucceedWithPassword(user!);
 
             default:
-                slot.Failed();
-                LogPasswordFailure(user, userName);
+                LogPasswordFailure(user, userName, slot.Failed());
                 return AuthenticateResult.Fail(InvalidCredentials);
         }
     }
 
     // The reason category, and the user name only when it names an existing account: a name that matches no account may
     // be a password or an API key typed in the wrong field, or carry line breaks, and is logged as a fingerprint.
-    private void LogPasswordFailure(User? user, string userName)
+    // A repetition of a failure already counted is logged at Debug: the throttle does not limit repetitions, so
+    // logging them as warnings would let anyone fill the log.
+    private void LogPasswordFailure(User? user, string userName, bool counted)
     {
+        var level = counted ? LogLevel.Warning : LogLevel.Debug;
+        if (!_audit.IsEnabled(level))
+        {
+            return;
+        }
+
         var reason = user switch
         {
             null => AuthenticationFailureReason.UnknownUser,
@@ -262,7 +298,7 @@ internal sealed partial class ElPaquetoAuthenticationHandler(
         };
 
         var loggedName = user is null ? AuditValues.UnknownUserName(userName) : AuditValues.UserName(user.UserName);
-        AuditLog.AuthenticationFailed(_audit, LogLevel.Warning, AuditValues.PasswordMethod, reason, loggedName, ClientAddress);
+        AuditLog.AuthenticationFailed(_audit, level, AuditValues.PasswordMethod, reason, loggedName, ClientAddress);
     }
 
     private AuthenticateResult SucceedWithPassword(User user)

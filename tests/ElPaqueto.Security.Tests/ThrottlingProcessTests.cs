@@ -27,7 +27,7 @@ public sealed partial class ThrottlingProcessTests : IDisposable
     }
 
     [Fact]
-    public async Task RepeatedFailures_EndIn429WithRetryAfterAndNoChallenge_AndOneLoggedTrip()
+    public async Task DistinctWrongPasswords_EndIn429WithRetryAfterAndNoChallenge_AndOneLoggedTrip()
     {
         const string password = "process-test-password-marker";
         using var host = HostProcess.Start([], new Dictionary<string, string>
@@ -43,12 +43,13 @@ public sealed partial class ThrottlingProcessTests : IDisposable
         Assert.True(address.Success, host.Output);
 
         using var client = new HttpClient { BaseAddress = new Uri(address.Groups[1].Value) };
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
-            "Basic",
-            Convert.ToBase64String(Encoding.UTF8.GetBytes("nobody:" + password)));
 
+        // Five distinct wrong passwords: an identical one repeated would be counted once.
         for (var i = 0; i < 5; i++)
         {
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+                "Basic",
+                Convert.ToBase64String(Encoding.UTF8.GetBytes($"nobody:{password}-{i}")));
             using var failure = await client.GetAsync(new Uri("v3/index.json", UriKind.Relative));
             Assert.Equal(HttpStatusCode.Unauthorized, failure.StatusCode);
             Assert.Equal("Basic", failure.Headers.WwwAuthenticate.Single().Scheme);
