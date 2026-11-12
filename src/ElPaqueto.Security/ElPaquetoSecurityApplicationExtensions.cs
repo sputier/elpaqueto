@@ -1,9 +1,12 @@
 using ElPaqueto.Core;
+using ElPaqueto.Security.Cli;
 using ElPaqueto.Security.Configuration;
 using ElPaqueto.Security.Data;
 using ElPaqueto.Security.Passwords;
+using ElPaqueto.Security.Users;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 
@@ -56,6 +59,11 @@ public static class ElPaquetoSecurityApplicationExtensions
             }));
         });
         services.AddSingleton<IPasswordService, PasswordService>();
+
+        // User administration, used by the admin commands.
+        services.TryAddSingleton(TimeProvider.System);
+        services.TryAddSingleton<ISecretPrompt, ConsoleSecretPrompt>();
+        services.AddScoped<UserService>();
 
         return app;
     }
