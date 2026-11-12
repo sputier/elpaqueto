@@ -46,6 +46,8 @@ public class Program
             });
         });
 
+        app.AddElPaquetoCommands(host);
+
         app.Option("--urls", "The URLs that ElPaqueto should bind to.", CommandOptionType.SingleValue);
 
         app.OnExecuteAsync(async cancellationToken =>
