@@ -68,4 +68,19 @@ public sealed class AuthDatabaseFileTests : IDisposable
         Assert.DoesNotContain("s3cr3t-marker", exception.Message, StringComparison.Ordinal);
         Assert.DoesNotContain("s3cr3t-marker", exception.ToString(), StringComparison.Ordinal);
     }
+
+    [Fact]
+    public async Task Prepare_CalledConcurrentlyForTheSameFile_NeverFails()
+    {
+        var path = Path.Combine(_root, "race", "auth.db");
+
+        // The server and a command-line process may start at the same time and prepare the same file.
+        var tasks = Enumerable.Range(0, 64)
+            .Select(_ => Task.Run(() => AuthDatabaseFile.Prepare($"Data Source={path}")))
+            .ToArray();
+
+        await Task.WhenAll(tasks);
+
+        Assert.True(File.Exists(path));
+    }
 }

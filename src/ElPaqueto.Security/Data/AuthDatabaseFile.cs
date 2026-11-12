@@ -58,7 +58,15 @@ internal static class AuthDatabaseFile
                     options.UnixCreateMode = DatabaseFileMode;
                 }
 
-                using var created = new FileStream(path, options);
+                try
+                {
+                    using var created = new FileStream(path, options);
+                }
+                catch (IOException) when (File.Exists(path))
+                {
+                    // Another process or thread created the file between the check and the creation:
+                    // the server and a command-line process may start together. That is the expected outcome.
+                }
             }
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
