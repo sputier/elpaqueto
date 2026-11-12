@@ -203,6 +203,40 @@ public class PasswordServiceTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void Validate_RejectsAPasswordWithTheApiKeyFormat()
+    {
+        var service = Create(iterations: 100_000, out _);
+        var token = "epq_" + new string('A', 12) + "_" + new string('b', 43);
+
+        var errors = service.Validate(token, "alice");
+
+        Assert.Single(errors);
+        Assert.Contains("API key", errors[0], StringComparison.Ordinal);
+        Assert.DoesNotContain(token, errors[0], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Validate_RejectsAPasswordThatBecomesAnApiKeyAfterNormalization()
+    {
+        var service = Create(iterations: 100_000, out _);
+
+        // Fullwidth digits and letters are folded to ASCII by NFKC.
+        var fullwidth = "epq_" + new string('Ａ', 12) + "_" + new string('１', 43);
+
+        Assert.Contains(service.Validate(fullwidth), e => e.Contains("API key", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("epq_ is how a passphrase can start")]
+    [InlineData("epq_AAAAAAAAAAAA_too-short-for-a-key")]
+    public void Validate_AcceptsPasswordsThatOnlyResembleTheApiKeyFormat(string password)
+    {
+        var service = Create(iterations: 100_000, out _);
+
+        Assert.Empty(service.Validate(password));
+    }
+
+    [Fact]
     public void Validate_CountsCharactersAfterNormalization()
     {
         var service = Create(iterations: 100_000, out _);
