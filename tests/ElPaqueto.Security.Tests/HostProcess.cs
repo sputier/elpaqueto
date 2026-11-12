@@ -13,13 +13,14 @@ internal sealed class HostProcess : IDisposable
     private readonly Process _process;
     private readonly StringBuilder _output = new();
 
-    private HostProcess(string[] arguments, IReadOnlyDictionary<string, string> environment)
+    private HostProcess(string[] arguments, IReadOnlyDictionary<string, string> environment, string? standardInput)
     {
         var hostDll = LocateHostAssembly();
 
         var startInfo = new ProcessStartInfo(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet")
         {
             WorkingDirectory = Path.GetDirectoryName(hostDll)!,
+            RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
@@ -42,6 +43,22 @@ internal sealed class HostProcess : IDisposable
         _process.ErrorDataReceived += (_, e) => Append(e.Data);
         _process.BeginOutputReadLine();
         _process.BeginErrorReadLine();
+
+        // Standard input is always redirected, so it is never a terminal, and closed after the given
+        // text: a process that reads it gets end-of-file instead of waiting forever.
+        try
+        {
+            if (standardInput is not null)
+            {
+                _process.StandardInput.Write(standardInput);
+            }
+
+            _process.StandardInput.Close();
+        }
+        catch (IOException)
+        {
+            // The host exited before reading its input: its exit code tells the test what happened.
+        }
     }
 
     /// <summary>Everything the host wrote so far.</summary>
@@ -58,7 +75,14 @@ internal sealed class HostProcess : IDisposable
 
     /// <summary>Starts the host with the given arguments and environment variables.</summary>
     public static HostProcess Start(string[] arguments, IReadOnlyDictionary<string, string> environment)
-        => new(arguments, environment);
+        => new(arguments, environment, standardInput: null);
+
+    /// <summary>Starts the host with the given arguments, environment variables and standard input.</summary>
+    public static HostProcess Start(string[] arguments, IReadOnlyDictionary<string, string> environment, string? standardInput)
+        => new(arguments, environment, standardInput);
+
+    /// <summary>Whether the host has exited.</summary>
+    public bool HasExited => _process.HasExited;
 
     /// <summary>Waits for the host to exit on its own and returns its exit code.</summary>
     public async Task<int> WaitForExitAsync(TimeSpan? timeout = null)

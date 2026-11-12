@@ -3,11 +3,13 @@ using ElPaqueto.Core;
 using ElPaqueto.Security.ApiKeys;
 using ElPaqueto.Security.Authentication;
 using ElPaqueto.Security.Authorization;
+using ElPaqueto.Security.Cli;
 using ElPaqueto.Security.Configuration;
 using ElPaqueto.Security.Data;
 using ElPaqueto.Security.Passwords;
 using ElPaqueto.Security.Throttling;
 using ElPaqueto.Security.Transport;
+using ElPaqueto.Security.Users;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
@@ -106,6 +108,10 @@ public static class ElPaquetoSecurityApplicationExtensions
 
         services.AddSingleton<IPostConfigureOptions<ForwardedHeadersOptions>, ConfigureTrustedForwardedHeaders>();
         services.AddSingleton<IHostedService, TransportStartupWarnings>();
+
+        // User administration, used by the admin commands.
+        services.TryAddSingleton<ISecretPrompt, ConsoleSecretPrompt>();
+        services.AddScoped<UserService>();
 
         return app;
     }
