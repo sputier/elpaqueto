@@ -25,6 +25,7 @@
     <ProjectReference Include="..\ElPaqueto.Tencent\ElPaqueto.Tencent.csproj" />
     <ProjectReference Include="..\ElPaqueto.Web\ElPaqueto.Web.csproj" />
     <ProjectReference Include="..\ElPaqueto.Protocol\ElPaqueto.Protocol.csproj" />
+    <ProjectReference Include="..\ElPaqueto.Security\ElPaqueto.Security.csproj" />
   </ItemGroup>
 
 </Project>

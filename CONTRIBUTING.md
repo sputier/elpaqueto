@@ -19,6 +19,12 @@ If `dotnet` reports `A compatible .NET SDK was not found`, the installed SDK doe
 3. Start the service with `dotnet run`
 4. Open the URL `http://localhost:5000/v3/index.json` in your browser
 
+## Repository layout
+
+- `src/` holds the server. Most projects are inherited from BaGetter and were renamed to `ElPaqueto.*` (`ElPaqueto.Core`, `ElPaqueto.Protocol`, `ElPaqueto.Web`, the database and storage providers and the host `ElPaqueto`). Upstream changes to them are ported, see [Keeping upstream ports easy](#keeping-upstream-ports-easy).
+- `src/ElPaqueto.Security` is new to ElPaqueto: authentication, authorization and API keys. New features go into new projects like this one.
+- `tests/` mirrors the project names: `ElPaqueto.Core.Tests` tests `ElPaqueto.Core`, `ElPaqueto.Security.Tests` tests `ElPaqueto.Security`.
+
 ## Build and test
 
 Every pull request and every push to `develop` or `main` runs the `CI` workflow on GitHub-hosted Ubuntu and Windows runners. It restores, builds in Release mode and runs the whole test suite, then publishes the TRX results as an artifact and fails when no test was executed. It needs no secret, so it also runs for pull requests from forks.
