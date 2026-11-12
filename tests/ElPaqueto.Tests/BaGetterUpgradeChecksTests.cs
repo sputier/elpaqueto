@@ -12,7 +12,17 @@ public sealed class BaGetterUpgradeChecksTests : IDisposable
 {
     private readonly string _root = Directory.CreateTempSubdirectory("elpaqueto-upgrade-").FullName;
 
-    public void Dispose() => Directory.Delete(_root, recursive: true);
+    public void Dispose()
+    {
+        try
+        {
+            Directory.Delete(_root, recursive: true);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // The temp directory is disposable.
+        }
+    }
 
     // ---- Configuration root ---------------------------------------------------------------------------------
 

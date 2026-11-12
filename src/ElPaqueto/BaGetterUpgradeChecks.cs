@@ -117,7 +117,8 @@ public static class BaGetterUpgradeChecks
         }
 
         var legacy = Path.Combine(directory, LegacyDatabaseFileName);
-        if (string.Equals(legacy, configured, StringComparison.OrdinalIgnoreCase) || !File.Exists(legacy))
+        var comparison = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        if (string.Equals(legacy, configured, comparison) || !File.Exists(legacy))
         {
             return false;
         }

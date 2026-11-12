@@ -20,7 +20,7 @@ The startup error names each offending setting and never prints its value:
 The setting 'Authentication:Credentials:0:Password' comes from BaGetter and is no longer supported: remove it. ...
 ```
 
-Remove the settings from every source: `appsettings.json`, environment variables (`ApiKey`, `Authentication__Credentials__0__Username`, ...) and files in `/run/secrets` (for example `/run/secrets/ApiKey`). An empty `ApiKey` (`"ApiKey": ""`, as BaGetter shipped it) is accepted and ignored.
+Remove the settings from every source: `appsettings.json`, environment variables (`ApiKey`, `Authentication__Credentials__0__Username`, ...) and files in `/run/secrets` (for example `/run/secrets/ApiKey`). An empty `ApiKey` (`"ApiKey": ""`, as BaGetter shipped it) is accepted and ignored. Setting names are case-insensitive, so an unrelated environment variable named `APIKEY` (for example set by a CI system or a sidecar) is rejected as well: remove it from the server's environment.
 
 Other consequences:
 

@@ -29,7 +29,7 @@ public sealed class BaGetterDatabaseUpgradeIntegrationTests : IDisposable
         {
             Directory.Delete(_root, recursive: true);
         }
-        catch (IOException)
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             // The temp directory is disposable.
         }

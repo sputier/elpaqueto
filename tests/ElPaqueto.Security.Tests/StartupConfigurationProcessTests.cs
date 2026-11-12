@@ -117,7 +117,7 @@ public sealed partial class StartupConfigurationProcessTests : IDisposable
         Assert.DoesNotContain("Unhandled exception", host.Output, StringComparison.Ordinal);
     }
 
-    [UnixFact]
+    [UnprivilegedUnixFact]
     [UnsupportedOSPlatform("windows")]
     public async Task UnreadableConfigurationFile_ExitsWithCode1AndAMessage()
     {
@@ -141,7 +141,7 @@ public sealed partial class StartupConfigurationProcessTests : IDisposable
         }
     }
 
-    [UnixFact]
+    [UnprivilegedUnixFact]
     [UnsupportedOSPlatform("windows")]
     public void UnreadableSecretFile_FailsTheBuildWithAnExceptionThatMainReportsAsAConfigurationFailure()
     {
@@ -165,6 +165,21 @@ public sealed partial class StartupConfigurationProcessTests : IDisposable
         {
             File.SetUnixFileMode(secret, UnixFileMode.UserRead | UnixFileMode.UserWrite);
         }
+    }
+
+    [Fact]
+    public async Task UnconvertibleValue_ExitsWithCode1_WithoutPrintingTheValue()
+    {
+        // The configuration binder quotes a value it cannot convert in its exception message.
+        var environment = DataEnvironment();
+        environment["MaxPackageSizeGiB"] = ValueMarker;
+
+        using var host = HostProcess.Start([], environment);
+        var exitCode = await host.WaitForExitAsync();
+
+        Assert.True(exitCode == 1, $"Exit code {exitCode}. Output:{Environment.NewLine}{host.Output}");
+        Assert.Contains("ElPaqueto stopped because of an unhandled error", host.Output, StringComparison.Ordinal);
+        Assert.DoesNotContain(ValueMarker, host.Output, StringComparison.Ordinal);
     }
 
     // ---- #59: upgrade from BaGetter ---------------------------------------------------------------------------

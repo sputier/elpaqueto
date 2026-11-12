@@ -37,9 +37,26 @@ public class Program
             // Exit with a code instead of crashing: an unhandled exception aborts the process, which on
             // Linux can write a core dump containing process memory, connection strings included.
             // The host may be disposed or not built here, so write to the console like the runtime would.
+            // Exception messages are not printed: some repeat configuration values (the configuration
+            // binder quotes a value it cannot convert), which may be secrets. Types and stack traces locate
+            // the failure without them.
             Console.Error.WriteLine("ElPaqueto stopped because of an unhandled error:");
-            Console.Error.WriteLine(e);
+            WriteWithoutMessages(e);
             Environment.ExitCode = 1;
+        }
+    }
+
+    private static void WriteWithoutMessages(Exception exception)
+    {
+        for (var current = exception; current is not null; current = current.InnerException)
+        {
+            if (current != exception)
+            {
+                Console.Error.WriteLine("Caused by:");
+            }
+
+            Console.Error.WriteLine(current.GetType().FullName);
+            Console.Error.WriteLine(current.StackTrace);
         }
     }
 
@@ -55,6 +72,26 @@ public class Program
             throw new ConfigurationLoadException(e);
         }
 
+        // Disposed on every path, so that the console logger flushes what it queued before the process exits.
+        try
+        {
+            await RunAsync(host, args);
+        }
+        finally
+        {
+            if (host is IAsyncDisposable asyncDisposable)
+            {
+                await asyncDisposable.DisposeAsync();
+            }
+            else
+            {
+                host.Dispose();
+            }
+        }
+    }
+
+    private static async Task RunAsync(IHost host, string[] args)
+    {
         var upgradeLogger = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("ElPaqueto.Upgrade");
         BaGetterUpgradeChecks.ResolveConfigRoot(Environment.GetEnvironmentVariable, out var fromLegacyVariable);
         if (fromLegacyVariable)
@@ -114,10 +151,12 @@ public class Program
 
     /// <summary>
     /// Whether an exception thrown while building the host means that a configuration source could not be
-    /// read or parsed: an unreadable or missing file, or malformed content.
+    /// read: an unreadable or missing file or folder (the key-per-file source of <c>/run/secrets</c> throws these
+    /// directly), or a file that a file-based source failed to load or parse (<see cref="InvalidDataException"/>,
+    /// which names the file).
     /// </summary>
     public static bool IsConfigurationLoadFailure(Exception exception)
-        => exception is IOException or UnauthorizedAccessException or FormatException or InvalidDataException;
+        => exception is IOException or UnauthorizedAccessException or InvalidDataException;
 
     private static void WarnAboutLegacyDatabase(IHost host, ILogger logger)
     {
