@@ -8,7 +8,12 @@ using System.Threading.Tasks;
 using ElPaqueto.Security;
 using ElPaqueto.Security.Authorization;
 using ElPaqueto.Web;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 using Xunit.Abstractions;
@@ -74,6 +79,7 @@ public class AuthorizationIntegrationTests : IDisposable
         using var response = await Send(client, method, path);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Equal(new[] { "Basic realm=\"ElPaqueto\"" }, response.Headers.GetValues("WWW-Authenticate"));
     }
 
     [Theory]
@@ -315,6 +321,136 @@ public class AuthorizationIntegrationTests : IDisposable
             .ToList();
 
         Assert.Empty(anonymous);
+    }
+
+    [Theory]
+    [MemberData(nameof(ReadRoutes))]
+    public async Task EveryReadRoute_RefusesEveryMethodThatChangesState(string readMethod, string path)
+    {
+        using var anonymous = _app.CreateAnonymousClient();
+        using var admin = _app.CreateClient();
+
+        foreach (var method in new[] { "POST", "PUT", "DELETE", "PATCH" })
+        {
+            using var anonymousResponse = await Send(anonymous, method, path);
+            using var adminResponse = await Send(admin, method, path);
+
+            Assert.True(
+                anonymousResponse.StatusCode == HttpStatusCode.Unauthorized,
+                $"{method} {path} (anonymous) answered {(int)anonymousResponse.StatusCode}; the read method is {readMethod}.");
+
+            // Every flag held, and still refused: the route does not accept the method at all. A few routes
+            // are matched by a constraint and then answer 404/405 from the router before authorization.
+            Assert.True(
+                adminResponse.StatusCode is HttpStatusCode.Forbidden,
+                $"{method} {path} (all permissions) answered {(int)adminResponse.StatusCode}.");
+        }
+    }
+
+    [Fact]
+    public async Task AnEndpointWithNoRow_IsDeniedAndLogged()
+    {
+        var logs = new List<string>();
+        using var app = _app.WithWebHostBuilder(builder =>
+        {
+            builder.ConfigureLogging(logging => logging.AddProvider(new CapturingProvider(logs)));
+            builder.ConfigureTestServices(services => services.AddSingleton<IStartupFilter>(new MapExtraEndpointFilter(null)));
+        });
+        using var anonymous = app.CreateClient();
+        anonymous.DefaultRequestHeaders.Authorization = null;
+        using var admin = app.CreateClient();
+
+        using var anonymousResponse = await anonymous.GetAsync("zz-unmapped");
+        using var adminResponse = await admin.GetAsync("zz-unmapped");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, anonymousResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, adminResponse.StatusCode);
+        string[] captured;
+        lock (logs)
+        {
+            captured = logs.ToArray();
+        }
+
+        Assert.Contains(captured, line => line.Contains("zz-unmapped", StringComparison.Ordinal) && line.Contains("no entry", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task AnEndpointThatReusesARouteName_DoesNotInheritItsRow()
+    {
+        var logs = new List<string>();
+        using var app = _app.WithWebHostBuilder(builder =>
+        {
+            builder.ConfigureLogging(logging => logging.AddProvider(new CapturingProvider(logs)));
+            builder.ConfigureTestServices(services => services.AddSingleton<IStartupFilter>(new MapExtraEndpointFilter("search")));
+        });
+        await app.AddUserAsync("reader", Password, Permission.Read);
+        using var reader = app.CreateClientFor("reader", Password);
+
+        // The route name "search" is a Read row: reusing it for a different action must not open the new endpoint.
+        using var response = await reader.GetAsync("zz-unmapped");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        lock (logs)
+        {
+            Assert.Contains(logs, line => line.Contains("zz-unmapped", StringComparison.Ordinal));
+        }
+    }
+
+    [Fact]
+    public async Task Liveness_NeverShowsTheNameOfACheck_WhileDetailsDo()
+    {
+        const string checkName = "a-distinctive-check-name";
+        using var app = _app.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+            services.AddHealthChecks().AddCheck(checkName, () => HealthCheckResult.Healthy())));
+        using var anonymous = app.CreateClient();
+        anonymous.DefaultRequestHeaders.Authorization = null;
+        using var admin = app.CreateClient();
+
+        var liveness = await anonymous.GetStringAsync("health");
+        var details = await admin.GetStringAsync("health/details");
+
+        Assert.DoesNotContain(checkName, liveness, StringComparison.Ordinal);
+        Assert.Contains(checkName, details, StringComparison.Ordinal);
+    }
+
+    private sealed class MapExtraEndpointFilter(string? routeName) : IStartupFilter
+    {
+        public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
+        {
+            next(app);
+            app.UseEndpoints(endpoints =>
+            {
+                var builder = endpoints.MapGet("zz-unmapped", () => "REACHED");
+                if (routeName is not null)
+                {
+                    builder.WithMetadata(new RouteNameMetadata(routeName));
+                }
+            });
+        };
+    }
+
+    private sealed class CapturingProvider(List<string> logs) : ILoggerProvider
+    {
+        public ILogger CreateLogger(string categoryName) => new CapturingLogger(logs);
+
+        public void Dispose()
+        {
+        }
+
+        private sealed class CapturingLogger(List<string> logs) : ILogger
+        {
+            public IDisposable BeginScope<TState>(TState state) => null;
+
+            public bool IsEnabled(LogLevel logLevel) => true;
+
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception exception, Func<TState, Exception, string> formatter)
+            {
+                lock (logs)
+                {
+                    logs.Add(formatter(state, exception));
+                }
+            }
+        }
     }
 
     private static Task<HttpResponseMessage> Send(HttpClient client, string method, string path)

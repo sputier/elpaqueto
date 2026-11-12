@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using ElPaqueto.Security;
 using ElPaqueto.Security.Data;
 using ElPaqueto.Security.Passwords;
+using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace ElPaqueto.Tests;
@@ -17,7 +18,7 @@ internal static class TestUserExtensions
 {
     /// <summary>Adds an active user holding exactly <paramref name="permissions"/>.</summary>
     public static async Task AddUserAsync(
-        this ElPaquetoApplication app,
+        this WebApplicationFactory<Startup> app,
         string userName,
         string password,
         Permission permissions,
@@ -44,9 +45,9 @@ internal static class TestUserExtensions
     }
 
     /// <summary>Creates a client that sends HTTP Basic credentials for the given user.</summary>
-    public static HttpClient CreateClientFor(this ElPaquetoApplication app, string userName, string password)
+    public static HttpClient CreateClientFor(this WebApplicationFactory<Startup> app, string userName, string password)
     {
-        var client = app.CreateAnonymousClient();
+        var client = app.CreateClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
             "Basic",
             Convert.ToBase64String(Encoding.UTF8.GetBytes($"{userName}:{password}")));
