@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <RootNamespace>ElPaqueto</RootNamespace>
+    <AssemblyName>ElPaqueto</AssemblyName>
+    <UserSecretsId>elpaqueto</UserSecretsId>
+  </PropertyGroup>
+</Project>
