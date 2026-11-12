@@ -36,6 +36,14 @@ public interface IApiKeyService
     public Task<IReadOnlyList<ApiKeyInfo>> ListAsync(Guid? ownerUserId = null, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Finds one key, revoked and expired ones included.
+    /// </summary>
+    /// <param name="keyId">The public key id.</param>
+    /// <param name="cancellationToken">Cancels the operation.</param>
+    /// <returns>The key, without its secret, or <see langword="null"/> when no key has this id.</returns>
+    public Task<ApiKeyInfo?> FindAsync(string keyId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Revokes a key. Idempotent.
     /// </summary>
     /// <param name="keyId">The public key id.</param>
