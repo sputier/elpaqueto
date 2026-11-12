@@ -48,10 +48,12 @@ def main() -> int:
     if not args.skip_vulnerable:
         steps.append(("vulnerable-packages", [python, str(HERE / "check_vulnerable_packages.py")]))
 
+    # Unbuffered children keep their output in order with the group markers.
+    child_env = {**os.environ, "PYTHONUNBUFFERED": "1"}
     failed = []
     for name, command in steps:
         print(f"::group::{name}" if _in_ci() else f"==> {name}", flush=True)
-        code = subprocess.run(command, cwd=root).returncode
+        code = subprocess.run(command, cwd=root, env=child_env).returncode
         if _in_ci():
             print("::endgroup::", flush=True)
         if code != 0:
