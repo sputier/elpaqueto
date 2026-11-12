@@ -39,7 +39,7 @@ public sealed class BootstrapCommandTests : IDisposable
         Assert.Equal(Permission.Read | Permission.Publish | Permission.Admin, user.Permissions);
         Assert.Equal(user.CreatedAt, user.UpdatedAt);
         Assert.Equal(user.CreatedAt, user.PasswordChangedAt);
-        Assert.InRange(user.CreatedAt, DateTime.UtcNow.AddMinutes(-5), DateTime.UtcNow.AddMinutes(1));
+        Assert.Equal(_cli.Clock.UtcNow, user.CreatedAt);
         Assert.Contains("Created administrator 'admin'", run.Out, StringComparison.Ordinal);
         Assert.Empty(run.Error);
     }

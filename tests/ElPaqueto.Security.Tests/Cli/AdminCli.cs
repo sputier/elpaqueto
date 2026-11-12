@@ -44,6 +44,7 @@ internal sealed class AdminCli : IDisposable
 
         new ElPaquetoApplication(services).AddElPaquetoSecurity();
         services.Replace(ServiceDescriptor.Singleton<ISecretPrompt>(Prompt));
+        services.Replace(ServiceDescriptor.Singleton<TimeProvider>(Clock));
 
         if (interceptor is not null)
         {
@@ -56,6 +57,9 @@ internal sealed class AdminCli : IDisposable
     public AuthDatabaseFixture Database { get; }
 
     public FakeSecretPrompt Prompt { get; } = new();
+
+    /// <summary>The clock of the commands: it only moves when a test advances it.</summary>
+    public ManualClock Clock { get; } = new();
 
     public IServiceProvider Services => _services;
 
@@ -200,6 +204,18 @@ internal sealed class TestConsole(string stdin, bool inputRedirected) : IConsole
         _error.Dispose();
         In.Dispose();
     }
+}
+
+/// <summary>A clock that only moves when told to.</summary>
+internal sealed class ManualClock : TimeProvider
+{
+    private DateTimeOffset _now = new(2026, 1, 2, 3, 4, 5, TimeSpan.Zero);
+
+    public DateTime UtcNow => _now.UtcDateTime;
+
+    public override DateTimeOffset GetUtcNow() => _now;
+
+    public void Advance(TimeSpan by) => _now += by;
 }
 
 /// <summary>A terminal prompt that answers from a queue and records the prompts shown.</summary>
