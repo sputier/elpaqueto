@@ -28,13 +28,13 @@ namespace ElPaqueto.Tests;
 /// <remarks>
 /// Requests are sent with <c>TestServer.SendAsync</c> so that each test sets the connection's
 /// client address and scheme, as Kestrel would for a remote client or a TLS connection.
-/// 203.0.113.0/24 and 198.51.100.0/24 are documentation ranges: they stand for remote clients.
+/// 203.0.113.0/24 and 198.51.100.0/24 are documentation ranges that stand for remote clients; 192.0.2.0/24 stands for the proxies' network.
 /// </remarks>
 public class ProxyAndTransportIntegrationTests
 {
     private const string RemoteClient = "203.0.113.10";
     private const string OtherRemoteClient = "198.51.100.20";
-    private const string ProxyInPrivateNetwork = "10.1.2.3";
+    private const string ProxyInPrivateNetwork = "192.0.2.3";
     private const string Attacker = "attacker.example.com";
     private const string Username = "username";
     private const string Password = "password";
@@ -394,7 +394,7 @@ public class ProxyAndTransportIntegrationTests
 
     private static void TrustPrivateNetwork(Dictionary<string, string> dict)
     {
-        dict["Security:ReverseProxy:KnownNetworks:0"] = "10.0.0.0/8";
+        dict["Security:ReverseProxy:KnownNetworks:0"] = "192.0.2.0/24";
     }
 
     private static void NoHttpsRequirement(Dictionary<string, string> dict)

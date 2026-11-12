@@ -172,10 +172,10 @@ public sealed class SecurityConfigurationHostTests : IDisposable
     [InlineData("Security:ReverseProxy:ForwardLimit", "0", "Security:ReverseProxy:ForwardLimit")]
     [InlineData("Security:PublicBaseUrl", "http://nuget.example.test", "Security:PublicBaseUrl")]
     [InlineData("Security:PublicBaseUrl", "nuget.example.test", "Security:PublicBaseUrl")]
-    [InlineData("Security:ReverseProxy", "10.0.0.0/8", "Security:ReverseProxy is a section")]
+    [InlineData("Security:ReverseProxy", "198.51.100.0/24", "Security:ReverseProxy is a section")]
     [InlineData("Security:Transport", "false", "Security:Transport is a section")]
-    [InlineData("Security:ReverseProxy:KnownProxies", "10.0.0.1", "Security:ReverseProxy:KnownProxies is a list")]
-    [InlineData("Security:ReverseProxy:KnownNetworks", "10.0.0.0/8", "Security:ReverseProxy:KnownNetworks is a list")]
+    [InlineData("Security:ReverseProxy:KnownProxies", "198.51.100.1", "Security:ReverseProxy:KnownProxies is a list")]
+    [InlineData("Security:ReverseProxy:KnownNetworks", "198.51.100.0/24", "Security:ReverseProxy:KnownNetworks is a list")]
     public void InvalidProxyOrTransportSetting_FailsAndNamesTheSetting(string key, string value, string expected)
     {
         using var host = BuildHost(out var logs, new Dictionary<string, string?> { [key] = value });
@@ -189,9 +189,9 @@ public sealed class SecurityConfigurationHostTests : IDisposable
     {
         using var host = BuildHost(out var logs, new Dictionary<string, string?>
         {
-            ["Security:ReverseProxy:KnownProxies:0"] = "10.0.0.5",
-            ["Security:ReverseProxy:KnownNetworks:0"] = "172.18.0.0/16",
-            ["Security:ReverseProxy:KnownNetworks:1"] = "fd00::/8",
+            ["Security:ReverseProxy:KnownProxies:0"] = "192.0.2.10",
+            ["Security:ReverseProxy:KnownNetworks:0"] = "203.0.113.0/24",
+            ["Security:ReverseProxy:KnownNetworks:1"] = "2001:db8::/32",
             ["Security:ReverseProxy:ForwardLimit"] = "2",
             ["Security:PublicBaseUrl"] = "https://nuget.example.test",
             ["Security:Transport:RequireHttps"] = "true",
@@ -201,8 +201,8 @@ public sealed class SecurityConfigurationHostTests : IDisposable
         Assert.Empty(logs.Messages);
 
         var options = host.Services.GetRequiredService<IOptions<ElPaquetoSecurityOptions>>().Value;
-        Assert.Equal(["10.0.0.5"], options.ReverseProxy.KnownProxies);
-        Assert.Equal(["172.18.0.0/16", "fd00::/8"], options.ReverseProxy.KnownNetworks);
+        Assert.Equal(["192.0.2.10"], options.ReverseProxy.KnownProxies);
+        Assert.Equal(["203.0.113.0/24", "2001:db8::/32"], options.ReverseProxy.KnownNetworks);
         Assert.Equal(2, options.ReverseProxy.ForwardLimit);
     }
 

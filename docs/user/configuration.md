@@ -54,8 +54,8 @@ Which reverse proxies are trusted to report the client's address, the original s
 
 | Setting | Default | Description |
 | --- | --- | --- |
-| `Security:ReverseProxy:KnownProxies` | empty | List of proxy IP addresses, such as `10.0.0.5` or `fd00::5`. |
-| `Security:ReverseProxy:KnownNetworks` | empty | List of proxy networks in CIDR notation, such as `172.18.0.0/16`. The address must not have bits set beyond the prefix (`10.0.0.1/8` is rejected). |
+| `Security:ReverseProxy:KnownProxies` | empty | List of proxy IP addresses, such as `192.0.2.10` or `2001:db8::10`. |
+| `Security:ReverseProxy:KnownNetworks` | empty | List of proxy networks in CIDR notation, such as `198.51.100.0/24`. The address must not have bits set beyond the prefix (`198.51.100.1/24` is rejected). |
 | `Security:ReverseProxy:ForwardLimit` | `1` | Number of proxies in front of the server: how many entries of `X-Forwarded-For` and `X-Forwarded-Proto` are processed, starting from the right. Between 1 and 10. |
 
 When neither list is set, only loopback (`127.0.0.0/8` and `::1`) is trusted. Setting either list **replaces** that default: add `127.0.0.1` and `::1` yourself if a proxy on the same machine also connects. There is no setting that trusts every address, and networks that cover every address (`0.0.0.0/0`, `::/0`, or an IPv6 network containing all IPv4-mapped addresses such as `::ffff:0:0/96`) are rejected.
@@ -63,11 +63,11 @@ When neither list is set, only loopback (`127.0.0.0/8` and `::1`) is trusted. Se
 Lists are set with one key per entry:
 
 ```bash
-export Security__ReverseProxy__KnownNetworks__0="172.18.0.0/16"
-export Security__ReverseProxy__KnownProxies__0="10.0.0.5"
+export Security__ReverseProxy__KnownNetworks__0="198.51.100.0/24"
+export Security__ReverseProxy__KnownProxies__0="192.0.2.10"
 ```
 
-Setting the list itself as a single value (`Security__ReverseProxy__KnownNetworks=172.18.0.0/16`) is rejected at startup, because it would otherwise be silently ignored.
+Setting the list itself as a single value (`Security__ReverseProxy__KnownNetworks=198.51.100.0/24`) is rejected at startup, because it would otherwise be silently ignored.
 
 Forwarded headers sent by any other address are ignored: the request keeps the scheme, host and client address of its connection. The headers processed are `X-Forwarded-For`, `X-Forwarded-Proto` and, only when `Security:PublicBaseUrl` is not set, `X-Forwarded-Host`. `X-Forwarded-Prefix` is not supported: use `PathBase`.
 

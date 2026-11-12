@@ -28,7 +28,7 @@ public sealed class SecurityReverseProxyOptions : IValidatableObject
     public IList<string> KnownProxies { get; set; } = [];
 
     /// <summary>
-    /// Networks of trusted proxies in CIDR notation, such as <c>172.18.0.0/16</c>.
+    /// Networks of trusted proxies in CIDR notation, such as <c>198.51.100.0/24</c>.
     /// Setting: <c>Security:ReverseProxy:KnownNetworks</c>.
     /// </summary>
     public IList<string> KnownNetworks { get; set; } = [];
@@ -72,7 +72,7 @@ public sealed class SecurityReverseProxyOptions : IValidatableObject
             if (!TryParseNetwork(value, out var network))
             {
                 results.Add(new ValidationResult(
-                    $"Security:ReverseProxy:KnownNetworks:{i} is not a valid CIDR network such as 172.18.0.0/16 (the address must not have bits set beyond the prefix)."));
+                    $"Security:ReverseProxy:KnownNetworks:{i} is not a valid CIDR network such as 198.51.100.0/24 (the address must not have bits set beyond the prefix)."));
             }
             else if (IsCatchAll(network))
             {
@@ -161,7 +161,7 @@ public sealed class SecurityReverseProxyOptions : IValidatableObject
             return false;
         }
 
-        // IPNetwork.TryParse silently clears host bits ("10.0.0.1/8" becomes 10.0.0.0/8): a value
+        // IPNetwork.TryParse silently clears host bits ("198.51.100.1/24" becomes 198.51.100.0/24): a value
         // with host bits set is most likely a typo, so it is rejected instead.
         if (!IPNetwork.TryParse(trimmed, out var parsed)
             || !IPAddress.TryParse(address, out var written)

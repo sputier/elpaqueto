@@ -34,10 +34,10 @@ public class TransportSecurityTests
     }
 
     [Theory]
-    [InlineData("10.0.0.1")]
+    [InlineData("198.51.100.1")]
     [InlineData("::1")]
-    [InlineData("fd00::1")]
-    [InlineData(" 192.168.1.10 ")]
+    [InlineData("2001:db8::1")]
+    [InlineData(" 192.0.2.20 ")]
     public void ValidProxy_IsAccepted(string proxy)
     {
         var options = WithProxy(proxies: [proxy]);
@@ -49,7 +49,7 @@ public class TransportSecurityTests
     [InlineData("")]
     [InlineData("1")]
     [InlineData("example.test")]
-    [InlineData("10.0.0.0/8")]
+    [InlineData("198.51.100.0/24")]
     [InlineData("0.0.0.0")]
     [InlineData("::")]
     [InlineData("256.0.0.1")]
@@ -62,12 +62,12 @@ public class TransportSecurityTests
     }
 
     [Theory]
-    [InlineData("10.0.0.0/8")]
-    [InlineData("172.18.0.0/16")]
-    [InlineData("192.168.1.10/32")]
-    [InlineData("fd00::/8")]
+    [InlineData("198.51.100.0/24")]
+    [InlineData("203.0.113.0/24")]
+    [InlineData("192.0.2.20/32")]
+    [InlineData("2001:db8::/32")]
     [InlineData("::1/128")]
-    [InlineData("::ffff:10.0.0.0/104")]
+    [InlineData("::ffff:198.51.100.0/120")]
     public void ValidNetwork_IsAccepted(string network)
     {
         Assert.True(Validator.Validate(name: null, WithProxy(networks: [network])).Succeeded);
@@ -75,11 +75,11 @@ public class TransportSecurityTests
 
     [Theory]
     [InlineData("")]
-    [InlineData("10.0.0.0")]
+    [InlineData("198.51.100.0")]
     [InlineData("10/8")]
-    [InlineData("10.0.0.1/8")]
-    [InlineData("10.0.0.0/33")]
-    [InlineData("10.0.0.0/-1")]
+    [InlineData("198.51.100.1/24")]
+    [InlineData("198.51.100.0/33")]
+    [InlineData("198.51.100.0/-1")]
     [InlineData("example.test/8")]
     public void MalformedNetwork_IsRejected(string network)
     {
@@ -97,7 +97,7 @@ public class TransportSecurityTests
     [InlineData("::/80")]
     public void CatchAllNetwork_IsRejected(string network)
     {
-        var result = Validator.Validate(name: null, WithProxy(networks: ["10.0.0.0/8", network]));
+        var result = Validator.Validate(name: null, WithProxy(networks: ["198.51.100.0/24", network]));
 
         Assert.True(result.Failed);
         Assert.Contains(result.Failures!, f => f.Contains("Security:ReverseProxy:KnownNetworks:1 trusts every address", StringComparison.Ordinal));
@@ -186,8 +186,8 @@ public class TransportSecurityTests
                 PublicBaseUrl = "https://nuget.example.test",
                 ReverseProxy = new SecurityReverseProxyOptions
                 {
-                    KnownProxies = ["10.0.0.5"],
-                    KnownNetworks = ["172.18.0.0/16"],
+                    KnownProxies = ["192.0.2.10"],
+                    KnownNetworks = ["203.0.113.0/24"],
                     ForwardLimit = 2,
                 },
             },
@@ -195,8 +195,8 @@ public class TransportSecurityTests
 
         Assert.Equal(ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto, forwarded.ForwardedHeaders);
         Assert.Equal(2, forwarded.ForwardLimit);
-        Assert.Equal([IPAddress.Parse("10.0.0.5")], forwarded.KnownProxies);
-        Assert.Equal([IPNetwork.Parse("172.18.0.0/16")], forwarded.KnownIPNetworks);
+        Assert.Equal([IPAddress.Parse("192.0.2.10")], forwarded.KnownProxies);
+        Assert.Equal([IPNetwork.Parse("203.0.113.0/24")], forwarded.KnownIPNetworks);
 #pragma warning disable ASPDEPR005
         Assert.DoesNotContain(forwarded.KnownNetworks, n => n.Prefix.Equals(IPAddress.Parse("198.51.100.0")));
 #pragma warning restore ASPDEPR005
@@ -208,8 +208,8 @@ public class TransportSecurityTests
     [InlineData("127.200.0.1", true)]
     [InlineData("::1", true)]
     [InlineData("::ffff:127.0.0.1", true)]
-    [InlineData("10.0.0.1", false)]
-    [InlineData("::ffff:10.0.0.1", false)]
+    [InlineData("198.51.100.1", false)]
+    [InlineData("::ffff:198.51.100.1", false)]
     [InlineData("0.0.0.0", false)]
     [InlineData("fe80::1", false)]
     public void IsLocal_AcceptsLoopbackOnly(string address, bool expected)

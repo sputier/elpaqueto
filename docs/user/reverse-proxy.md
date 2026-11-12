@@ -21,7 +21,7 @@ Keep `Security:Transport:RequireHttps` at its default (`true`).
 
 ## Example: proxy in the same Docker Compose project
 
-The proxy and ElPaqueto share a user-defined network with a fixed subnet, so the trusted network is known in advance. Only the proxy publishes a port; ElPaqueto is not reachable from outside the network.
+The proxy and ElPaqueto share a user-defined network with a fixed subnet, so the trusted network is known in advance. Only the proxy publishes a port; ElPaqueto is not reachable from outside the network. The example uses the documentation range `198.51.100.0/24`; choose a private subnet that is free on your Docker host.
 
 ```yaml
 services:
@@ -36,7 +36,7 @@ services:
     image: <the ElPaqueto image>
     environment:
       Security__PublicBaseUrl: "https://nuget.example.test"
-      Security__ReverseProxy__KnownNetworks__0: "172.30.0.0/24"
+      Security__ReverseProxy__KnownNetworks__0: "198.51.100.0/24"
     networks:
       - backend
 
@@ -44,23 +44,23 @@ networks:
   backend:
     ipam:
       config:
-        - subnet: 172.30.0.0/24
+        - subnet: 198.51.100.0/24
 ```
 
 Trust only the network the proxy connects from, and keep it a network that only the proxy and ElPaqueto join: any container on a trusted network can forge the forwarded headers.
 
 ## Example: proxy on the Docker host, port published to it
 
-When a proxy on the host forwards to a published container port (`-p 127.0.0.1:5000:8080`), the container sees the connection coming from the Docker bridge gateway (typically `172.17.0.1` on the default bridge), not from loopback. Trust that address:
+When a proxy on the host forwards to a published container port (`-p 127.0.0.1:5000:8080`), the container sees the connection coming from the Docker bridge gateway, not from loopback. Trust that address, shown as `Gateway` by `docker network inspect bridge` (`192.0.2.1` stands for it below):
 
 ```bash
 docker run -p 127.0.0.1:5000:8080 \
   -e Security__PublicBaseUrl=https://nuget.example.test \
-  -e Security__ReverseProxy__KnownProxies__0=172.17.0.1 \
+  -e Security__ReverseProxy__KnownProxies__0=192.0.2.1 \
   <the ElPaqueto image>
 ```
 
-Check the actual gateway address with `docker network inspect bridge`. Publishing on `127.0.0.1` only keeps the plain-HTTP port unreachable from other machines.
+Publishing on `127.0.0.1` only keeps the plain-HTTP port unreachable from other machines.
 
 ## Example: proxy or tunnel agent on the same machine, no container
 
