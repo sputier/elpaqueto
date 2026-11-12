@@ -66,4 +66,37 @@ public class ElPaquetoSecurityOptionsTests
 
         Assert.True(result.Failed);
     }
+
+    [Theory]
+    [InlineData("foo")]
+    [InlineData("Data Source=")]
+    [InlineData("Mode=ReadWriteCreate")]
+    [InlineData("NotAKeyword=1;Data Source=x.db")]
+    public void MalformedConnectionString_IsRejectedWithAFixedMessage(string connectionString)
+    {
+        var options = new ElPaquetoSecurityOptions
+        {
+            Database = new SecurityDatabaseOptions { ConnectionString = connectionString },
+        };
+
+        var result = Validator.Validate(name: null, options);
+
+        Assert.True(result.Failed);
+        Assert.All(result.Failures!, failure => Assert.DoesNotContain(connectionString, failure, StringComparison.Ordinal));
+        Assert.Contains(result.Failures!, f => f.Contains("Security:Database:ConnectionString", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("Data Source=/data/db/auth.db")]
+    [InlineData("Data Source=auth.db;Cache=Shared")]
+    [InlineData("Data Source=:memory:")]
+    public void WellFormedConnectionString_IsAccepted(string connectionString)
+    {
+        var options = new ElPaquetoSecurityOptions
+        {
+            Database = new SecurityDatabaseOptions { ConnectionString = connectionString },
+        };
+
+        Assert.True(Validator.Validate(name: null, options).Succeeded);
+    }
 }
