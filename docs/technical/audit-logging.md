@@ -5,7 +5,7 @@ The security module records its decisions as structured log events under one log
 ## Design
 
 - **One category.** Audit events are written through an `ILogger<Audit>` (`src/ElPaqueto.Security/Audit.cs`, a marker type whose full name is the category) or through a logger created with `AuditLog.Category`. Every audit event, whatever class raises it, has that category.
-- **One catalogue.** Events are declared with the `LoggerMessage` source generator in `src/ElPaqueto.Security/Auditing/AuditLog.cs`, except the user administration events, which stay in `src/ElPaqueto.Security/Users/UserAdministrationLog.cs` (same category, block 2000–2099). New security events are added to `AuditLog`, never as ad-hoc log calls.
+- **One catalogue.** Events are declared with the `LoggerMessage` source generator in `src/ElPaqueto.Security/Auditing/AuditLog.cs`, except the user and API key administration events of the `admin` commands, which stay in `src/ElPaqueto.Security/Users/UserAdministrationLog.cs` (same category, block 2000–2099). New security events are added to `AuditLog`, never as ad-hoc log calls.
 - **Fixed ids and names.** Every `LoggerMessage` event of the security module, audit or not, has an explicit `EventId` and `EventName`. Ids are allocated by block (below) and never reused. `AuditLogCatalogueTests` fails when two events share an id or a name, when an event has no explicit id, when an audit event leaves the 1000–2999 range, or when an event has no row in the tables of this page.
 - **Safe values only.** Properties are ids (user GUIDs, public API key ids), fixed vocabularies (reasons, methods, scopes), client addresses, server-defined route names and the user names of existing accounts. `AuditValues` (`src/ElPaqueto.Security/Auditing/AuditValues.cs`) converts request data into such values.
 - **No flooding.** Successful sign-ins are `Debug` (NuGet clients authenticate every request). Failures that anyone can send without limit (malformed headers, values without the API key format) are `Debug`; failures that are counted by throttling are `Warning`, so their number is bounded per client address (a distributed attack from many addresses still produces one line per attempt, which is what an operator wants to see). Refused plain-HTTP requests, which are anonymous and not throttled, are `Warning` at most once a minute and `Debug` otherwise. A throttle trip is logged once; the refused attempts behind it are `Debug`.
@@ -20,9 +20,8 @@ The security module records its decisions as structured log events under one log
 | 1300–1799 | Reserved for future audit events | `ElPaqueto.Security.Audit` |
 | 1800–1899 | Sign-in throttling | `ElPaqueto.Security.Audit` |
 | 1900–1999 | Startup security warnings | `ElPaqueto.Security.Audit` |
-| 2000–2099 | User administration (`admin` commands) | `ElPaqueto.Security.Audit` |
-| 2100–2199 | API key administration | `ElPaqueto.Security.Audit` |
-| 2200–2999 | Reserved for future audit events | `ElPaqueto.Security.Audit` |
+| 2000–2099 | User and API key administration (`admin` commands) | `ElPaqueto.Security.Audit` |
+| 2100–2999 | Reserved for future audit events | `ElPaqueto.Security.Audit` |
 | 3000–3099 | Operational events of authentication and API keys | the class's own category |
 | 3100–3199 | Security configuration validation | `ElPaqueto.Security.Configuration` |
 | 3200–3299 | Security database | `ElPaqueto.Security.Data.AuthDatabaseMigrator` |
@@ -78,9 +77,9 @@ Reasons: `unmapped_endpoint`, `route_mismatch`, `method_not_allowed`, `api_key_h
 | 1905 | `DatabasePermissionsNarrowed` | Warning | `Path` | The security database file was readable or writable by other users and was narrowed (Unix). |
 | 1906 | `DatabasePermissionsNotNarrowed` | Warning | — | The permissions of the security database could not be narrowed (Unix). |
 
-### User administration (2000–2099)
+### User and API key administration (2000–2099)
 
-Raised by the `admin` commands (origin: the command line; there is no administration over HTTP). User names come from the security database or passed the user name rules.
+Raised by the `admin` commands (origin: the command line; there is no administration over HTTP). User names come from the security database or passed the user name rules. API keys are named by their public key id only.
 
 | Id | Name | Level | Properties | Emitted when |
 | --- | --- | --- | --- | --- |
@@ -93,15 +92,10 @@ Raised by the `admin` commands (origin: the command line; there is no administra
 | 2007 | `UserPasswordReset` | Information | `UserName`, `UserId` | `admin user reset-password`. |
 | 2008 | `LastActiveAdministratorProtected` | Information | `UserName` | A change was refused because it would leave no active administrator. |
 | 2009 | `ConcurrentChangeRejected` | Warning | `UserName` | A change was refused because the user changed concurrently. |
+| 2010 | `ApiKeyCreated` | Information | `KeyId`, `UserName`, `UserId`, `Permissions`, `ExpiresAt` | `admin key create`. The token is never logged. |
+| 2011 | `ApiKeyRevoked` | Information | `KeyId`, `UserName`, `UserId` | `admin key revoke`. |
+| 2012 | `ApiKeyRotated` | Information | `OldKeyId`, `NewKeyId`, `UserName`, `UserId`, `ExpiresAt` | `admin key rotate`. |
 | 2099 | `AdminCommandFailed` | Error | `Command`, exception | An `admin` command failed unexpectedly. |
-
-### API key administration (2100–2199)
-
-| Id | Name | Level | Properties | Emitted when |
-| --- | --- | --- | --- | --- |
-| 2101 | `ApiKeyCreated` | Information | `KeyId`, `OwnerUserId`, `Permissions` | A key is created. The token is never logged. |
-| 2102 | `ApiKeyRevoked` | Information | `KeyId` | A key is revoked. |
-| 2103 | `ApiKeyRotated` | Information | `OldKeyId`, `NewKeyId` | A key is replaced by a new one and revoked. |
 
 ## Operational events (3000–3299)
 
@@ -153,7 +147,7 @@ If HTTP logging is ever added: `HttpLoggingOptions.RequestHeaders` is an **allow
 - `tests/ElPaqueto.Security.Tests/Logging/RecordingLoggerProvider.cs`: an `ILoggerProvider` (with external scopes) that records the category, level, event id and name, formatted message, every structured property, every active scope and the full exception text of each entry. `LogRecords.AssertContainNone` searches all of it. Shared with `ElPaqueto.Tests` by a link in the project file.
 - `tests/ElPaqueto.Tests/AuditLoggingIntegrationTests.cs`: through the whole server pipeline at `Trace` level for every category, with a sentinel password unique to the run, drives a valid login, a wrong password, an unknown user, a disabled user, two malformed headers, a password typed as user name (with and without characters outside the rules), API keys typed as user name, a user name with CR/LF, valid API keys (header and Basic), a key with a wrong secret, a malformed key, a throttled login (trip and 429), two authorization denials (one with a request body holding the sentinel), a remote plain-HTTP request, and requests through the trusted loopback proxy. It checks each event, its level and its properties (the forwarded client address included), and that no entry of any category contains the password, its base64, any `Authorization` value sent or its base64 part, the API key tokens and secrets, or the connection strings.
 - `tests/ElPaqueto.Security.Tests/Auditing/AdminCommandAuditTests.cs`: every `admin` command, successful and refused, with sentinel passwords: one event per change, and no password, base64 of a password or stored hash in any entry.
-- `tests/ElPaqueto.Security.Tests/Auditing/AuditLoggingProcessTests.cs`: the built host with the shipped `appsettings.json`: audit events at `Information` appear on standard error, not on standard output; successes are not shown; no password is printed.
+- `tests/ElPaqueto.Security.Tests/Auditing/AuditLoggingProcessTests.cs`: the built host with the shipped `appsettings.json`: audit events at `Information` are shown (on standard error for an `admin` command, whose standard output only carries its result); successes are not shown; no password is printed.
 - `AuditValuesTests`, `AuditLogCatalogueTests`, `LoggingGuardTests`: the user name policy, the catalogue rules and the guards above.
 
 The redaction tests were checked by mutation: logging the raw user name, logging an unknown user name in clear when it follows the rules, logging every plain-HTTP refusal at Warning, the password, the token as key id, the `Authorization` header in a scope, the password in an exception message, a password hash in an administration event, a duplicate or undocumented id, or the proxy's address instead of the client's, each makes a test fail.

@@ -179,6 +179,9 @@ public class ApiKeyThrottlingIntegrationTests
         public Task<System.Collections.Generic.IReadOnlyList<ApiKeyInfo>> ListAsync(Guid? ownerUserId = null, CancellationToken cancellationToken = default)
             => inner.ListAsync(ownerUserId, cancellationToken);
 
+        public Task<ApiKeyInfo> FindAsync(string keyId, CancellationToken cancellationToken = default)
+            => inner.FindAsync(keyId, cancellationToken);
+
         public Task<ApiKeyRevocation> RevokeAsync(string keyId, CancellationToken cancellationToken = default)
             => inner.RevokeAsync(keyId, cancellationToken);
 

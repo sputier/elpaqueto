@@ -4,9 +4,9 @@ using Microsoft.Extensions.Logging;
 namespace ElPaqueto.Security.Auditing;
 
 /// <summary>
-/// The security audit events: sign-ins, API key refusals, authorization denials, transport refusals, throttling,
-/// startup security warnings and API key administration. They are logged under the <see cref="Category"/>
-/// category (inject <c>ILogger&lt;Audit&gt;</c>). The user administration events are in
+/// The security audit events: sign-ins, API key refusals, authorization denials, transport refusals, throttling
+/// and startup security warnings. They are logged under the <see cref="Category"/>
+/// category (inject <c>ILogger&lt;Audit&gt;</c>). The user and API key administration events are in
 /// <see cref="Users.UserAdministrationLog"/>, under the same category.
 /// </summary>
 /// <remarks>
@@ -128,22 +128,5 @@ internal static partial class AuditLog
         Message = "The permissions of the security database could not be narrowed to the owner. Restrict access to the file and its -wal and -shm files, for example with chmod 600.")]
     public static partial void DatabasePermissionsNotNarrowed(ILogger logger);
 
-    // ---- 2000-2099: user administration, in UserAdministrationLog ----
-
-    // ---- 2100-2199: API key administration ----
-
-    /// <summary>An API key was created. The token is never logged.</summary>
-    [LoggerMessage(EventId = 2101, EventName = "ApiKeyCreated", Level = LogLevel.Information,
-        Message = "API key {KeyId} created for user {OwnerUserId} with permissions {Permissions}.")]
-    public static partial void ApiKeyCreated(ILogger logger, string keyId, Guid ownerUserId, Permission permissions);
-
-    /// <summary>An API key was revoked.</summary>
-    [LoggerMessage(EventId = 2102, EventName = "ApiKeyRevoked", Level = LogLevel.Information,
-        Message = "API key {KeyId} revoked.")]
-    public static partial void ApiKeyRevoked(ILogger logger, string keyId);
-
-    /// <summary>An API key was rotated: a new key replaces it and it is revoked.</summary>
-    [LoggerMessage(EventId = 2103, EventName = "ApiKeyRotated", Level = LogLevel.Information,
-        Message = "API key {OldKeyId} rotated: replaced by {NewKeyId} and revoked.")]
-    public static partial void ApiKeyRotated(ILogger logger, string oldKeyId, string newKeyId);
+    // ---- 2000-2099: user and API key administration by the admin commands, in UserAdministrationLog ----
 }

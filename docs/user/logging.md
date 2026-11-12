@@ -8,7 +8,7 @@ The shipped `appsettings.json` writes to the console:
 
 - `Warning` and above for everything;
 - `Information` and above for `Microsoft.Hosting.Lifetime` (startup and shutdown) and for the audit trail `ElPaqueto.Security.Audit`;
-- every line to **standard error** (`LogToStandardErrorThreshold: Trace`), so that the standard output of the `admin` commands (JSON listings, API key tokens) stays machine-readable. A container runtime or a service manager collects both streams.
+- the server to standard output; the `admin` commands send their log lines to standard error, so that their standard output (JSON listings, API key tokens) stays machine-readable.
 
 With these settings you see failed sign-ins, refused API keys, authorization denials, refused plain-HTTP requests, throttling trips, startup security warnings and every change made with the `admin` commands. Successful sign-ins are logged at `Debug` only: NuGet clients authenticate every request, so one line per success would flood the log. To see them while investigating:
 
@@ -32,7 +32,7 @@ Filter on the category `ElPaqueto.Security.Audit` and the event id (or name). Su
 | Authorization denials | 1101 `AuthorizationDenied` | An account or key used beyond its permissions: misconfiguration, or a compromised low-privilege credential. |
 | Refused plain-HTTP requests (Warning at most once a minute, the others at Debug) | 1201 `TransportRejected`, 1202 `UntrustedForwardedHeaders` | A client or a reverse proxy is misconfigured (see [Running behind a reverse proxy](reverse-proxy.md)). |
 | Any startup security warning | 1901–1906 | The server runs with a weakened setting: check it was intended. |
-| Any user or key change | 2001–2009, 2101–2103 | Compare with your change records: an unexpected change means someone ran the `admin` commands. |
+| Any user or key change | 2001–2012 | Compare with your change records: an unexpected change means someone ran the `admin` commands. |
 | Failed admin commands | 2099 `AdminCommandFailed` | The security database could not be used. |
 
 `AuthenticationFailed` and `ApiKeyRejected` for malformed values are `Debug`: anyone can send them, and they are refused before any check.
@@ -50,7 +50,7 @@ Then filter on `"Category":"ElPaqueto.Security.Audit"` and on `EventId`.
 
 ## Shipping logs from Docker
 
-The container writes every log line to standard error; Docker captures it with its logging driver:
+The container writes its log lines to the console; Docker captures standard output and standard error with its logging driver:
 
 - `docker logs <container>` shows it, and so does `docker compose logs elpaqueto`.
 - The default `json-file` driver keeps logs on the host without a size limit: set one, for example in Compose:
@@ -67,7 +67,7 @@ The container writes every log line to standard error; Docker captures it with i
 
 - To send logs to a collector, use another driver (`journald`, `syslog`, `fluentd`, `gelf`, ...) with `--log-driver` or the Compose `logging` key, or let an agent on the host read the `json-file` logs. With the JSON console formatter above, the collector receives one JSON object per line.
 
-Outside containers, a service manager collects standard error as well (for example the systemd journal). On Windows, `Host.CreateDefaultBuilder` also registers the Event Log provider, at `Warning` by default; `Logging__EventLog__LogLevel__ElPaqueto.Security.Audit=Information` sends the audit trail there too.
+Outside containers, a service manager collects the console output (for example the systemd journal). On Windows, `Host.CreateDefaultBuilder` also registers the Event Log provider, at `Warning` by default; `Logging__EventLog__LogLevel__ElPaqueto.Security.Audit=Information` sends the audit trail there too.
 
 ## Personal data
 

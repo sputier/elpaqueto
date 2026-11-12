@@ -41,8 +41,8 @@ internal sealed class HostProcess : IDisposable
         }
 
         _process = Process.Start(startInfo) ?? throw new InvalidOperationException("The host did not start.");
-        _process.OutputDataReceived += (_, e) => Append(e.Data, _standardOutput);
-        _process.ErrorDataReceived += (_, e) => Append(e.Data, _standardError);
+        _process.OutputDataReceived += (_, e) => Append(e.Data, standardOutput: true);
+        _process.ErrorDataReceived += (_, e) => Append(e.Data, standardOutput: false);
         _process.BeginOutputReadLine();
         _process.BeginErrorReadLine();
 
@@ -75,7 +75,7 @@ internal sealed class HostProcess : IDisposable
         }
     }
 
-    /// <summary>Everything the host wrote to standard output so far.</summary>
+    /// <summary>The lines the host wrote so far to standard output alone, each followed by a line break.</summary>
     public string StandardOutput
     {
         get
@@ -87,7 +87,7 @@ internal sealed class HostProcess : IDisposable
         }
     }
 
-    /// <summary>Everything the host wrote to standard error so far.</summary>
+    /// <summary>The lines the host wrote so far to standard error alone, each followed by a line break.</summary>
     public string StandardError
     {
         get
@@ -165,7 +165,7 @@ internal sealed class HostProcess : IDisposable
         _process.Dispose();
     }
 
-    private void Append(string? line, StringBuilder stream)
+    private void Append(string? line, bool standardOutput)
     {
         if (line is null)
         {
@@ -175,7 +175,7 @@ internal sealed class HostProcess : IDisposable
         lock (_output)
         {
             _output.AppendLine(line);
-            stream.AppendLine(line);
+            (standardOutput ? _standardOutput : _standardError).AppendLine(line);
         }
     }
 

@@ -605,7 +605,6 @@ public sealed class ApiKeyServiceTests : IDisposable
         }
 
         Assert.NotEmpty(logs.Lines);
-        Assert.Contains(logs.Lines, l => l.Contains("rotated", StringComparison.Ordinal));
         foreach (var token in tokens)
         {
             var secret = ApiKeyToken.TryParse(token, out var parts) ? parts.Secret : token;

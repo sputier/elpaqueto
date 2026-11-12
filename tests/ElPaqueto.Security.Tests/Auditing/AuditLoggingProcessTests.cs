@@ -9,7 +9,8 @@ namespace ElPaqueto.Security.Tests.Auditing;
 
 /// <summary>
 /// The shipped configuration (<c>src/ElPaqueto/appsettings.json</c>), through the real, built host: audit events
-/// are shown on the console at <c>Information</c>, on standard error, successes are not, and no password is printed.
+/// are shown on the console at <c>Information</c> (on standard error for an <c>admin</c> command), successes are not,
+/// and no password is printed.
 /// </summary>
 public sealed partial class AuditLoggingProcessTests : IDisposable
 {
@@ -30,7 +31,7 @@ public sealed partial class AuditLoggingProcessTests : IDisposable
     }
 
     [Fact]
-    public async Task WithTheShippedConfiguration_AuditEventsGoToStandardErrorAndSecretsNowhere()
+    public async Task WithTheShippedConfiguration_AuditEventsAreShownAndSecretsNowhere()
     {
         using (var bootstrap = HostProcess.Start(
             ["admin", "bootstrap", "--username", "root-admin", "--password-stdin"], Environment(), _password + "\n"))
@@ -61,13 +62,12 @@ public sealed partial class AuditLoggingProcessTests : IDisposable
         }
 
         await server.WaitForOutputAsync("bad_password");
-        Assert.Contains("Authentication with password failed: bad_password (user root-admin) from 127.0.0.1", server.StandardError, StringComparison.Ordinal);
+        Assert.Contains("Authentication with password failed: bad_password (user root-admin) from 127.0.0.1", server.Output, StringComparison.Ordinal);
 
         // Successes are Debug: one per request would flood the log.
         Assert.DoesNotContain("authenticated with", server.Output, StringComparison.Ordinal);
         Assert.DoesNotContain(_password, server.Output, StringComparison.Ordinal);
         Assert.DoesNotContain(Convert.ToBase64String(Encoding.UTF8.GetBytes("root-admin:" + _password)), server.Output, StringComparison.Ordinal);
-        Assert.Empty(server.StandardOutput);
     }
 
     private static async Task<HttpResponseMessage> SendAsync(HttpClient client, string userName, string password)
