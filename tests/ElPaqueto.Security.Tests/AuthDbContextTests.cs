@@ -230,4 +230,65 @@ public sealed class AuthDbContextTests : IDisposable
         command.CommandText = sql;
         return Convert.ToInt64(await command.ExecuteScalarAsync(), CultureInfo.InvariantCulture);
     }
+
+    [Fact]
+    public async Task UnspecifiedKindTimestamps_AreTakenAsUtcWhateverTheServerTimeZone()
+    {
+        var unspecified = new DateTime(2026, 6, 15, 12, 0, 0, DateTimeKind.Unspecified);
+        await using (var context = await _database.CreateMigratedContextAsync())
+        {
+            context.Users.Add(AuthDatabaseFixture.NewUser("alice", unspecified));
+            await context.SaveChangesAsync();
+        }
+
+        await using var reader = _database.CreateContext();
+        var stored = await reader.Users.SingleAsync();
+
+        Assert.Equal(new DateTime(2026, 6, 15, 12, 0, 0, DateTimeKind.Utc), stored.CreatedAt);
+        Assert.Equal(DateTimeKind.Utc, stored.CreatedAt.Kind);
+    }
+
+    [Fact]
+    public async Task NormalizedUserName_IsAlwaysDerivedFromTheUserName()
+    {
+        await using var context = await _database.CreateMigratedContextAsync();
+        var user = AuthDatabaseFixture.NewUser("Alice");
+        user.NormalizedUserName = "SOMETHING-ELSE";
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+
+        var second = AuthDatabaseFixture.NewUser("ALICE");
+        second.NormalizedUserName = "A-DIFFERENT-VALUE";
+        context.Users.Add(second);
+
+        Assert.Equal("ALICE", user.NormalizedUserName);
+        await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
+    }
+
+    [Fact]
+    public async Task UndefinedPermissionBits_AreRejectedByTheDatabase()
+    {
+        await using var context = await _database.CreateMigratedContextAsync();
+        var user = AuthDatabaseFixture.NewUser("alice");
+        user.Permissions = (Permission)8;
+        context.Users.Add(user);
+
+        await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
+    }
+
+    [Fact]
+    public async Task EveryDefinedPermissionCombination_IsAccepted()
+    {
+        await using var context = await _database.CreateMigratedContextAsync();
+        for (var flags = 0; flags <= 7; flags++)
+        {
+            var user = AuthDatabaseFixture.NewUser($"user{flags}");
+            user.Permissions = (Permission)flags;
+            context.Users.Add(user);
+        }
+
+        await context.SaveChangesAsync();
+
+        Assert.Equal(8, await context.Users.CountAsync());
+    }
 }

@@ -62,7 +62,10 @@ namespace ElPaqueto.Security.Data.Migrations
                     b.HasIndex("NormalizedUserName")
                         .IsUnique();
 
-                    b.ToTable("Users", (string)null);
+                    b.ToTable("Users", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Users_Permissions", "\"Permissions\" BETWEEN 0 AND 7");
+                        });
                 });
 #pragma warning restore 612, 618
         }
