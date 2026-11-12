@@ -164,6 +164,23 @@ public sealed class SecurityConfigurationHostTests : IDisposable
     }
 
     [Fact]
+    public void ThrottlingSettings_AreBoundFromConfiguration()
+    {
+        using var host = BuildHost(out _, new Dictionary<string, string?>
+        {
+            ["Security:Throttling:PairFailureLimit"] = "3",
+            ["Security:Throttling:PairWindow"] = "00:30:00",
+            ["Security:Throttling:MaxConcurrentVerifications"] = "2",
+        });
+
+        Assert.True(host.ValidateElPaquetoSecurityOptions());
+        var throttling = host.Services.GetRequiredService<IOptions<ElPaquetoSecurityOptions>>().Value.Throttling;
+        Assert.Equal(3, throttling.PairFailureLimit);
+        Assert.Equal(TimeSpan.FromMinutes(30), throttling.PairWindow);
+        Assert.Equal(2, throttling.EffectiveMaxConcurrentVerifications);
+    }
+
+    [Fact]
     public void LastUsedUpdateInterval_IsBoundFromConfiguration()
     {
         using var host = BuildHost(out _, new Dictionary<string, string?>
@@ -200,6 +217,8 @@ public sealed class SecurityConfigurationHostTests : IDisposable
     [InlineData("Security:PublicBaseUrl", "nuget.example.test", "Security:PublicBaseUrl")]
     [InlineData("Security:ReverseProxy", "198.51.100.0/24", "Security:ReverseProxy is a section")]
     [InlineData("Security:Transport", "false", "Security:Transport is a section")]
+    [InlineData("Security:Throttling", "5", "Security:Throttling is a section")]
+    [InlineData("Security:Throttling:PairFailureLimit", "0", "Security:Throttling:PairFailureLimit")]
     [InlineData("Security:ReverseProxy:KnownProxies", "198.51.100.1", "Security:ReverseProxy:KnownProxies is a list")]
     [InlineData("Security:ReverseProxy:KnownNetworks", "198.51.100.0/24", "Security:ReverseProxy:KnownNetworks is a list")]
     public void InvalidProxyOrTransportSetting_FailsAndNamesTheSetting(string key, string value, string expected)

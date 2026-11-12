@@ -50,6 +50,11 @@ public sealed class ElPaquetoSecurityOptions : IValidatableObject
     public SecurityTransportOptions Transport { get; set; } = new();
 
     /// <summary>
+    /// Limits on failed sign-in attempts and concurrent password verifications. Section: <c>Security:Throttling</c>.
+    /// </summary>
+    public SecurityThrottlingOptions Throttling { get; set; } = new();
+
+    /// <summary>
     /// The public URL clients use to reach the server, such as <c>https://nuget.example.test</c>.
     /// Setting: <c>Security:PublicBaseUrl</c>. Optional: an empty value means not set.
     /// </summary>
@@ -95,6 +100,11 @@ public sealed class ElPaquetoSecurityOptions : IValidatableObject
         }
 
         foreach (var result in ValidateSection(Transport, nameof(Transport)))
+        {
+            yield return result;
+        }
+
+        foreach (var result in ValidateSection(Throttling, nameof(Throttling)))
         {
             yield return result;
         }

@@ -203,4 +203,86 @@ public class ElPaquetoSecurityOptionsTests
 
         Assert.True(Validator.Validate(name: null, options).Succeeded);
     }
+
+    [Fact]
+    public void ThrottlingDefaults_FollowTheDocumentedValues()
+    {
+        var options = new ElPaquetoSecurityOptions();
+        var throttling = options.Throttling;
+
+        Assert.Equal(30, throttling.ClientFailureLimit);
+        Assert.Equal(TimeSpan.FromMinutes(10), throttling.ClientWindow);
+        Assert.Equal(5, throttling.PairFailureLimit);
+        Assert.Equal(TimeSpan.FromMinutes(15), throttling.PairWindow);
+        Assert.Equal(50, throttling.AccountFailureLimit);
+        Assert.Equal(TimeSpan.FromHours(1), throttling.AccountWindow);
+        Assert.Equal(TimeSpan.FromMinutes(1), throttling.InitialThrottleDuration);
+        Assert.Equal(TimeSpan.FromMinutes(15), throttling.MaximumThrottleDuration);
+        Assert.Equal(50_000, throttling.MaxTrackedEntries);
+        Assert.Equal(0, throttling.MaxConcurrentVerifications);
+        Assert.Equal(Environment.ProcessorCount, throttling.EffectiveMaxConcurrentVerifications);
+        Assert.Equal(100, throttling.VerificationQueueLimit);
+        Assert.Equal(TimeSpan.FromSeconds(5), throttling.BusyRetryAfter);
+        Assert.True(Validator.Validate(name: null, options).Succeeded);
+    }
+
+    [Theory]
+    [InlineData(nameof(SecurityThrottlingOptions.ClientFailureLimit), 0)]
+    [InlineData(nameof(SecurityThrottlingOptions.ClientFailureLimit), 1001)]
+    [InlineData(nameof(SecurityThrottlingOptions.PairFailureLimit), 0)]
+    [InlineData(nameof(SecurityThrottlingOptions.AccountFailureLimit), 0)]
+    [InlineData(nameof(SecurityThrottlingOptions.MaxTrackedEntries), 99)]
+    [InlineData(nameof(SecurityThrottlingOptions.MaxConcurrentVerifications), -1)]
+    [InlineData(nameof(SecurityThrottlingOptions.MaxConcurrentVerifications), 1025)]
+    [InlineData(nameof(SecurityThrottlingOptions.VerificationQueueLimit), -1)]
+    public void ThrottlingNumberOutsideTheAcceptedRange_IsRejectedAndNamesTheSetting(string setting, int value)
+    {
+        var options = new ElPaquetoSecurityOptions();
+        typeof(SecurityThrottlingOptions).GetProperty(setting)!.SetValue(options.Throttling, value);
+
+        var result = Validator.Validate(name: null, options);
+
+        Assert.True(result.Failed);
+        Assert.Contains(result.Failures!, f => f.Contains("Security:Throttling:" + setting, StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData(nameof(SecurityThrottlingOptions.ClientWindow), "00:00:00")]
+    [InlineData(nameof(SecurityThrottlingOptions.PairWindow), "1.00:00:01")]
+    [InlineData(nameof(SecurityThrottlingOptions.AccountWindow), "-00:01:00")]
+    [InlineData(nameof(SecurityThrottlingOptions.InitialThrottleDuration), "00:00:00")]
+    [InlineData(nameof(SecurityThrottlingOptions.MaximumThrottleDuration), "2.00:00:00")]
+    [InlineData(nameof(SecurityThrottlingOptions.BusyRetryAfter), "00:10:01")]
+    public void ThrottlingDurationOutsideTheAcceptedRange_IsRejectedAndNamesTheSetting(string setting, string value)
+    {
+        var options = new ElPaquetoSecurityOptions();
+        typeof(SecurityThrottlingOptions).GetProperty(setting)!.SetValue(
+            options.Throttling,
+            TimeSpan.Parse(value, System.Globalization.CultureInfo.InvariantCulture));
+
+        var result = Validator.Validate(name: null, options);
+
+        Assert.True(result.Failed);
+        Assert.Contains(result.Failures!, f => f.Contains("Security:Throttling:" + setting, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AnInitialThrottleDurationAboveTheMaximum_IsRejected()
+    {
+        var options = new ElPaquetoSecurityOptions();
+        options.Throttling.InitialThrottleDuration = TimeSpan.FromMinutes(20);
+
+        var result = Validator.Validate(name: null, options);
+
+        Assert.True(result.Failed);
+        Assert.Contains(result.Failures!, f => f.Contains("Security:Throttling:InitialThrottleDuration", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void MissingThrottlingSection_IsRejected()
+    {
+        var options = new ElPaquetoSecurityOptions { Throttling = null! };
+
+        Assert.True(Validator.Validate(name: null, options).Failed);
+    }
 }
