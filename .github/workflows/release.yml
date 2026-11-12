@@ -270,10 +270,6 @@ jobs:
         id: push
         run: bash eng/release/build-image.sh push "$RUNNER_TEMP/metadata.json"
 
-      - name: Log out of the GitHub Container Registry
-        if: always()
-        run: docker logout ghcr.io
-
       - name: Inspect the pushed image
         env:
           DIGEST: ${{ steps.push.outputs.digest }}
@@ -309,6 +305,11 @@ jobs:
           sbom-path: ${{ runner.temp }}/image/sbom-linux-arm64.spdx.json
           push-to-registry: true
           create-storage-record: false
+
+      # The attestations are pushed to the registry with the login above.
+      - name: Log out of the GitHub Container Registry
+        if: always()
+        run: docker logout ghcr.io
 
       - name: Create the GitHub Release
         env:
