@@ -13,10 +13,10 @@ It's forked from [BaGet] for progressive and community driven development.
 
 ## 🚀 Getting Started
 
-With Docker:
+With Docker (no image is published yet):
 
-1. `docker run -p 5000:8080 -v ./bagetter-data:/data bagetter/bagetter:latest`
-2. Browse `http://localhost:5000/` in your browser
+1. Build the image: `docker build -t elpaqueto:local .`
+2. Run it behind a TLS-terminating reverse proxy, with a volume on `/data`: see [Running ElPaqueto with Docker](docs/user/docker.md), [`docker-compose.example.yml`](docker-compose.example.yml) and [Running behind a reverse proxy or tunnel](docs/user/reverse-proxy.md)
 
 With .NET:
 
