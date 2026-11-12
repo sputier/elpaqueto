@@ -1,5 +1,6 @@
 using System.Net;
 using System.Threading.RateLimiting;
+using ElPaqueto.Security.Auditing;
 using ElPaqueto.Security.Configuration;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -34,12 +35,12 @@ namespace ElPaqueto.Security.Throttling;
 /// <para>Every counter kind holds at most <see cref="SecurityThrottlingOptions.MaxTrackedEntries"/> entries, so
 /// memory stays bounded whatever the number of user names or addresses an attacker sends.</para>
 /// </remarks>
-internal sealed partial class LoginThrottle : ILoginThrottle, IDisposable
+internal sealed class LoginThrottle : ILoginThrottle, IDisposable
 {
     private readonly Lock _gate = new();
     private readonly SecurityThrottlingOptions _options;
     private readonly TimeProvider _time;
-    private readonly ILogger<LoginThrottle> _logger;
+    private readonly ILogger<Audit> _logger;
     private readonly ConcurrencyLimiter _capacity;
     private readonly CounterStore<ClientKey> _clients;
     private readonly CounterStore<NetworkKey> _networks;
@@ -48,7 +49,7 @@ internal sealed partial class LoginThrottle : ILoginThrottle, IDisposable
     private readonly long _origin;
     private int _waiting;
 
-    public LoginThrottle(IOptions<ElPaquetoSecurityOptions> options, TimeProvider time, ILogger<LoginThrottle> logger)
+    public LoginThrottle(IOptions<ElPaquetoSecurityOptions> options, TimeProvider time, ILogger<Audit> logger)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(time);
@@ -320,7 +321,7 @@ internal sealed partial class LoginThrottle : ILoginThrottle, IDisposable
             var network = NetworkKey.Describe(keys.Address);
             foreach (var (scope, duration) in trips)
             {
-                LogTripped(_logger, scope, scope == ThrottleScope.Network ? network : client, (long)duration.TotalSeconds);
+                AuditLog.ThrottleTripped(_logger, scope, scope == ThrottleScope.Network ? network : client, (long)duration.TotalSeconds);
             }
         }
     }
@@ -379,12 +380,6 @@ internal sealed partial class LoginThrottle : ILoginThrottle, IDisposable
 
     private long MonotonicTicks()
         => (long)((Int128)_time.GetTimestamp() * TimeSpan.TicksPerSecond / _time.TimestampFrequency);
-
-    [LoggerMessage(
-        EventId = 1801,
-        Level = LogLevel.Warning,
-        Message = "Sign-in throttling tripped on the {Scope} counter for client {Client}; attempts are refused for {Seconds} seconds.")]
-    private static partial void LogTripped(ILogger logger, ThrottleScope scope, string client, long seconds);
 
     private sealed class QueuePlace
     {

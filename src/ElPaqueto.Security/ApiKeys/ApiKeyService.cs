@@ -47,7 +47,6 @@ internal sealed partial class ApiKeyService(
         await InsertAsync(key, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
-        LogCreated(logger, key.KeyId, owner.Id, key.Permissions);
         return new ApiKeyCreated(ToInfo(key), token);
     }
 
@@ -100,7 +99,6 @@ internal sealed partial class ApiKeyService(
 
         if (updated == 1)
         {
-            LogRevoked(logger, keyId);
             return ApiKeyRevocation.Revoked;
         }
 
@@ -158,7 +156,6 @@ internal sealed partial class ApiKeyService(
 
         await transaction.CommitAsync(cancellationToken);
 
-        LogRotated(logger, keyId, key.KeyId);
         return new ApiKeyCreated(ToInfo(key), token);
     }
 
@@ -385,26 +382,13 @@ internal sealed partial class ApiKeyService(
         }
     }
 
-    private ApiKeyValidationResult Refuse(ApiKeyValidationFailure failure, string? keyId = null)
-    {
-        LogRefused(logger, failure, keyId ?? "(none)");
-        return ApiKeyValidationResult.Fail(failure, keyId);
-    }
+    // Not logged here: the authentication handler logs the refusal once, with the client address (ApiKeyRejected).
+    private static ApiKeyValidationResult Refuse(ApiKeyValidationFailure failure, string? keyId = null)
+        => ApiKeyValidationResult.Fail(failure, keyId);
 
     private DateTime UtcNow() => timeProvider.GetUtcNow().UtcDateTime;
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "API key {KeyId} created for user {OwnerUserId} with permissions {Permissions}.")]
-    private static partial void LogCreated(ILogger logger, string keyId, Guid ownerUserId, Permission permissions);
-
-    [LoggerMessage(Level = LogLevel.Information, Message = "API key {KeyId} revoked.")]
-    private static partial void LogRevoked(ILogger logger, string keyId);
-
-    [LoggerMessage(Level = LogLevel.Information, Message = "API key {OldKeyId} rotated: replaced by {NewKeyId} and revoked.")]
-    private static partial void LogRotated(ILogger logger, string oldKeyId, string newKeyId);
-
-    [LoggerMessage(Level = LogLevel.Debug, Message = "API key refused: {Reason} (key id {KeyId}).")]
-    private static partial void LogRefused(ILogger logger, ApiKeyValidationFailure reason, string keyId);
-
-    [LoggerMessage(Level = LogLevel.Warning, Message = "The last use of API key {KeyId} could not be recorded ({ErrorType}). The key was accepted.")]
+    [LoggerMessage(EventId = 3002, EventName = "ApiKeyLastUseNotRecorded", Level = LogLevel.Warning,
+        Message = "The last use of API key {KeyId} could not be recorded ({ErrorType}). The key was accepted.")]
     private static partial void LogLastUseNotRecorded(ILogger logger, string keyId, string errorType);
 }

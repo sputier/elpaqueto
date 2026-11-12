@@ -64,15 +64,18 @@ public static partial class ElPaquetoSecurityHostExtensions
         }
     }
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "{Failure}")]
+    [LoggerMessage(EventId = 3101, EventName = "InvalidSecuritySetting", Level = LogLevel.Error, Message = "{Failure}")]
     private static partial void LogInvalidSetting(ILogger logger, string failure);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "A Security setting has a value that cannot be converted to its type.")]
+    [LoggerMessage(EventId = 3102, EventName = "UnconvertibleSecuritySetting", Level = LogLevel.Error,
+        Message = "A Security setting has a value that cannot be converted to its type.")]
     private static partial void LogUnconvertibleSetting(ILogger logger);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "The security module is not registered: call AddElPaquetoSecurity.")]
+    [LoggerMessage(EventId = 3103, EventName = "SecurityModuleNotRegistered", Level = LogLevel.Error,
+        Message = "The security module is not registered: call AddElPaquetoSecurity.")]
     private static partial void LogModuleNotRegistered(ILogger logger);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "The security configuration is invalid.")]
+    [LoggerMessage(EventId = 3104, EventName = "InvalidSecurityConfiguration", Level = LogLevel.Error,
+        Message = "The security configuration is invalid.")]
     private static partial void LogInvalidConfiguration(ILogger logger);
 }

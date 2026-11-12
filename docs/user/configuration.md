@@ -237,3 +237,7 @@ The shipped `appsettings.json` sets `Statistics:ListConfiguredServices` to `fals
 See [web security](../technical/web-security.md) for the details and the limits of the content security policy.
 
 More settings are added to this page as the features that need them are released.
+
+## Logging
+
+There is no `Security` setting for logging: the security audit trail uses the standard `Logging` section, under the category `ElPaqueto.Security.Audit`. See [Logging and monitoring](logging.md).

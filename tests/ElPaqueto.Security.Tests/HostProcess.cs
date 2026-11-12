@@ -13,6 +13,7 @@ internal sealed class HostProcess : IDisposable
     private readonly Process _process;
     private readonly StringBuilder _output = new();
     private readonly StringBuilder _standardOutput = new();
+    private readonly StringBuilder _standardError = new();
 
     private HostProcess(string[] arguments, IReadOnlyDictionary<string, string> environment, string? standardInput)
     {
@@ -88,6 +89,18 @@ internal sealed class HostProcess : IDisposable
             lock (_output)
             {
                 return _standardOutput.ToString();
+            }
+        }
+    }
+
+    /// <summary>The lines the host wrote so far to standard error alone, each followed by a line break.</summary>
+    public string StandardError
+    {
+        get
+        {
+            lock (_output)
+            {
+                return _standardError.ToString();
             }
         }
     }
@@ -174,10 +187,7 @@ internal sealed class HostProcess : IDisposable
         lock (_output)
         {
             _output.AppendLine(line);
-            if (standardOutput)
-            {
-                _standardOutput.AppendLine(line);
-            }
+            (standardOutput ? _standardOutput : _standardError).AppendLine(line);
         }
     }
 

@@ -56,7 +56,7 @@ The service checks all of these again: an `ApiKeyRequestException` thrown becaus
 
 ## Logging
 
-State-changing operations log one structured event through `UserAdministrationLog` (`LoggerMessage` source generator, category `ElPaqueto.Security.Administration`):
+State-changing operations log one structured event through `UserAdministrationLog` (`LoggerMessage` source generator). These events are part of the security audit trail: category `ElPaqueto.Security.Audit`, block 2000–2099 of the [event catalogue](audit-logging.md):
 
 | Event id | Name | Level | Fields |
 | --- | --- | --- | --- |
@@ -74,7 +74,7 @@ State-changing operations log one structured event through `UserAdministrationLo
 | 2012 | `ApiKeyRotated` | Information | `OldKeyId`, `NewKeyId`, `UserName`, `UserId`, `ExpiresAt` |
 | 2099 | `AdminCommandFailed` | Error | `Command`, exception |
 
-Passwords, hashes and API key tokens are never fields; a key is only named by its public key id. The service also logs its own events (category `ElPaqueto.Security.ApiKeys.ApiKeyService`). There is no separate audit trail yet: these events are the record of key administration. EF Core does not log parameter values (sensitive data logging stays off). A sentinel test captures every log at `Trace` level and every output stream and asserts that neither the password nor the stored hash appears.
+Passwords, hashes and API key tokens are never fields; a key is only named by its public key id. These command events are the only record of key administration: `IApiKeyService` does not log creations, revocations or rotations a second time. EF Core does not log parameter values (sensitive data logging stays off). A sentinel test captures every log at `Trace` level and every output stream and asserts that neither the password nor the stored hash appears; `AdminCommandAuditTests` runs every user command and also searches structured properties, scopes and exception text.
 
 ## Tests
 

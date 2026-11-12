@@ -1,4 +1,5 @@
 using System.Net;
+using ElPaqueto.Security.Auditing;
 using ElPaqueto.Security.Configuration;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -17,7 +18,7 @@ namespace ElPaqueto.Security.Transport;
 /// client to send credentials over plain HTTP. It never redirects: a redirect makes clients that
 /// already sent credentials send them again.
 /// </remarks>
-internal sealed partial class TransportSecurityMiddleware
+internal sealed class TransportSecurityMiddleware
 {
     /// <summary>The body of the 403 answer to a remote plain-HTTP request.</summary>
     internal const string HttpsRequiredMessage = "HTTPS is required.";
@@ -29,13 +30,17 @@ internal sealed partial class TransportSecurityMiddleware
     private readonly bool _requireHttps;
     private readonly string? _publicScheme;
     private readonly HostString _publicHost;
-    private readonly ILogger<TransportSecurityMiddleware> _logger;
+    private readonly ILogger<Audit> _logger;
     private int _untrustedForwarderReported;
+
+    // Monotonic ticks of the last refusal logged at Warning: at most one per interval, the others at Debug, so that
+    // anonymous plain-HTTP requests (refused before any throttling) cannot flood the log.
+    private long _lastWarningTimestamp = long.MinValue;
 
     public TransportSecurityMiddleware(
         RequestDelegate next,
         IOptions<ElPaquetoSecurityOptions> options,
-        ILogger<TransportSecurityMiddleware> logger)
+        ILogger<Audit> logger)
     {
         ArgumentNullException.ThrowIfNull(next);
         ArgumentNullException.ThrowIfNull(options);
@@ -63,7 +68,15 @@ internal sealed partial class TransportSecurityMiddleware
         if (_requireHttps && !context.Request.IsHttps && !IsLocal(context.Connection.RemoteIpAddress))
         {
             ReportUntrustedForwarder(context);
-            LogPlainHttpRejected(_logger);
+
+            // One line per refused request: the address is the client's after trusted forwarded-header processing.
+            var level = TakeWarningSlot() ? LogLevel.Warning : LogLevel.Debug;
+            if (_logger.IsEnabled(level))
+            {
+                var scheme = AuditValues.Scheme(context.Request.Scheme);
+                var client = AuditValues.Client(context.Connection.RemoteIpAddress);
+                AuditLog.TransportRejected(_logger, level, scheme, client);
+            }
 
             var response = context.Response;
             response.StatusCode = StatusCodes.Status403Forbidden;
@@ -79,6 +92,17 @@ internal sealed partial class TransportSecurityMiddleware
         }
 
         return _next(context);
+    }
+
+    /// <summary>How often a refused plain-HTTP request is logged at Warning; the others are logged at Debug.</summary>
+    internal static readonly TimeSpan WarningInterval = TimeSpan.FromMinutes(1);
+
+    private bool TakeWarningSlot()
+    {
+        var now = Environment.TickCount64;
+        var last = Interlocked.Read(ref _lastWarningTimestamp);
+        return (last == long.MinValue || now - last >= (long)WarningInterval.TotalMilliseconds)
+            && Interlocked.CompareExchange(ref _lastWarningTimestamp, now, last) == last;
     }
 
     /// <summary>
@@ -113,18 +137,7 @@ internal sealed partial class TransportSecurityMiddleware
 
         if (Interlocked.Exchange(ref _untrustedForwarderReported, 1) == 0)
         {
-            LogUntrustedForwarder(_logger, context.Connection.RemoteIpAddress);
+            AuditLog.UntrustedForwardedHeaders(_logger, AuditValues.Client(context.Connection.RemoteIpAddress));
         }
     }
-
-    [LoggerMessage(Level = LogLevel.Debug, Message = "Rejected a plain-HTTP request from a remote client: HTTPS is required.")]
-    private static partial void LogPlainHttpRejected(ILogger logger);
-
-    [LoggerMessage(
-        Level = LogLevel.Warning,
-        Message = "A plain-HTTP request from {RemoteAddress} carried forwarded headers that were not applied: "
-            + "the sender is not a trusted proxy, or the proxy chain is longer than Security:ReverseProxy:ForwardLimit. "
-            + "If it is your reverse proxy, add it to Security:ReverseProxy:KnownProxies or Security:ReverseProxy:KnownNetworks. "
-            + "Reported once.")]
-    private static partial void LogUntrustedForwarder(ILogger logger, IPAddress? remoteAddress);
 }

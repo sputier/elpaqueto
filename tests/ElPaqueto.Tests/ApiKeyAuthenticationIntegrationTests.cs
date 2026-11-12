@@ -582,10 +582,10 @@ public class ApiKeyAuthenticationIntegrationTests : IDisposable
             Assert.DoesNotContain(captured, line => line.Contains(Convert.ToBase64String(Encoding.UTF8.GetBytes("apikey:" + token)), StringComparison.Ordinal));
         }
 
-        // The handler's own lines ("sent as ..."), not only the service's Debug lines.
-        Assert.Contains(captured, line => line.Contains(revoked.Key.KeyId, StringComparison.Ordinal) && line.Contains("Revoked", StringComparison.Ordinal) && line.Contains("sent as x-nuget-apikey", StringComparison.Ordinal));
-        Assert.Contains(captured, line => line.Contains(revoked.Key.KeyId, StringComparison.Ordinal) && line.Contains("Revoked", StringComparison.Ordinal) && line.Contains("sent as basic-password", StringComparison.Ordinal));
-        Assert.Contains(captured, line => line.Contains(valid.Key.KeyId, StringComparison.Ordinal) && line.Contains("WrongSecret", StringComparison.Ordinal) && line.Contains("sent as", StringComparison.Ordinal));
+        // The handler logs each refusal once (audit event ApiKeyRejected), with the reason, the key id and the source.
+        Assert.Contains(captured, line => line.Contains(revoked.Key.KeyId, StringComparison.Ordinal) && line.Contains("revoked", StringComparison.Ordinal) && line.Contains("sent as x-nuget-apikey", StringComparison.Ordinal));
+        Assert.Contains(captured, line => line.Contains(revoked.Key.KeyId, StringComparison.Ordinal) && line.Contains("revoked", StringComparison.Ordinal) && line.Contains("sent as basic-password", StringComparison.Ordinal));
+        Assert.Contains(captured, line => line.Contains(valid.Key.KeyId, StringComparison.Ordinal) && line.Contains("wrong_secret", StringComparison.Ordinal) && line.Contains("sent as", StringComparison.Ordinal));
     }
 
     // ---- Helpers --------------------------------------------------------------------------------------------
