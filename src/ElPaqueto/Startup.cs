@@ -85,7 +85,7 @@ public class Startup
             app.UseStatusCodePages();
         }
 
-        app.UseForwardedHeaders();
+        app.UseElPaquetoForwardedHeaders();
         app.UsePathBase(options.PathBase);
 
         app.UseStaticFiles();

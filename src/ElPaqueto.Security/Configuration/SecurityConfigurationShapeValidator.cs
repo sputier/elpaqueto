@@ -11,7 +11,10 @@ namespace ElPaqueto.Security.Configuration;
 internal sealed class SecurityConfigurationShapeValidator(IConfiguration configuration)
     : IValidateOptions<ElPaquetoSecurityOptions>
 {
-    private static readonly string[] Sections = ["Database", "Passwords", "Authentication", "ApiKeys"];
+    private static readonly string[] Sections = ["Database", "Passwords", "Authentication", "ApiKeys", "ReverseProxy", "Transport"];
+
+    // A plain value where a list is expected is silently ignored by the binder too.
+    private static readonly string[] Lists = ["ReverseProxy:KnownProxies", "ReverseProxy:KnownNetworks"];
 
     public ValidateOptionsResult Validate(string? name, ElPaquetoSecurityOptions options)
     {
@@ -24,6 +27,16 @@ internal sealed class SecurityConfigurationShapeValidator(IConfiguration configu
             if (configuration.GetSection(path).Value is not null)
             {
                 failures.Add($"{path} is a section, not a value: set its keys, for example {path}:<key>.");
+            }
+        }
+
+        foreach (var list in Lists)
+        {
+            var path = $"{ElPaquetoSecurityOptions.SectionName}:{list}";
+
+            if (configuration.GetSection(path).Value is not null)
+            {
+                failures.Add($"{path} is a list, not a value: set its entries, for example {path}:0, {path}:1.");
             }
         }
 

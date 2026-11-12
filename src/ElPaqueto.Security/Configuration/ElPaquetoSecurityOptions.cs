@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Diagnostics.CodeAnalysis;
 
 namespace ElPaqueto.Security.Configuration;
 
@@ -38,6 +39,33 @@ public sealed class ElPaquetoSecurityOptions : IValidatableObject
     /// </summary>
     public SecurityApiKeyOptions ApiKeys { get; set; } = new();
 
+    /// <summary>
+    /// Trusted reverse proxies. Section: <c>Security:ReverseProxy</c>.
+    /// </summary>
+    public SecurityReverseProxyOptions ReverseProxy { get; set; } = new();
+
+    /// <summary>
+    /// Transport policy. Section: <c>Security:Transport</c>.
+    /// </summary>
+    public SecurityTransportOptions Transport { get; set; } = new();
+
+    /// <summary>
+    /// The public URL clients use to reach the server, such as <c>https://nuget.example.test</c>.
+    /// Setting: <c>Security:PublicBaseUrl</c>. Optional: an empty value means not set.
+    /// </summary>
+    /// <remarks>
+    /// When set, every absolute URL the server generates uses its scheme and host, whatever the
+    /// request's <c>Host</c> or <c>X-Forwarded-Host</c> header says. It must be an absolute
+    /// <c>https</c> URL without path, query, fragment or user information: a path prefix is set
+    /// with <c>PathBase</c>.
+    /// </remarks>
+    public string? PublicBaseUrl { get; set; }
+
+    /// <summary>
+    /// The parsed <see cref="PublicBaseUrl"/>, or <see langword="null"/> when it is not set or invalid.
+    /// </summary>
+    internal Uri? PublicBaseUri => TryParsePublicBaseUrl(PublicBaseUrl, out var uri) ? uri : null;
+
     /// <inheritdoc />
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
@@ -60,6 +88,44 @@ public sealed class ElPaquetoSecurityOptions : IValidatableObject
         {
             yield return result;
         }
+
+        foreach (var result in ValidateSection(ReverseProxy, nameof(ReverseProxy)))
+        {
+            yield return result;
+        }
+
+        foreach (var result in ValidateSection(Transport, nameof(Transport)))
+        {
+            yield return result;
+        }
+
+        if (!string.IsNullOrWhiteSpace(PublicBaseUrl) && !TryParsePublicBaseUrl(PublicBaseUrl, out _))
+        {
+            yield return new ValidationResult(
+                "Security:PublicBaseUrl must be an absolute https URL without path, query, fragment or user information, such as https://nuget.example.test.");
+        }
+    }
+
+    private static bool TryParsePublicBaseUrl(string? value, [NotNullWhen(true)] out Uri? uri)
+    {
+        uri = null;
+
+        if (string.IsNullOrWhiteSpace(value)
+            || !Uri.TryCreate(value.Trim(), UriKind.Absolute, out var parsed)
+            || parsed.Scheme != Uri.UriSchemeHttps
+            || parsed.HostNameType is UriHostNameType.Unknown or UriHostNameType.Basic
+            || parsed.UserInfo.Length != 0
+            || parsed.AbsolutePath != "/"
+            || parsed.Query.Length != 0
+            || parsed.Fragment.Length != 0
+            || value.Trim().EndsWith('?')
+            || value.Trim().EndsWith('#'))
+        {
+            return false;
+        }
+
+        uri = parsed;
+        return true;
     }
 
     private static List<ValidationResult> ValidateSection(object? section, string name)
