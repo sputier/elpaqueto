@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
 using System.Net;
@@ -17,6 +18,10 @@ internal sealed partial class ServerProcess : IServerUnderTest
     private static readonly TimeSpan StartTimeout = TimeSpan.FromSeconds(90);
     private static readonly TimeSpan StopTimeout = TimeSpan.FromSeconds(30);
 
+    // Every server still running: killed when the test process exits, even if no fixture was disposed
+    // (a cancelled run, a hang detector, a fixture whose initialization failed).
+    private static readonly ConcurrentDictionary<int, Process> Running = new();
+
     private readonly string _serverDirectory;
     private readonly string _dataDirectory;
     private readonly Dictionary<string, string?> _environment;
@@ -24,16 +29,37 @@ internal sealed partial class ServerProcess : IServerUnderTest
     private Process? _process;
     private int _port;
 
+    static ServerProcess()
+    {
+        AppDomain.CurrentDomain.ProcessExit += (_, _) =>
+        {
+            foreach (var process in Running.Values)
+            {
+                CommandRunner.KillTree(process);
+            }
+        };
+    }
+
     public ServerProcess(string serverDirectory, IReadOnlyDictionary<string, string?>? settings = null)
     {
         _serverDirectory = serverDirectory;
         _dataDirectory = TempRoot.CreateDirectory("srv");
         StorageDirectory = Path.Combine(_dataDirectory, "storage");
         DataDirectory = _dataDirectory;
+        Directory.CreateDirectory(Path.Combine(_dataDirectory, "home"));
+        Directory.CreateDirectory(Path.Combine(_dataDirectory, "tmp"));
 
         _environment = new Dictionary<string, string?>(StringComparer.Ordinal)
         {
             ["ASPNETCORE_ENVIRONMENT"] = "Production",
+            // Nothing the server or the admin commands write (data protection keys, first-run files, temporary
+            // files) may land in the user's profile.
+            ["HOME"] = Path.Combine(_dataDirectory, "home"),
+            ["USERPROFILE"] = Path.Combine(_dataDirectory, "home"),
+            ["DOTNET_CLI_HOME"] = Path.Combine(_dataDirectory, "home"),
+            ["TMP"] = Path.Combine(_dataDirectory, "tmp"),
+            ["TEMP"] = Path.Combine(_dataDirectory, "tmp"),
+            ["TMPDIR"] = Path.Combine(_dataDirectory, "tmp"),
             ["DOTNET_NOLOGO"] = "1",
             ["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1",
             // appsettings.json is read from the published directory, the working directory of every run.
@@ -111,10 +137,22 @@ internal sealed partial class ServerProcess : IServerUnderTest
 
         var logStart = Log.Length;
         _process?.Dispose();
-        _process = new Process { StartInfo = CommandRunner.CreateStartInfo(spec) };
-        _process.OutputDataReceived += (_, e) => Append(e.Data);
-        _process.ErrorDataReceived += (_, e) => Append(e.Data);
-        CommandRunner.Start(_process);
+        _process = null;
+        var process = new Process { StartInfo = CommandRunner.CreateStartInfo(spec) };
+        process.OutputDataReceived += (_, e) => Append(e.Data);
+        process.ErrorDataReceived += (_, e) => Append(e.Data);
+        try
+        {
+            CommandRunner.Start(process);
+        }
+        catch
+        {
+            process.Dispose();
+            throw;
+        }
+
+        _process = process;
+        Running.TryAdd(process.Id, process);
         _process.BeginOutputReadLine();
         _process.BeginErrorReadLine();
         _process.StandardInput.Close();
@@ -156,9 +194,9 @@ internal sealed partial class ServerProcess : IServerUnderTest
                     return;
                 }
             }
-            catch (HttpRequestException)
+            catch (Exception e) when (e is HttpRequestException or OperationCanceledException)
             {
-                // Not ready yet.
+                // Not ready yet (refused, or slower than the request timeout).
             }
 
             if (_process.HasExited || DateTime.UtcNow > deadline)
@@ -202,7 +240,7 @@ internal sealed partial class ServerProcess : IServerUnderTest
         }
 
         Assert.True(process.ExitCode == 0, $"The server exited with code {process.ExitCode} after SIGTERM." + Environment.NewLine + Secrets.Redact(Log));
-        Assert.Contains("Application is shutting down", Log, StringComparison.Ordinal);
+        Assert.True(Log.Contains("Application is shutting down", StringComparison.Ordinal), "No graceful shutdown in the log." + Environment.NewLine + Secrets.Redact(Log));
         return StopKind.Graceful;
     }
 
@@ -211,6 +249,7 @@ internal sealed partial class ServerProcess : IServerUnderTest
         if (_process is not null)
         {
             CommandRunner.KillTree(_process);
+            Running.TryRemove(new KeyValuePair<int, Process>(_process.Id, _process));
         }
 
         return Task.CompletedTask;

@@ -93,8 +93,10 @@ internal static class PersistenceScenario
         await fixture.Server.StartAsync();
 
         // 11. Nothing was lost, asserted rather than inferred from a successful start.
-        Assert.Equal(users, await admin.ListUsersAsync());
-        Assert.Equal(keys, await admin.ListKeysAsync());
+        var usersAfter = await admin.ListUsersAsync();
+        var keysAfter = await admin.ListKeysAsync();
+        Assert.True(users == usersAfter, Secrets.Redact($"The users changed.\nBefore: {users}\nAfter: {usersAfter}"));
+        Assert.True(keys == keysAfter, Secrets.Redact($"The keys changed.\nBefore: {keys}\nAfter: {keysAfter}"));
         Assert.Equal(storage, fixture.Api.StorageHashes());
         Assert.False(await fixture.Api.IsListedAsync(packages.Base100));
         Assert.True(await fixture.Api.IsListedAsync(packages.Base110));

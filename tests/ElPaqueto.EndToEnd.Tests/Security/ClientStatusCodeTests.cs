@@ -35,7 +35,7 @@ public sealed partial class ThrottledClientTests : EndToEndTest<ThrottledClientT
         Output.WriteLine($"One restore with a wrong password: {failures} failed sign-ins; index.json answers: {string.Join(", ", statuses)}.");
         refused.ShouldFail().ShouldContain("429 (Too Many Requests)");
         Assert.Equal(5, failures);
-        Assert.Contains("Sign-in throttling tripped on the Pair counter", Fixture.Server.Log[logStart..], StringComparison.Ordinal);
+        Assert.True(Fixture.Server.Log[logStart..].Contains("Sign-in throttling tripped on the Pair counter", StringComparison.Ordinal), "The server did not log a trip of the Pair counter.");
 
         // The right password is refused too while the throttle lasts, and the client does not wait for Retry-After (60 s).
         var good = await ClientAsync(user);
@@ -114,18 +114,26 @@ public sealed partial class BusyServerClientTests : EndToEndTest<BusyServerClien
                 using var response = await Fixture.Api.SendAsync(ServerApi.Request(HttpMethod.Get, Fixture.Api.Url("v3/search"), Fixture.Administrator));
                 if (response.StatusCode != System.Net.HttpStatusCode.OK)
                 {
-                    await Task.Delay(TimeSpan.FromMilliseconds(20));
+                    await Task.Delay(TimeSpan.FromMilliseconds(5));
                 }
             }
         })).ToArray();
-        await WaitForAVerificationAsync();
-        var logStart = Fixture.Server.Log.Length;
-
-        var stopwatch = Stopwatch.StartNew();
-        var result = await client.DotnetAsync(project, ["restore", "--configfile", client.ConfigPath], TimeSpan.FromMinutes(3));
-        stopwatch.Stop();
-        await stop.CancelAsync();
-        await Task.WhenAll(blockers);
+        int logStart;
+        CommandResult result;
+        var stopwatch = new Stopwatch();
+        try
+        {
+            await WaitForAVerificationAsync();
+            logStart = Fixture.Server.Log.Length;
+            stopwatch.Start();
+            result = await client.DotnetAsync(project, ["restore", "--configfile", client.ConfigPath], TimeSpan.FromMinutes(3));
+            stopwatch.Stop();
+        }
+        finally
+        {
+            await stop.CancelAsync();
+            await Task.WhenAll(blockers);
+        }
 
         var statuses = IndexAnswer().Matches(Fixture.Server.Log[logStart..]).Select(m => m.Groups[1].Value).ToList();
         var busy = statuses.Count(s => s == "503");

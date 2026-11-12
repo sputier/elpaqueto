@@ -32,6 +32,7 @@ internal sealed class NuGetClient : IDisposable
         var appData = Create("appdata");
         var localAppData = Create("local");
         var cliHome = Create("cli");
+        ScratchTemp = Create("t");
         ConfigPath = Path.Combine(Root, "NuGet.Config");
         File.Copy(Repository.GlobalJson, Path.Combine(Root, "global.json"));
         WriteConfig("""
@@ -71,6 +72,12 @@ internal sealed class NuGetClient : IDisposable
             ["MSBUILDDISABLENODEREUSE"] = "1",
             ["UseSharedCompilation"] = "false",
             ["NUGET_XMLDOC_MODE"] = "skip",
+            ["TMP"] = ScratchTemp,
+            ["TEMP"] = ScratchTemp,
+            ["TMPDIR"] = ScratchTemp,
+            // The server is on loopback: never through a proxy configured on the machine.
+            ["NO_PROXY"] = "127.0.0.1,localhost",
+            ["no_proxy"] = "127.0.0.1,localhost",
         };
     }
 
@@ -85,6 +92,9 @@ internal sealed class NuGetClient : IDisposable
     public string ScratchFolder { get; }
 
     public string PluginsCacheFolder { get; }
+
+    /// <summary>The temporary directory of every command (<c>TMP</c>, <c>TEMP</c>, <c>TMPDIR</c>).</summary>
+    public string ScratchTemp { get; }
 
     /// <summary>The isolated <c>NuGet.Config</c>, at the client root so that commands without <c>--configfile</c> find it too.</summary>
     public string ConfigPath { get; }
@@ -250,16 +260,17 @@ internal sealed class NuGetClient : IDisposable
 
     private static async Task<string> ReadToolVersionsAsync()
     {
-        var client = new NuGetClient(output: null);
+        using var client = new NuGetClient(output: null);
         try
         {
             var sdk = (await client.DotnetAsync(client.Root, ["--version"])).ShouldSucceed().StandardOutput.Trim();
             var nuget = (await client.DotnetAsync(client.Root, ["nuget", "--version"])).ShouldSucceed().StandardOutput.Trim();
             return $"Client: .NET SDK {sdk}; {nuget.ReplaceLineEndings(" ")}; OS: {RuntimeInformation.OSDescription} ({RuntimeInformation.OSArchitecture})";
         }
-        finally
+        catch (Xunit.Sdk.XunitException e)
         {
-            client.Dispose();
+            // Only a log line: a failure here must not fail every test.
+            return "Client versions could not be read: " + Secrets.Redact(e.Message);
         }
     }
 

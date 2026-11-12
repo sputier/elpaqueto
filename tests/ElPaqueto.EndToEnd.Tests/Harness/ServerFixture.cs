@@ -55,23 +55,34 @@ public abstract class ServerFixture : IAsyncLifetime
         var settings = new Dictionary<string, string?>(StringComparer.Ordinal);
         Configure(settings);
         _server = new ServerProcess(await ServerBuild.GetAsync(), settings);
-        await _server.StartAsync();
+        try
+        {
+            await _server.StartAsync();
 
-        Admin = new AdminCli(_server, LogSetup);
-        Administrator = await Admin.BootstrapAsync("admin");
-        Reader = await Admin.CreateUserAsync("reader", "reader");
-        Publisher = await Admin.CreateUserAsync("publisher", "publisher");
-        PublishKey = await Admin.CreateKeyAsync("publisher", "push", "publish");
-        _api = new ServerApi(_server, Reader);
-        await SeedAsync();
+            Admin = new AdminCli(_server, LogSetup);
+            Administrator = await Admin.BootstrapAsync("admin");
+            Reader = await Admin.CreateUserAsync("reader", "reader");
+            Publisher = await Admin.CreateUserAsync("publisher", "publisher");
+            PublishKey = await Admin.CreateKeyAsync("publisher", "push", "publish");
+            _api = new ServerApi(_server, Reader);
+            await SeedAsync();
+        }
+        catch
+        {
+            // Do not rely on the framework disposing a fixture whose initialization failed.
+            await DisposeAsync();
+            throw;
+        }
     }
 
     public async Task DisposeAsync()
     {
         _api?.Dispose();
+        _api = null;
         if (_server is not null)
         {
             await _server.DisposeAsync();
+            _server = null;
         }
     }
 
@@ -79,9 +90,17 @@ public abstract class ServerFixture : IAsyncLifetime
     internal async Task<NuGetClient> CreateClientAsync(ITestOutputHelper output, UserCredential? sourceCredentials)
     {
         var client = new NuGetClient(output);
-        await client.LogToolVersionsAsync();
-        (await client.AddSourceAsync(Server.ServiceIndex, sourceCredentials)).ShouldSucceed();
-        return client;
+        try
+        {
+            await client.LogToolVersionsAsync();
+            (await client.AddSourceAsync(Server.ServiceIndex, sourceCredentials)).ShouldSucceed();
+            return client;
+        }
+        catch
+        {
+            client.Dispose();
+            throw;
+        }
     }
 
     /// <summary>Writes what the server logged since <paramref name="logOffset"/>, redacted, to the test output.</summary>

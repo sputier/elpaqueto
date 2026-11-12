@@ -242,13 +242,12 @@ internal static class CommandRunner
         try
         {
             process.Kill(entireProcessTree: true);
+            process.WaitForExit(TimeSpan.FromSeconds(30));
         }
-        catch (Exception e) when (e is InvalidOperationException or Win32Exception or NotSupportedException)
+        catch (Exception e) when (e is InvalidOperationException or Win32Exception or NotSupportedException or AggregateException)
         {
-            // Already exited.
+            // Never started, or already exited (Kill throws for a process that is gone).
         }
-
-        process.WaitForExit(TimeSpan.FromSeconds(30));
     }
 
     private static bool IsRemoved(string name)

@@ -59,8 +59,9 @@ public sealed class SourceAndPublishTests : EndToEndTest<SourceAndPublishTests.S
         // dotnet package search exits with 0 even when the source refuses it: the refusal is a "problem" in the JSON,
         // without the status code, which only the server log shows.
         Assert.NotEmpty(Problems(withoutCredentials));
-        Assert.Contains("/v3/index.json - 401", Fixture.Server.Log[logStart..], StringComparison.Ordinal);
-        Assert.DoesNotContain("/v3/index.json - 200", Fixture.Server.Log[logStart..], StringComparison.Ordinal);
+        var log = Fixture.Server.Log[logStart..];
+        Assert.True(log.Contains("/v3/index.json - 401", StringComparison.Ordinal), "The server did not refuse the anonymous search with 401.");
+        Assert.False(log.Contains("/v3/index.json - 200", StringComparison.Ordinal), "The server served the anonymous search.");
         Assert.Empty(Packages(withoutCredentials));
     }
 

@@ -111,23 +111,37 @@ public sealed class HarnessTests : EndToEndTest<HarnessTests.Setup>, IClassFixtu
             }
         });
 
-        var client = BareClient();
-        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
-        (await client.AddSourceAsync(new Uri($"http://127.0.0.1:{port}/v3/index.json"), credentials: null)).ShouldSucceed();
-        var stopwatch = Stopwatch.StartNew();
-        var result = await client.DotnetAsync(
-            client.Root,
-            ["package", "search", "anything", "--source", NuGetClient.SourceName, "--configfile", client.ConfigPath],
-            TimeSpan.FromSeconds(15));
+        try
+        {
+            var client = BareClient();
+            var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+            (await client.AddSourceAsync(new Uri($"http://127.0.0.1:{port}/v3/index.json"), credentials: null)).ShouldSucceed();
+            var started = DateTime.Now;
+            var stopwatch = Stopwatch.StartNew();
+            var result = await client.DotnetAsync(
+                client.Root,
+                ["package", "search", "anything", "--source", NuGetClient.SourceName, "--configfile", client.ConfigPath],
+                TimeSpan.FromSeconds(15));
 
-        Assert.True(result.TimedOut, result.Describe());
-        Assert.InRange(stopwatch.Elapsed, TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(60));
-        Assert.Throws<ArgumentException>(() => Process.GetProcessById(result.ProcessId));
+            Assert.True(result.TimedOut, result.Describe());
+            Assert.InRange(stopwatch.Elapsed, TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(60));
+            Assert.True(IsGone(result.ProcessId, started.AddSeconds(10)), $"Process {result.ProcessId} still runs after its timeout.");
+        }
+        finally
+        {
+            await stop.CancelAsync();
+            listener.Stop();
+            try
+            {
+                await acceptLoop;
+            }
+            catch (Exception e) when (e is OperationCanceledException or SocketException or ObjectDisposedException)
+            {
+                // The accept loop ends with the listener.
+            }
 
-        await stop.CancelAsync();
-        listener.Stop();
-        await Assert.ThrowsAnyAsync<Exception>(() => acceptLoop);
-        accepted.ForEach(s => s.Dispose());
+            accepted.ForEach(s => s.Dispose());
+        }
     }
 
     [Fact]
@@ -136,12 +150,13 @@ public sealed class HarnessTests : EndToEndTest<HarnessTests.Setup>, IClassFixtu
         var server = new ServerProcess(await ServerBuild.GetAsync());
         await server.StartAsync();
         var processId = server.ProcessId;
+        var started = DateTime.Now;
         var data = server.DataDirectory;
         Assert.True(Directory.Exists(data));
 
         await server.DisposeAsync();
 
-        Assert.Throws<ArgumentException>(() => Process.GetProcessById(processId));
+        Assert.True(IsGone(processId, started), $"Server process {processId} still runs.");
         Assert.False(Directory.Exists(data));
     }
 
@@ -153,6 +168,24 @@ public sealed class HarnessTests : EndToEndTest<HarnessTests.Setup>, IClassFixtu
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() => ServerBuild.PublishAsync(missing));
 
         Assert.StartsWith("Prerequisite missing:", error.Message, StringComparison.Ordinal);
+    }
+
+    // Gone, or the id now belongs to a process started after the latest start time of the original one (ids are reused).
+    private static bool IsGone(int processId, DateTime latestOriginalStart)
+    {
+        try
+        {
+            using var process = Process.GetProcessById(processId);
+            return process.HasExited || process.StartTime > latestOriginalStart;
+        }
+        catch (ArgumentException)
+        {
+            return true;
+        }
+        catch (InvalidOperationException)
+        {
+            return true;
+        }
     }
 
     public sealed class Setup : ServerFixture

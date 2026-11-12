@@ -151,7 +151,7 @@ public sealed partial class ConsumeTests : EndToEndTest<ConsumeTests.Setup>, ICl
         var test = await client.DotnetAsync(project, ["test", "--no-restore"], TimeSpan.FromMinutes(8));
 
         test.ShouldSucceed();
-        Assert.Matches(PassedOne(), test.Output);
+        Assert.True(PassedOne().IsMatch(test.Output), test.Describe());
         var requests = HttpGets().Matches(restore.Output).Select(m => m.Groups[1].Value).ToList();
         Assert.Contains(requests, url => url.StartsWith(Fixture.Server.BaseAddress.AbsoluteUri, StringComparison.Ordinal) && url.Contains("elpaqueto.e2e.dependent", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(requests, url => url.StartsWith("https://api.nuget.org/", StringComparison.Ordinal) && url.Contains("xunit", StringComparison.OrdinalIgnoreCase));

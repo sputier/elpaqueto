@@ -70,7 +70,7 @@ internal sealed partial class AdminCli
 
         // Register the token before anything is logged.
         var token = result.StandardOutput.Trim();
-        if (ApiKeyToken().IsMatch(token))
+        if (token.Length > 0)
         {
             Secrets.Register(token);
             Secrets.RegisterBasic("apikey", token);
@@ -78,7 +78,7 @@ internal sealed partial class AdminCli
 
         _log(result.Describe());
         result.ShouldSucceed();
-        Assert.Matches(ApiKeyToken(), token);
+        Assert.True(ApiKeyToken().IsMatch(token), "admin key create did not print exactly one key in the expected format.");
         return new ApiKey(token);
     }
 
