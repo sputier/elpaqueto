@@ -183,15 +183,17 @@ The pull request says which and why.
 |---|---|
 | `.github/workflows/main.yml`, `release.yml`, `release-helm.yml`, `deploy_docs.yml` | Deleted (#2), replaced by `.github/workflows/ci.yml` (#3). Drop the hunks. |
 | `tests/BaGetter.Tests/BaGetter - Backup.Tests.csproj` | Deleted (#4). Drop the hunks. |
+| `CODE_OF_CONDUCT.md` | Deleted (#7): it routed reports to an upstream maintainer. Drop the hunks. |
+| `.github/ISSUE_TEMPLATE/Bug_report.md`, `Feature_request.md` | Deleted (#8), replaced by issue forms. Drop the hunks. |
 | `deployment templates/chart/bagetter/` (Helm chart) and `docs/` (Docusaurus site) | Still present and not mapped by the script. If #51 removes them, drop the hunks. |
 | `src/BaGetter.Web/Authentication/NugetBasicAuthenticationHandler.cs` (inherited authentication handler), its unit tests `tests/BaGetter.Web.Tests/Authentication/NugetBasicAuthenticationHandlerTests.cs`, and `src/BaGetter/IServiceCollectionExtensions.cs` (`AddNugetBasicHttpAuthentication`, `AddNugetBasicHttpAuthorization`) | Deleted (#17), replaced by `src/ElPaqueto.Security/Authentication/`. Drop the hunks and re-implement any upstream security fix in the new code. |
 | `tests/BaGetter.Tests/NugetAuthenticationIntegrationTests.cs`, `tests/BaGetter.Tests/NugetAllowAnonymousAuthenticationIntegrationTests.cs` | Deleted (#17), replaced by `tests/ElPaqueto.Tests/BasicAuthenticationIntegrationTests.cs`. The "anonymous allowed" expectation is inverted: anonymous requests now get 401. Drop the hunks. |
 | `src/BaGetter.Database.MySql/` (MySQL provider) | Still in the tree but excluded from the build: not in `ElPaqueto.sln` and not referenced by the host (#55). Hunks apply but are neither built nor tested; the pull request says so. |
 
-Two documents will complement this list: `docs/technical/upstream-touch-map.md`
-(#50) maps the upstream areas ElPaqueto changed, and
-`docs/technical/upstream-test-changes.md` (#41) lists the upstream tests
-ElPaqueto changed. Neither exists yet; link them here when they are written.
+The [upstream touch map](technical/upstream-touch-map.md) lists every inherited
+file ElPaqueto changed or deleted, with the reason: hunks on those files are
+the ones most likely to conflict. `docs/technical/upstream-test-changes.md`
+(#41) will list the upstream tests ElPaqueto changed; it does not exist yet.
 
 ## 6. Security review checklist
 
@@ -204,8 +206,10 @@ Every port pull request answers each item:
   (`src/ElPaqueto/Startup.cs`).
 - **New or changed endpoints:** `src/ElPaqueto.Web/ElPaquetoEndpointBuilder.cs`,
   `src/ElPaqueto.Web/Routes.cs`, controllers (`src/ElPaqueto.Web/Controllers/`)
-  and Razor pages (`src/ElPaqueto.Web/Pages/`). Update the route-permission
-  map (#24) and make the endpoint-inventory test (#30) pass, once they exist.
+  and Razor pages (`src/ElPaqueto.Web/Pages/`). Follow
+  [Adding a protected endpoint](technical/adding-a-protected-endpoint.md):
+  a row in the permission table, the authorization matrix, and the endpoint
+  inventory tests passing.
 - **GET endpoints with side effects**, such as mirroring or counters.
 - **Dependency bumps** in `Directory.Packages.props`.
 - **New configuration options**, especially anything that enables anonymous
@@ -231,7 +235,8 @@ authors and merge the trailers.
 All of the following are green before a port pull request is merged:
 
 - `dotnet build` and `dotnet test` (unit and integration tests), as run by CI;
-- the endpoint-inventory test (#30), once it exists;
+- the endpoint inventory tests of `tests/ElPaqueto.Tests/AuthorizationIntegrationTests.cs`
+  (part of `dotnet test`);
 - the end-to-end suite (#36 to #40), once it exists;
 - a Docker build: `docker build .`;
 - `bash eng/tests/port-upstream.test.sh`, when the pull request changes the

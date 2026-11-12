@@ -17,7 +17,7 @@ $source = "<NuGet.Server package source>"
 $destination = "<BaGetter package source>"
 ```
 
-If you've [configured BaGetter to require an API Key](https://bagetter.com/docs/configuration/#requiring-an-api-key), set it using [the `setapikey` command](https://docs.microsoft.com/en-us/nuget/reference/cli-reference/cli-ref-setapikey):
+ElPaqueto requires an API key with the `Publish` permission for every push (see [Publishing packages](https://github.com/sputier/ElPaqueto/blob/develop/docs/user/publishing.md)). Set it using [the `setapikey` command](https://docs.microsoft.com/en-us/nuget/reference/cli-reference/cli-ref-setapikey), and give the source credentials with `Read` as described in [client setup](https://github.com/sputier/ElPaqueto/blob/develop/docs/user/client-setup.md):
 
 ```powershell
 & nuget.exe setapikey "MY-API-KEY" -Source $destination

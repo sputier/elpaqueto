@@ -15,7 +15,9 @@
     <meta name="author" content="@Version.Authors">
     @Html.AddReleaseMetaTags()
 
-    <link rel="shortcut icon" href="~/_content/ElPaqueto.Web/favicon.ico">
+    <link rel="icon" href="~/_content/ElPaqueto.Web/favicon.ico" sizes="16x16 32x32 48x48">
+    <link rel="icon" type="image/png" href="~/_content/ElPaqueto.Web/images/elpaqueto-icon-32.png" sizes="32x32">
+    <link rel="apple-touch-icon" href="~/_content/ElPaqueto.Web/images/elpaqueto-icon-180.png">
 
     <link rel="stylesheet" href="~/_content/ElPaqueto.Web/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/_content/ElPaqueto.Web/lib/office-ui-fabric-core/dist/css/fabric.min.css" />
@@ -29,6 +31,12 @@
             <div class="container">
                 <div class="row">
                     <div id="navbar" class="col-sm-12">
+                        <a class="elpaqueto-brand" asp-area="" asp-page="/Index">
+                            <img src="~/_content/ElPaqueto.Web/images/elpaqueto-header-48.png"
+                                 srcset="~/_content/ElPaqueto.Web/images/elpaqueto-header-96.png 2x"
+                                 width="40" height="40" alt="" />
+                            <span>ElPaqueto</span>
+                        </a>
                         <ul class="nav navbar-nav" role="tablist">
                             <li role="presentation"><a asp-area="" asp-page="/Index" role="tab" nav-link><span>Packages</span></a></li>
                             <li role="presentation"><a asp-area="" asp-page="/Upload" role="tab" nav-link><span>Upload</span></a></li>
@@ -37,7 +45,7 @@
                                 <li role="presentation"><a asp-area="" asp-page="/Statistics" role="tab" nav-link><span>Statistics</span></a></li>
                             }
                             <li role="presentation">
-                                <a role="tab" href="https://www.bagetter.com/docs" target="_blank" rel="noopener noreferrer">
+                                <a role="tab" href="https://github.com/sputier/ElPaqueto/tree/develop/docs/user" target="_blank" rel="noopener noreferrer">
                                     <span>Documentation</span>
                                 </a>
                             </li>
@@ -78,7 +86,9 @@
 
     <footer class="footer">
         <p>
-            Version: @Version.Version
+            ElPaqueto @Version.Version
+            &middot; <a href="https://github.com/sputier/ElPaqueto" target="_blank" rel="noopener noreferrer">Source code</a>
+            &middot; Based on <a href="https://github.com/bagetter/BaGetter" target="_blank" rel="noopener noreferrer">BaGetter</a> (MIT)
         </p>
         @Html.AddReleaseInformationAsComment()
     </footer>

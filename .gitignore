@@ -277,6 +277,10 @@ __pycache__/
 **/bagetter.db
 **/bagetter.db-shm
 **/bagetter.db-wal
+# Security database created when the server runs from source: it holds credential hashes.
+**/auth.db
+**/auth.db-shm
+**/auth.db-wal
 
 .vscode/
 
