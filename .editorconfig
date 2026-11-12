@@ -126,7 +126,7 @@ csharp_style_expression_bodied_local_functions = false:silent
 # Strict baseline for ElPaqueto-authored projects (see eng/ElPaqueto.Build.props).
 # Warnings become errors there (TreatWarningsAsErrors). Inherited projects are unaffected.
 # ---------------------------------------------------------------------------
-[{src/ElPaqueto.Security/**,tests/ElPaqueto.Security.Tests/**}.cs]
+[{src/ElPaqueto.Security/**,tests/ElPaqueto.Security.Tests/**,tests/ElPaqueto.EndToEnd.Tests/**}.cs]
 end_of_line = lf
 csharp_style_namespace_declarations = file_scoped:warning
 dotnet_diagnostic.IDE0005.severity = warning
@@ -139,7 +139,7 @@ dotnet_diagnostic.CA5350.severity = error
 dotnet_diagnostic.CA5351.severity = error
 dotnet_diagnostic.CA5394.severity = error
 
-[tests/ElPaqueto.Security.Tests/**.cs]
+[{tests/ElPaqueto.Security.Tests/**,tests/ElPaqueto.EndToEnd.Tests/**}.cs]
 # Test names use Method_Scenario_Expectation with underscores by convention.
 dotnet_diagnostic.CA1707.severity = none
 

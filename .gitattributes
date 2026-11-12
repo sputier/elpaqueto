@@ -55,6 +55,7 @@
 /eng/** text eol=lf
 /src/ElPaqueto.Security/** text eol=lf
 /tests/ElPaqueto.Security.Tests/** text eol=lf
+/tests/ElPaqueto.EndToEnd.Tests/** text eol=lf
 # Container files are read on Linux.
 Dockerfile text eol=lf
 .dockerignore text eol=lf
