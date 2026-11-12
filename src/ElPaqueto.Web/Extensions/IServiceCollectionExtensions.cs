@@ -3,7 +3,6 @@ using System.Text.Json.Serialization;
 using ElPaqueto.Authentication;
 using ElPaqueto.Core;
 using ElPaqueto.Web;
-using ElPaqueto.Web.Authentication;
 using ElPaqueto.Web.Helper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.DependencyInjection;

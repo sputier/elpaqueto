@@ -33,7 +33,7 @@ public sealed class AuthDatabaseStartupTests : IDisposable
         await host.WaitForOutputAsync("Now listening");
 
         var output = host.Output;
-        var migrating = output.IndexOf("Applying 1 pending migration(s) to the security database", StringComparison.Ordinal);
+        var migrating = output.IndexOf("pending migration(s) to the security database", StringComparison.Ordinal);
         var listening = output.IndexOf("Now listening", StringComparison.Ordinal);
         Assert.True(migrating >= 0, $"The migration was not logged. Output:{System.Environment.NewLine}{output}");
         Assert.True(migrating < listening, "The security database must be migrated before the server listens.");

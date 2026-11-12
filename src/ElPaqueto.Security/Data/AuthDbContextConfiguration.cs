@@ -18,8 +18,6 @@ internal static class AuthDbContextConfiguration
 
     public static void ConfigureCore(DbContextOptionsBuilder builder, string connectionString)
     {
-        AuthDatabaseFile.Prepare(connectionString);
-
         builder
             .UseSqlite(
                 connectionString,

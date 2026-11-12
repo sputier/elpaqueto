@@ -100,6 +100,8 @@ For Visual Studio, please refer to the [Configure Debugging](https://docs.micros
 BaGetter can be run behind a reverse proxy in order to provide HTTPS, your own domain, and other features. For the API to deliver proper URLs, the proxy needs to forward the `X-Forwarded-Host` header, or the `Host` header iteslf.  
 For more information, please refer to the [ASP.NET Core documentation](https://docs.microsoft.com/en-us/aspnet/core/host-and-deploy/proxy-load-balancer).
 
+ElPaqueto only honours forwarded headers from trusted proxies (loopback by default) and refuses plain-HTTP requests from other machines. With a published container port, the container sees the Docker bridge gateway as the client, so that address must be trusted: see [Running behind a reverse proxy or tunnel](https://github.com/sputier/ElPaqueto/blob/develop/docs/user/reverse-proxy.md).
+
 Consider binding port 5000 to localhost only using -p 127.0.0.1:5000:8080 to avoid any transmission of non encrypted data even over internal networks
 
 ### Apache 2 Configuration

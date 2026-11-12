@@ -1,11 +1,9 @@
 using System;
-using ElPaqueto.Authentication;
 using ElPaqueto.Core;
 using ElPaqueto.Core.Extensions;
 using ElPaqueto.Security;
 using ElPaqueto.Tencent;
 using ElPaqueto.Web;
-using ElPaqueto.Web.Authentication;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.OAuth;
 using Microsoft.AspNetCore.Authorization;
@@ -55,9 +53,7 @@ public class Startup
 
     private void ConfigureElPaquetoApplication(ElPaquetoApplication app)
     {
-        //Add base authentication and authorization
-        app.AddNugetBasicHttpAuthentication();
-        app.AddNugetBasicHttpAuthorization();
+        // Authentication, authorization, users and API keys.
         app.AddElPaquetoSecurity();
 
         // Add database providers.
@@ -89,7 +85,7 @@ public class Startup
             app.UseStatusCodePages();
         }
 
-        app.UseForwardedHeaders();
+        app.UseElPaquetoForwardedHeaders();
         app.UsePathBase(options.PathBase);
 
         app.UseStaticFiles();

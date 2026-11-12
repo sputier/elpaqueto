@@ -26,6 +26,7 @@ public interface IPasswordService
 
     /// <summary>
     /// Checks a new password against the policy. Applied when a password is set, never at login.
+    /// A password with the API key token format is rejected.
     /// </summary>
     /// <param name="password">The candidate password.</param>
     /// <param name="userName">The user name, to reject a password equal to it.</param>
