@@ -1,6 +1,29 @@
 # API keys
 
-Per-user API keys are stored in the [security database](security-database.md) and managed by `IApiKeyService` (`src/ElPaqueto.Security/ApiKeys/`). This page describes the token format, the storage and the validation rules. The HTTP handler that accepts keys and the command-line commands that create them are separate changes: they call this service and do not re-implement any of it.
+Per-user API keys are stored in the [security database](security-database.md) and managed by `IApiKeyService` (`src/ElPaqueto.Security/ApiKeys/`). This page describes the token format, the storage, the validation rules and how requests use keys. The command-line commands that create keys are a separate change: like the authentication handler, they call this service and do not re-implement any of it.
+
+## How requests use keys
+
+A key is accepted in two places, both handled by the authentication handler ([authentication](authentication.md)):
+
+| Sent as | Used by | Accepted on | Credential source claim |
+| --- | --- | --- | --- |
+| `X-NuGet-ApiKey: <token>` | `dotnet nuget push --api-key`, `dotnet nuget delete --api-key` | every route the key's effective permissions open, **including writes** | `x-nuget-apikey` |
+| Basic password, any non-empty user name (`apikey` by convention) | restore and every other request that uses the source credentials of `NuGet.Config` or `NuGetPackageSourceCredentials_<source>` | every route the key's effective permissions open, **except writes** | `basic-password` |
+
+- When `X-NuGet-ApiKey` is present it alone decides, even if `Authorization` carries valid credentials, and an invalid value fails the request with 401. Two values fail.
+- Writes (push, symbol push, unlist/delete, relist) need a key with `Publish` **in the header**. A key with `Publish` sent only as a Basic password, or a user password with `Publish`, gets 403 ([authorization](authorization.md)). Stock NuGet clients send the header only on push and delete, and Basic credentials on every other request, so a CI push job gives the source credentials `Read` (a user password or a `Read` key as Basic password, for the service index) and `--api-key` a `Publish` key; one key with `Read` and `Publish` can serve both.
+- The user name sent with a key is ignored: the key names its owner. It cannot lend the permissions of the user it names.
+- Every key failure (malformed, unknown, wrong secret, revoked, expired, owner disabled) gives the same 401 as a wrong password. The reason is logged with the key id only.
+- Because a key used for restore travels on every request, not only on pushes, it must only travel over HTTPS (see `Security:Transport` in the [configuration](../user/configuration.md)) and should be a `Read`-only key separate from the `Publish` key used for pushes.
+
+### The inline check of the inherited write actions
+
+The inherited `PackagePublishController` and `SymbolController` still call `ElPaqueto.Core.IAuthenticationService.AuthenticateAsync(<X-NuGet-ApiKey value>)` before writing (no controller was changed). `AddElPaquetoSecurity` replaces the inherited `ApiKeyAuthenticationService` with `ApiKeyPrincipalAuthenticationService` using `services.Replace`: `TryAdd` would lose, because the inherited registration already exists when the security module is added (ADR 0002, decision 7).
+
+The replacement reads the principal of the current request through `IHttpContextAccessor` and answers `true` only if that principal was authenticated by a key read from `X-NuGet-ApiKey`, the key id of the value passed in is that key's, and the principal holds `Publish`. It never queries the database (a test counts the SQL commands). The endpoint policy has already demanded the same thing, so for an authorized write it always answers `true`: it is defence in depth only.
+
+The legacy `ApiKey` and `Authentication:ApiKeys` settings no longer influence anything: in particular, **leaving them empty no longer opens publishing to everyone**, which was the inherited behaviour. `ApiKeyAuthenticationService.cs` stays in the tree, unused, so that upstream changes still port mechanically; retiring the settings themselves is a separate change.
 
 ## Token format
 
