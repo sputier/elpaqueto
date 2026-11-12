@@ -1,6 +1,8 @@
 using ElPaqueto.Core;
 using ElPaqueto.Security.Configuration;
 using ElPaqueto.Security.Data;
+using ElPaqueto.Security.Passwords;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
@@ -42,6 +44,18 @@ public static class ElPaquetoSecurityApplicationExtensions
 
         services.AddSingleton<IAuthDatabaseMigrator, AuthDatabaseMigrator>();
         services.AddSingleton<IHostedService, AuthDatabaseStartupService>();
+
+        services.AddSingleton<IPasswordHasher<User>>(provider =>
+        {
+            var passwords = provider.GetRequiredService<IOptions<ElPaquetoSecurityOptions>>().Value.Passwords;
+
+            return new PasswordHasher<User>(Options.Create(new PasswordHasherOptions
+            {
+                CompatibilityMode = PasswordHasherCompatibilityMode.IdentityV3,
+                IterationCount = passwords.IterationCount,
+            }));
+        });
+        services.AddSingleton<IPasswordService, PasswordService>();
 
         return app;
     }
