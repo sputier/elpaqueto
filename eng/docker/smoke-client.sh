@@ -3,7 +3,8 @@
 # namespace of the server container, so http://127.0.0.1:8080 is the server, reached over loopback.
 #
 # Usage: smoke-client.sh push-and-restore | restore
-# Environment: READER_USER, READER_PASSWORD, PUBLISHER_USER, PUBLISHER_PASSWORD
+# Environment: READER_USER, READER_PASSWORD (restore); for push-and-restore also SOURCE_KEY (a Read API
+# key, the source password while pushing) and PUBLISH_KEY (a Publish API key, for "dotnet nuget push --api-key").
 # Works in a fresh folder with an empty package cache on every run.
 set -eu
 mode=${1:?usage: smoke-client.sh push-and-restore | restore}
@@ -34,7 +35,9 @@ EOF
 
 if [ "$mode" = push-and-restore ]; then
   mkdir -p publish && cd publish
-  write_config NuGet.Config "$PUBLISHER_USER" "$PUBLISHER_PASSWORD"
+  # The service index is read with the source credentials: a Read key as the password, any user name.
+  # The push itself needs the Publish key, sent in the X-NuGet-ApiKey header.
+  write_config NuGet.Config apikey "$SOURCE_KEY"
   cat > Smoke.Package.csproj <<'EOF'
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
@@ -48,7 +51,8 @@ if [ "$mode" = push-and-restore ]; then
 EOF
   printf 'namespace Smoke;\npublic static class Marker { public const string Value = "smoke"; }\n' > Marker.cs
   dotnet pack -c Release -o out
-  dotnet nuget push out/ElPaqueto.Smoke.Package.1.0.0.nupkg --source smoke
+  # Visible only inside this throwaway client container, as in a CI job that gets it from its secret store.
+  dotnet nuget push out/ElPaqueto.Smoke.Package.1.0.0.nupkg --source smoke --api-key "$PUBLISH_KEY"
   cd /work
 fi
 
