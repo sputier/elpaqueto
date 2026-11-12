@@ -30,6 +30,16 @@ public sealed class ElPaquetoSecurityOptions : IValidatableObject
     public SecurityPasswordOptions Passwords { get; set; } = new();
 
     /// <summary>
+    /// Authentication behaviour. Section: <c>Security:Authentication</c>.
+    /// </summary>
+    public SecurityAuthenticationOptions Authentication { get; set; } = new();
+
+    /// <summary>
+    /// API keys. Section: <c>Security:ApiKeys</c>.
+    /// </summary>
+    public SecurityApiKeyOptions ApiKeys { get; set; } = new();
+
+    /// <summary>
     /// Trusted reverse proxies. Section: <c>Security:ReverseProxy</c>.
     /// </summary>
     public SecurityReverseProxyOptions ReverseProxy { get; set; } = new();
@@ -65,6 +75,16 @@ public sealed class ElPaquetoSecurityOptions : IValidatableObject
         }
 
         foreach (var result in ValidateSection(Passwords, nameof(Passwords)))
+        {
+            yield return result;
+        }
+
+        foreach (var result in ValidateSection(Authentication, nameof(Authentication)))
+        {
+            yield return result;
+        }
+
+        foreach (var result in ValidateSection(ApiKeys, nameof(ApiKeys)))
         {
             yield return result;
         }

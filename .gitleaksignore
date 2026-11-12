@@ -1,0 +1,3 @@
+# Not a secret: a made-up example of the API key token format in docs/technical/api-keys.md,
+# committed in 109a241 and replaced by a low-entropy placeholder in the next commit (#31).
+109a24104c6ca978da20742dea50ed507c068826:docs/technical/api-keys.md:generic-api-key:8

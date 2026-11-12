@@ -152,6 +152,32 @@ public sealed class SecurityConfigurationHostTests : IDisposable
     }
 
     [Fact]
+    public void PlainValueWhereTheApiKeysSectionIsExpected_IsRejected()
+    {
+        using var host = BuildHost(out var logs, new Dictionary<string, string?>
+        {
+            ["Security:ApiKeys"] = "00:05:00",
+        });
+
+        Assert.False(host.ValidateElPaquetoSecurityOptions());
+        Assert.Contains(logs.Messages, m => m.Contains("Security:ApiKeys is a section", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void LastUsedUpdateInterval_IsBoundFromConfiguration()
+    {
+        using var host = BuildHost(out _, new Dictionary<string, string?>
+        {
+            ["Security:ApiKeys:LastUsedUpdateInterval"] = "00:00:30",
+        });
+
+        Assert.True(host.ValidateElPaquetoSecurityOptions());
+        Assert.Equal(
+            TimeSpan.FromSeconds(30),
+            host.Services.GetRequiredService<IOptions<ElPaquetoSecurityOptions>>().Value.ApiKeys.LastUsedUpdateInterval);
+    }
+
+    [Fact]
     public void NonNumericIterationCount_FailsWithoutEchoingTheValue()
     {
         const string secretMarker = "s3cr3t-marker";

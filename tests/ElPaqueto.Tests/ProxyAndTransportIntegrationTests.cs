@@ -36,8 +36,6 @@ public class ProxyAndTransportIntegrationTests
     private const string OtherRemoteClient = "198.51.100.20";
     private const string ProxyInPrivateNetwork = "192.0.2.3";
     private const string Attacker = "attacker.example.com";
-    private const string Username = "username";
-    private const string Password = "password";
 
     private static readonly string[] SpoofingHeaders =
     {
@@ -312,7 +310,7 @@ public class ProxyAndTransportIntegrationTests
     {
         using var app = CreateWithCredentials(new AuthenticationCounter());
 
-        var context = await SendAsync(app, "/v3/index.json", RemoteClient, scheme: "https");
+        var context = await SendAsync(app, "/v3/index.json", RemoteClient, scheme: "https", anonymous: true);
 
         Assert.Equal(StatusCodes.Status401Unauthorized, context.Response.StatusCode);
     }
@@ -376,8 +374,6 @@ public class ProxyAndTransportIntegrationTests
     {
         return new CountingApplication(_output, counter, dict =>
         {
-            dict["Authentication:Credentials:0:Username"] = Username;
-            dict["Authentication:Credentials:0:Password"] = Password;
             dict["Authentication:ApiKeys:0:Key"] = "test-api-key";
         });
     }
@@ -386,7 +382,7 @@ public class ProxyAndTransportIntegrationTests
     {
         return credentialHeader switch
         {
-            "Authorization" => new[] { "Authorization", "Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes($"{Username}:{Password}")) },
+            "Authorization" => Array.Empty<string>(), // added by SendAsync: the seeded test user
             "X-NuGet-ApiKey" => new[] { "X-NuGet-ApiKey", "test-api-key" },
             _ => Array.Empty<string>(),
         };
@@ -409,7 +405,8 @@ public class ProxyAndTransportIntegrationTests
         string scheme = "http",
         string host = "localhost",
         string method = "GET",
-        string[] headers = null)
+        string[] headers = null,
+        bool anonymous = false)
     {
         return app.Server.SendAsync(context =>
         {
@@ -423,6 +420,13 @@ public class ProxyAndTransportIntegrationTests
             for (var i = 0; i < headers.Length; i += 2)
             {
                 context.Request.Headers[headers[i]] = headers[i + 1];
+            }
+
+            // The server denies anonymous callers: authenticate as the test user unless a test checks anonymity.
+            if (!anonymous && app is ElPaquetoApplication testApp && !context.Request.Headers.ContainsKey("Authorization"))
+            {
+                var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{testApp.TestUserName}:{testApp.TestPassword}"));
+                context.Request.Headers["Authorization"] = "Basic " + credentials;
             }
         });
     }

@@ -13,6 +13,12 @@ internal sealed partial class AuthDatabaseMigrator(
 {
     public async Task MigrateAsync(CancellationToken cancellationToken = default)
     {
+        // The file is prepared here, once, and never while serving a request: opening and closing a file
+        // handle on the database per request would drop the locks SQLite holds on it (POSIX closes every
+        // lock of a process when any descriptor of the file is closed) and would make every request fail
+        // when the file is momentarily unavailable.
+        AuthDatabaseFile.Prepare(options.Value.Database.ConnectionString);
+
         using (var scope = scopeFactory.CreateScope())
         {
             var context = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
