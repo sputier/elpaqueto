@@ -1,6 +1,6 @@
 # Running ElPaqueto with Docker
 
-The repository's `Dockerfile` builds a Linux image of the server for `linux/amd64` and `linux/arm64`. No image is published yet: build it yourself. The image is meant to run behind a TLS-terminating reverse proxy or tunnel, see [Running behind a reverse proxy or tunnel](reverse-proxy.md).
+The repository's `Dockerfile` builds a Linux image of the server for `linux/amd64` and `linux/arm64`. Releases publish it to the GitHub Container Registry as `ghcr.io/<owner>/elpaqueto` (see [Releasing](../maintainers/releasing.md)); no version has been released yet, so build it yourself. The image is meant to run behind a TLS-terminating reverse proxy or tunnel, see [Running behind a reverse proxy or tunnel](reverse-proxy.md).
 
 The image ships without any account and without any default password. Create the first administrator with `admin bootstrap`, see [Administration from the command line](administration.md).
 

@@ -162,7 +162,9 @@ ElPaqueto has no code of conduct yet: one will be adopted once the project has i
 
 ## Releases
 
-No release automation exists yet: the inherited upstream workflows that published packages, Docker images and documentation were removed. Nothing is published automatically from this repository until a dedicated release workflow is added.
+A release is a version tag on `main`. The release workflow (`.github/workflows/release.yml`) validates the tagged commit, then, after a maintainer's approval, publishes the container image to the GitHub Container Registry with its attestations and creates the GitHub Release. No NuGet package and no image on another registry is published. Pull requests and branch pushes never run it. The procedure, the versioning policy and the repository settings it needs are in [docs/maintainers/releasing.md](docs/maintainers/releasing.md).
+
+Add a line to the `## [Unreleased]` section of [CHANGELOG.md](CHANGELOG.md) in every pull request with a user-visible change.
 
 [.NET SDK]: https://www.microsoft.com/net/download
 [Node.js]: https://nodejs.org/
