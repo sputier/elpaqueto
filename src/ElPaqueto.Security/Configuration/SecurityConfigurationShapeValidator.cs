@@ -11,10 +11,16 @@ namespace ElPaqueto.Security.Configuration;
 internal sealed class SecurityConfigurationShapeValidator(IConfiguration configuration)
     : IValidateOptions<ElPaquetoSecurityOptions>
 {
-    private static readonly string[] Sections = ["Database", "Passwords", "Authentication", "ApiKeys", "ReverseProxy", "Transport"];
+    private static readonly string[] Sections = ["Database", "Passwords", "Authentication", "ApiKeys", "ReverseProxy", "Transport", "Cors", "Hsts"];
 
     // A plain value where a list is expected is silently ignored by the binder too.
-    private static readonly string[] Lists = ["ReverseProxy:KnownProxies", "ReverseProxy:KnownNetworks"];
+    private static readonly string[] Lists = [
+        "ReverseProxy:KnownProxies",
+        "ReverseProxy:KnownNetworks",
+        "Cors:AllowedOrigins",
+        "Cors:AllowedMethods",
+        "Cors:AllowedHeaders",
+    ];
 
     public ValidateOptionsResult Validate(string? name, ElPaquetoSecurityOptions options)
     {

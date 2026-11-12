@@ -50,6 +50,16 @@ public sealed class ElPaquetoSecurityOptions : IValidatableObject
     public SecurityTransportOptions Transport { get; set; } = new();
 
     /// <summary>
+    /// Cross-origin access from browser scripts. Section: <c>Security:Cors</c>.
+    /// </summary>
+    public SecurityCorsOptions Cors { get; set; } = new();
+
+    /// <summary>
+    /// HTTP Strict Transport Security. Section: <c>Security:Hsts</c>.
+    /// </summary>
+    public SecurityHstsOptions Hsts { get; set; } = new();
+
+    /// <summary>
     /// The public URL clients use to reach the server, such as <c>https://nuget.example.test</c>.
     /// Setting: <c>Security:PublicBaseUrl</c>. Optional: an empty value means not set.
     /// </summary>
@@ -95,6 +105,16 @@ public sealed class ElPaquetoSecurityOptions : IValidatableObject
         }
 
         foreach (var result in ValidateSection(Transport, nameof(Transport)))
+        {
+            yield return result;
+        }
+
+        foreach (var result in ValidateSection(Cors, nameof(Cors)))
+        {
+            yield return result;
+        }
+
+        foreach (var result in ValidateSection(Hsts, nameof(Hsts)))
         {
             yield return result;
         }
