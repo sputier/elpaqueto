@@ -5,6 +5,7 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Data.Sqlite;
 using Xunit;
 
 namespace ElPaqueto.Tests;
@@ -13,7 +14,7 @@ namespace ElPaqueto.Tests;
 /// Runs <c>elpaqueto admin ...</c> with the real, built server binary as a child process, against a
 /// given security database: the way an operator runs the commands next to a running server.
 /// </summary>
-internal sealed class AdminCommandLine
+internal sealed class AdminCommandLine : IDisposable
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(90);
 
@@ -57,6 +58,10 @@ internal sealed class AdminCommandLine
         }
 
         startInfo.Environment["DOTNET_NOLOGO"] = "true";
+
+        // The same environment as the server under test, whatever the test process inherited.
+        startInfo.Environment["ASPNETCORE_ENVIRONMENT"] = "Production";
+        startInfo.Environment["DOTNET_ENVIRONMENT"] = "Production";
         startInfo.Environment["ASPNETCORE_URLS"] = "http://127.0.0.1:0";
         startInfo.Environment["Security__Database__ConnectionString"] = SecurityConnectionString;
         startInfo.Environment["Security__Passwords__IterationCount"] = IterationCount;
@@ -101,6 +106,26 @@ internal sealed class AdminCommandLine
         var text = Read(output);
         Assert.True(process.ExitCode == expectedExitCode, $"Expected exit code {expectedExitCode}, got {process.ExitCode}. Output:{Environment.NewLine}{text}");
         return text;
+    }
+
+    /// <summary>Deletes the databases. Dispose the server sharing them first.</summary>
+    public void Dispose()
+    {
+        // Pooled connections of the in-process server keep the files open, which blocks deletion on Windows.
+        SqliteConnection.ClearAllPools();
+
+        try
+        {
+            Directory.Delete(_directory, recursive: true);
+        }
+        catch (IOException)
+        {
+            // Best effort: a leftover temporary directory does not affect other tests.
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Same as above.
+        }
     }
 
     private static void Append(StringBuilder output, string line)
