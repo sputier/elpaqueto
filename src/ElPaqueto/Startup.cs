@@ -86,15 +86,15 @@ public class Startup
             app.UseStatusCodePages();
         }
 
+        app.UseElPaquetoSecurityHeaders();
         app.UseElPaquetoForwardedHeaders();
         app.UsePathBase(options.PathBase);
 
         app.UseStaticFiles();
         app.UseAuthentication();
         app.UseRouting();
+        app.UseElPaquetoCors();
         app.UseAuthorization();
-
-        app.UseCors(ConfigureElPaquetoServer.CorsPolicy);
 
         app.UseOperationCancelledMiddleware();
 

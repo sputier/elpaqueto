@@ -5,11 +5,13 @@ using ElPaqueto.Security.Authentication;
 using ElPaqueto.Security.Authorization;
 using ElPaqueto.Security.Configuration;
 using ElPaqueto.Security.Data;
+using ElPaqueto.Security.Headers;
 using ElPaqueto.Security.Passwords;
 using ElPaqueto.Security.Transport;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Cors.Infrastructure;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -30,7 +32,7 @@ public static class ElPaquetoSecurityApplicationExtensions
     /// <returns>The same <paramref name="app"/> instance, to allow chaining.</returns>
     /// <remarks>
     /// Registers the validated <c>Security</c> options, the security database, which is migrated
-    /// before the server accepts requests, password hashing, the API key service, authentication, and the
+    /// before the server accepts requests, password hashing, the API key service, authentication, the CORS policy, and the
     /// trusted-proxy configuration used by <see cref="ElPaquetoSecurityPipelineExtensions.UseElPaquetoForwardedHeaders"/>.
     /// Authorization is added by a later change behind this single entry point.
     /// </remarks>
@@ -103,6 +105,9 @@ public static class ElPaquetoSecurityApplicationExtensions
 
         services.AddSingleton<IPostConfigureOptions<ForwardedHeadersOptions>, ConfigureTrustedForwardedHeaders>();
         services.AddSingleton<IHostedService, TransportStartupWarnings>();
+
+        services.AddCors();
+        services.AddSingleton<IConfigureOptions<CorsOptions>, ConfigureElPaquetoCors>();
 
         return app;
     }
