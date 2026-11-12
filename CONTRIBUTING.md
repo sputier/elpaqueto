@@ -60,7 +60,7 @@ bash eng/docker/scan-image.sh --prepare                 # pinned Trivy (SHA-256 
 bash eng/docker/scan-image.sh elpaqueto.tar
 ```
 
-The smoke test checks anonymous behaviour only for now: health, `401` with the Basic challenge on `/v3/index.json` and `/health/details`, `403` for remote plain HTTP, the non-root user, the read-only root filesystem, the owner-only security database, a graceful stop and a restart on the same volume. Pushing and restoring packages with a real client will be added once accounts can be created from the command line.
+The smoke test checks the anonymous behaviour (health, `401` with the Basic challenge on `/v3/index.json` and `/health/details`, `403` for remote plain HTTP), the non-root user, the read-only root filesystem and the owner-only security database. It then creates an administrator with `admin bootstrap --password-stdin`, a reader and a publisher, checks their permissions, pushes and restores a package with the real `dotnet` CLI, stops the container (graceful exit within 10 s) and restores again after the restart. It needs no secret: the passwords are random and masked in the job log. Pushing with an API key will be added once API-key authentication is merged.
 
 **Accepted scan findings** go in `.trivyignore`, one entry per finding, each directly below a comment that justifies it, with an expiry date at most a year ahead:
 
