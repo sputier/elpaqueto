@@ -72,6 +72,9 @@ public class ElPaquetoSecurityOptionsTests
     [InlineData("Data Source=")]
     [InlineData("Mode=ReadWriteCreate")]
     [InlineData("NotAKeyword=1;Data Source=x.db")]
+    [InlineData("Data Source=x.db;Default Timeout=s3cr3tvalue")]
+    [InlineData("Data Source=x.db;Pooling=s3cr3tbool")]
+    [InlineData("Data Source=x.db;Default Timeout=99999999999")]
     public void MalformedConnectionString_IsRejectedWithAFixedMessage(string connectionString)
     {
         var options = new ElPaquetoSecurityOptions
@@ -89,7 +92,6 @@ public class ElPaquetoSecurityOptionsTests
     [Theory]
     [InlineData("Data Source=/data/db/auth.db")]
     [InlineData("Data Source=auth.db;Cache=Shared")]
-    [InlineData("Data Source=:memory:")]
     public void WellFormedConnectionString_IsAccepted(string connectionString)
     {
         var options = new ElPaquetoSecurityOptions
@@ -98,5 +100,23 @@ public class ElPaquetoSecurityOptionsTests
         };
 
         Assert.True(Validator.Validate(name: null, options).Succeeded);
+    }
+
+    [Theory]
+    [InlineData("Data Source=:memory:")]
+    [InlineData("Mode=Memory;Data Source=auth.db")]
+    [InlineData("Data Source=file:/data/auth.db")]
+    [InlineData("Data Source=FILE:auth.db?mode=rwc")]
+    public void InMemoryDatabasesAndFileUris_AreRejected(string connectionString)
+    {
+        var options = new ElPaquetoSecurityOptions
+        {
+            Database = new SecurityDatabaseOptions { ConnectionString = connectionString },
+        };
+
+        var result = Validator.Validate(name: null, options);
+
+        Assert.True(result.Failed);
+        Assert.Contains(result.Failures!, f => f.Contains("Security:Database:ConnectionString", StringComparison.Ordinal));
     }
 }
