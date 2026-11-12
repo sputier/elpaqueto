@@ -23,21 +23,36 @@ public sealed class ElPaquetoSecurityOptions : IValidatableObject
     /// </summary>
     public SecurityDatabaseOptions Database { get; set; } = new();
 
+    /// <summary>
+    /// Password hashing and policy. Section: <c>Security:Passwords</c>.
+    /// </summary>
+    public SecurityPasswordOptions Passwords { get; set; } = new();
+
     /// <inheritdoc />
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
-        if (Database is null)
-        {
-            yield return new ValidationResult("Security:Database is required.");
-            yield break;
-        }
-
-        var nested = new List<ValidationResult>();
-        Validator.TryValidateObject(Database, new ValidationContext(Database), nested, validateAllProperties: true);
-
-        foreach (var result in nested)
+        foreach (var result in ValidateSection(Database, nameof(Database)))
         {
             yield return result;
         }
+
+        foreach (var result in ValidateSection(Passwords, nameof(Passwords)))
+        {
+            yield return result;
+        }
+    }
+
+    private static List<ValidationResult> ValidateSection(object? section, string name)
+    {
+        var results = new List<ValidationResult>();
+
+        if (section is null)
+        {
+            results.Add(new ValidationResult($"{SectionName}:{name} is required."));
+            return results;
+        }
+
+        Validator.TryValidateObject(section, new ValidationContext(section), results, validateAllProperties: true);
+        return results;
     }
 }

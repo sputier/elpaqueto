@@ -5,22 +5,28 @@ namespace ElPaqueto.Security.Configuration;
 
 /// <summary>
 /// Rejects a plain value where the configuration expects a section. The configuration binder
-/// silently ignores such a value and keeps the defaults, so the server would start against a
-/// different database than the operator intended.
+/// silently ignores such a value and keeps the defaults, so the server would start with settings
+/// the operator did not intend.
 /// </summary>
 internal sealed class SecurityConfigurationShapeValidator(IConfiguration configuration)
     : IValidateOptions<ElPaquetoSecurityOptions>
 {
+    private static readonly string[] Sections = ["Database", "Passwords"];
+
     public ValidateOptionsResult Validate(string? name, ElPaquetoSecurityOptions options)
     {
-        var databaseSection = configuration.GetSection($"{ElPaquetoSecurityOptions.SectionName}:Database");
+        var failures = new List<string>();
 
-        if (databaseSection.Value is not null)
+        foreach (var section in Sections)
         {
-            return ValidateOptionsResult.Fail(
-                "Security:Database is a section, not a value: set Security:Database:ConnectionString.");
+            var path = $"{ElPaquetoSecurityOptions.SectionName}:{section}";
+
+            if (configuration.GetSection(path).Value is not null)
+            {
+                failures.Add($"{path} is a section, not a value: set its keys, for example {path}:<key>.");
+            }
         }
 
-        return ValidateOptionsResult.Success;
+        return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
     }
 }
