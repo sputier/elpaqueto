@@ -1,5 +1,7 @@
 using ElPaqueto.Core;
+using ElPaqueto.Security.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace ElPaqueto.Security.Tests;
 
@@ -16,14 +18,16 @@ public class ElPaquetoSecurityApplicationExtensionsTests
     }
 
     [Fact]
-    public void AddElPaquetoSecurity_RegistersNothingYet()
+    public void AddElPaquetoSecurity_RegistersOnlyTheSecurityOptionsAndTheirValidation()
     {
         var services = new ServiceCollection();
         var app = new ElPaquetoApplication(services);
 
         app.AddElPaquetoSecurity();
 
-        Assert.Empty(services);
+        Assert.Equal(3, services.Count);
+        Assert.Contains(services, d => d.ServiceType == typeof(IConfigureOptions<ElPaquetoSecurityOptions>));
+        Assert.Contains(services, d => d.ServiceType == typeof(IValidateOptions<ElPaquetoSecurityOptions>));
     }
 
     [Fact]

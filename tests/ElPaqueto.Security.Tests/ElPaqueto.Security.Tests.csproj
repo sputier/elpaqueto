@@ -6,6 +6,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\ElPaqueto.Security\ElPaqueto.Security.csproj" />
+    <!-- The host is built before the tests run: process-level tests start it. -->
+    <ProjectReference Include="..\..\src\ElPaqueto\ElPaqueto.csproj" />
   </ItemGroup>
 
   <ItemGroup>
