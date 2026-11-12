@@ -60,6 +60,7 @@ public static class ElPaquetoSecurityApplicationExtensions
                 IterationCount = passwords.IterationCount,
             }));
         });
+        services.AddSingleton<IPasswordTimingPad, Pbkdf2TimingPad>();
         services.AddSingleton<IPasswordService, PasswordService>();
 
         // The scheme and policy names are the ones the inherited controllers already reference, so that

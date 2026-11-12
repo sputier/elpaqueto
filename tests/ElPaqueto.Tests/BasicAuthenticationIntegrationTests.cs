@@ -1,6 +1,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -298,6 +299,83 @@ public class BasicAuthenticationIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task AnonymousRequests_NeverTouchTheSecurityDatabaseFile()
+    {
+        var connectionString = _app.Services.GetRequiredService<IOptions<ElPaqueto.Security.Configuration.ElPaquetoSecurityOptions>>()
+            .Value.Database.ConnectionString;
+        var path = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder(connectionString).DataSource;
+        File.SetAttributes(path, FileAttributes.ReadOnly);
+        try
+        {
+            using var client = _app.CreateAnonymousClient();
+
+            // A request without credentials must be answered without opening the database for writing:
+            // doing so per request would drop the locks SQLite holds and fail every route when the file is busy.
+            using var index = await client.GetAsync("v3/index.json");
+            using var page = await client.GetAsync("/");
+            using var health = await client.GetAsync("health");
+
+            Assert.Equal(HttpStatusCode.Unauthorized, index.StatusCode);
+            Assert.Equal(HttpStatusCode.OK, health.StatusCode);
+            Assert.NotEqual(HttpStatusCode.InternalServerError, page.StatusCode);
+        }
+        finally
+        {
+            File.SetAttributes(path, FileAttributes.Normal);
+        }
+    }
+
+    [Fact]
+    public async Task EveryNfkcSpellingOfThePassword_SharesOneCacheEntryAndOneVerification()
+    {
+        var counter = new CountingPasswordHasher(new PasswordHasher<User>(Options.Create(new PasswordHasherOptions
+        {
+            CompatibilityMode = PasswordHasherCompatibilityMode.IdentityV3,
+            IterationCount = 100_000,
+        })));
+        using var app = _app.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+        {
+            services.RemoveAll<IPasswordHasher<User>>();
+            services.AddSingleton<IPasswordHasher<User>>(counter);
+        }));
+        using var client = app.CreateClient();
+
+        // Fullwidth forms are NFKC-equivalent to ASCII: the same password in another spelling.
+        var fullwidth = new string(_app.TestPassword.Select(c => (char)(c - '!' + '！')).ToArray());
+        foreach (var password in new[] { _app.TestPassword, fullwidth, _app.TestPassword, fullwidth })
+        {
+            client.DefaultRequestHeaders.Authorization = Basic(_app.TestUserName, password);
+            using var response = await client.GetAsync("v3/index.json");
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        }
+
+        Assert.Equal(1, counter.VerifyCalls);
+    }
+
+    [Fact]
+    public async Task InvalidUserNamesAndMalformedHeaders_AreIndistinguishableFromAWrongPassword()
+    {
+        var wrongPassword = await Fingerprint(Basic(_app.TestUserName, _app.TestPassword + "x"));
+        var invalidUserName = await Fingerprint(Basic("not a valid name!", _app.TestPassword));
+        var longUserName = await Fingerprint(Basic(new string('a', 200), _app.TestPassword));
+
+        Assert.Equal(wrongPassword, invalidUserName);
+        Assert.Equal(wrongPassword, longUserName);
+
+        using var client = _app.CreateAnonymousClient();
+        using var request = new HttpRequestMessage(HttpMethod.Get, "v3/index.json");
+        request.Headers.TryAddWithoutValidation("Authorization", "Basic !!!");
+        using var malformed = await client.SendAsync(request);
+        using var anonymousClient = _app.CreateAnonymousClient();
+        using var anonymous = await anonymousClient.GetAsync("v3/index.json");
+
+        Assert.Equal(anonymous.StatusCode, malformed.StatusCode);
+        Assert.Equal(
+            anonymous.Headers.GetValues("WWW-Authenticate"),
+            malformed.Headers.GetValues("WWW-Authenticate"));
+    }
+
+    [Fact]
     public async Task HeadRequests_AreAuthenticatedLikeGetRequests()
     {
         using var anonymous = _app.CreateAnonymousClient();
@@ -333,7 +411,13 @@ public class BasicAuthenticationIntegrationTests : IDisposable
             using var response = await client.SendAsync(request);
         }
 
-        Assert.NotEmpty(logs);
+        string[] captured;
+        lock (logs)
+        {
+            captured = logs.ToArray();
+        }
+
+        Assert.NotEmpty(captured);
         string[] secrets =
         [
             _app.TestPassword,
@@ -345,7 +429,7 @@ public class BasicAuthenticationIntegrationTests : IDisposable
         ];
         foreach (var secret in secrets)
         {
-            Assert.DoesNotContain(logs, line => line.Contains(secret, StringComparison.Ordinal));
+            Assert.DoesNotContain(captured, line => line.Contains(secret, StringComparison.Ordinal));
         }
     }
 

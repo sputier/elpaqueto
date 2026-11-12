@@ -9,15 +9,20 @@ HTTP Basic authentication is implemented by `ElPaquetoBasicAuthenticationHandler
 3. **Verification.** Unknown users, disabled users and wrong passwords all end in the same generic failure, and the first two perform the same password-hashing work as a real verification ([password hashing](passwords.md)).
 4. **Result.** The principal carries the user id, the user name, one claim per granted permission flag and the authentication method (`password`). The challenge is `401` with `WWW-Authenticate: Basic realm="ElPaqueto"`, an empty body and never a redirect. Failure messages are fixed strings that contain no request data.
 
-No code path produces an authenticated principal for an anonymous request. With no users in the database, every protected endpoint answers 401.
+No code path produces an authenticated principal for an anonymous request. With no users in the database, a request that carries credentials is refused as an unknown user.
+
+The security database is only touched for a request that carries Basic credentials: a request without credentials is answered without reading or opening the file. The file is prepared once, at startup (opening and closing a file handle per request would drop the locks SQLite holds on it on POSIX systems, and would fail every route whenever the file is momentarily unavailable).
+
+**If the database cannot be read** while a request carries credentials, the request fails with a server error (500) and the exception is logged: authentication fails closed, but it is not reported as a wrong password, so that an outage is visible instead of looking like bad credentials. Requests without credentials are unaffected.
 
 ## Verification cache
 
 NuGet clients send credentials on every request and a password hash is deliberately slow, so a successful verification is remembered in memory for `Security:Authentication:VerificationCacheTtl` (default 5 minutes, `00:00:00` disables the cache, maximum one hour).
 
-- The key is `HMAC-SHA256(per-process random key, user id, stored password hash, password)`. The password is not stored in any reversible form, and the key means nothing outside the process.
-- Because the stored hash is part of the key, **a password change invalidates the entry by itself**.
+- There is **one entry per user**. It holds `HMAC-SHA256(per-process random key, stored password hash, normalized password)`, compared in fixed time. The password is not stored in any reversible form, and the value means nothing outside the process. Because the entry is per user and uses the normalized password, every Unicode spelling of the same password shares one entry: the size is bounded by the number of users and cannot be filled by someone holding a valid password.
+- Because the stored hash is part of the digest, **a password change invalidates the entry by itself**.
 - **Only successes are cached**, never failures. The size is bounded to 10 000 entries.
+- Requests that arrive together on a cold cache may each verify the password once before the first result is cached; the throttling and capacity limits of later changes bound that work.
 - Nothing about the user's state is cached: whether the user is active and which permissions it holds are read from the database on every request. A cache hit therefore only skips the password hash.
 - A hash made with a lower cost or an older format is replaced by a fresh one after the first successful login. A failure to store it (for example a concurrent update) is logged and never fails the request.
 
