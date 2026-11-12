@@ -50,6 +50,11 @@ public sealed class ElPaquetoSecurityOptions : IValidatableObject
     public SecurityTransportOptions Transport { get; set; } = new();
 
     /// <summary>
+    /// Limits on failed sign-in attempts and concurrent password verifications. Section: <c>Security:Throttling</c>.
+    /// </summary>
+    public SecurityThrottlingOptions Throttling { get; set; } = new();
+
+    /// <summary>
     /// Cross-origin access from browser scripts. Section: <c>Security:Cors</c>.
     /// </summary>
     public SecurityCorsOptions Cors { get; set; } = new();
@@ -105,6 +110,11 @@ public sealed class ElPaquetoSecurityOptions : IValidatableObject
         }
 
         foreach (var result in ValidateSection(Transport, nameof(Transport)))
+        {
+            yield return result;
+        }
+
+        foreach (var result in ValidateSection(Throttling, nameof(Throttling)))
         {
             yield return result;
         }
