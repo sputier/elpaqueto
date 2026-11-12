@@ -13,6 +13,10 @@ Settings are read from, in increasing order of precedence:
 
 A secret file therefore overrides the same setting from an environment variable. Put anything sensitive in a secret file or an environment variable, never in `appsettings.json` under version control.
 
+`appsettings.json` is read from the working directory, or from the folder named by the environment variable `ELPAQUETO_CONFIG_ROOT`. BaGetter's `BAGET_CONFIG_ROOT` is still read, with a deprecation warning, when `ELPAQUETO_CONFIG_ROOT` is not set ([upgrading from BaGetter](upgrading-from-bagetter.md)).
+
+A configuration file that cannot be read or parsed (for example a file in `/run/secrets` that the server's user cannot read) stops the server and every command with exit code 1 and `ElPaqueto could not load its configuration: ...`, naming the file but never quoting its content.
+
 ## Validation
 
 The server and every command-line command validate the security settings before doing anything. An invalid setting stops the process with a non-zero exit code. The log names the setting and the reason, and never prints the value:
@@ -20,6 +24,8 @@ The server and every command-line command validate the security settings before 
 ```text
 Invalid 'Security' configs: Security:Database:ConnectionString is required and must not be empty.
 ```
+
+BaGetter's authentication settings, `ApiKey`, `Authentication:Credentials` and `Authentication:ApiKeys`, are rejected the same way when they have a non-empty value, whatever their source: they no longer do anything. See [upgrading from BaGetter](upgrading-from-bagetter.md) for their replacements.
 
 ## Settings
 
@@ -54,7 +60,7 @@ The maximum password length is fixed at 256 characters. The policy has no compos
 | --- | --- | --- |
 | `Security:Authentication:VerificationCacheTtl` | `00:05:00` | How long a successful password verification is remembered in memory, as a time span up to `01:00:00`. `00:00:00` disables the cache. A disabled user, changed permissions and a changed password always apply to the next request: the cache only keeps an unchanged, valid password cheap. |
 
-**Upgrading from BaGetter:** the inherited settings `Authentication:Credentials` (plain-text users) are no longer used: users are stored, hashed, in the security database, and a request that carries credentials only authenticates if the user exists there. The legacy `ApiKey` and `Authentication:ApiKeys` settings no longer do anything: publishing needs a per-user API key stored in the security database (below), and **an empty `ApiKey` no longer opens publishing to everyone**. The settings themselves are still read without error; rejecting them at startup is a separate change. Until throttling of failed attempts is released, **do not expose the server to untrusted networks**.
+**Upgrading from BaGetter:** users are stored, hashed, in the security database, and a request that carries credentials only authenticates if the user exists there. Publishing needs a per-user API key stored in the security database (below), and **an empty `ApiKey` no longer opens publishing to everyone**. The inherited settings `ApiKey`, `Authentication:Credentials` (plain-text users) and `Authentication:ApiKeys` stop the server at startup: see [upgrading from BaGetter](upgrading-from-bagetter.md).
 
 ### `Security:ApiKeys`
 

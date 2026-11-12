@@ -52,7 +52,7 @@ The image sets these environment variables. Override any of them with `-e` or in
 | `DOTNET_SHUTDOWNTIMEOUTSECONDS` | `8` |
 | `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT` | `false` (cultures and time zones are installed) |
 
-Secrets can also be given as files in `/run/secrets`, see [configuration](configuration.md#sources-and-precedence). Every file there must be readable by UID 1654: the server reads them all at startup and stops with `Access to the path '/run/secrets/...' is denied` if one is not. Docker Compose mounts file-based secrets as they are on the host (without Swarm, a secret's `uid`, `gid` and `mode` are ignored), so give the host file to UID 1654 with mode `0400`.
+Secrets can also be given as files in `/run/secrets`, see [configuration](configuration.md#sources-and-precedence). Every file there must be readable by UID 1654: the server reads them all at startup and stops with exit code 1 and `ElPaqueto could not load its configuration: Access to the path '/run/secrets/...' is denied.` if one is not. Docker Compose mounts file-based secrets as they are on the host (without Swarm, a secret's `uid`, `gid` and `mode` are ignored), so give the host file to UID 1654 with mode `0400`.
 
 ## Running the container
 
@@ -116,7 +116,7 @@ The server then creates `/data/db` itself, with the process's default mode; rest
 
 ## Health check
 
-The image checks the anonymous liveness endpoint `/health` (the `HealthCheck:Path` setting) from inside the container. The request comes from `127.0.0.1`, which is allowed over plain HTTP. `/health` returns only the overall status (`{"Status":"Healthy"}`); `/health/details` requires the `admin` permission.
+The image checks the anonymous liveness endpoint `/health` (the `HealthCheck:Path` setting, `/health` when the configuration has no `HealthCheck` section) from inside the container. The request comes from `127.0.0.1`, which is allowed over plain HTTP. `/health` returns only the overall status (`{"Status":"Healthy"}`); `/health/details` requires the `admin` permission.
 
 If you change `HealthCheck:Path`, override the check to match, for example `--health-cmd 'wget -q --spider http://127.0.0.1:8080/alive || exit 1'` or the `healthcheck` of the Compose example. `PathBase` needs no change: the path without the prefix keeps working. busybox `wget` is available in the image; `curl` is not.
 

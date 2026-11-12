@@ -18,6 +18,8 @@ With Docker (no image is published yet):
 1. Build the image: `docker build -t elpaqueto:local .`
 2. Run it behind a TLS-terminating reverse proxy, with a volume on `/data`: see [Running ElPaqueto with Docker](docs/user/docker.md), [`docker-compose.example.yml`](docker-compose.example.yml) and [Running behind a reverse proxy or tunnel](docs/user/reverse-proxy.md)
 
+Upgrading an existing BaGetter installation: see [Upgrading from BaGetter](docs/user/upgrading-from-bagetter.md) (BaGetter's `ApiKey` and `Authentication` settings stop the server).
+
 With .NET:
 
 1. Install the [.NET SDK]

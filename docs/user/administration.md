@@ -114,7 +114,7 @@ sudo chown 1654:1654 elpaqueto_admin_password.txt && sudo chmod 0400 elpaqueto_a
 docker compose run --rm elpaqueto admin bootstrap --username admin --password-file /run/secrets/elpaqueto_admin_password
 ```
 
-A secret file that the container user cannot read (for example `chmod 600` with your own user as owner, on a Linux host) stops the server and every command at startup with `Access to the path '/run/secrets/...' is denied`, because every file in `/run/secrets` is read as configuration. [`docker-compose.example.yml`](../../docker-compose.example.yml) contains the same setup. After the bootstrap, remove the secret from the service and delete the file: the password is only needed once. The server also loads every file in `/run/secrets` as a configuration value, named after the file; a name such as `elpaqueto_admin_password` matches no setting and is ignored.
+A secret file that the container user cannot read (for example `chmod 600` with your own user as owner, on a Linux host) stops the server and every command at startup with exit code 1 and `ElPaqueto could not load its configuration: Access to the path '/run/secrets/...' is denied.`, because every file in `/run/secrets` is read as configuration. [`docker-compose.example.yml`](../../docker-compose.example.yml) contains the same setup. After the bootstrap, remove the secret from the service and delete the file: the password is only needed once. The server also loads every file in `/run/secrets` as a configuration value, named after the file; a name such as `elpaqueto_admin_password` matches no setting and is ignored.
 
 ### Recovery
 
