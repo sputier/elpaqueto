@@ -2,6 +2,7 @@ using ElPaqueto.Authentication;
 using ElPaqueto.Core;
 using ElPaqueto.Security.ApiKeys;
 using ElPaqueto.Security.Authentication;
+using ElPaqueto.Security.Authorization;
 using ElPaqueto.Security.Cli;
 using ElPaqueto.Security.Configuration;
 using ElPaqueto.Security.Data;
@@ -9,6 +10,7 @@ using ElPaqueto.Security.Passwords;
 using ElPaqueto.Security.Transport;
 using ElPaqueto.Security.Users;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
@@ -81,8 +83,20 @@ public static class ElPaquetoSecurityApplicationExtensions
                 AuthenticationConstants.NugetBasicAuthenticationScheme,
                 displayName: null,
                 configureOptions: null);
+
+        // Deny by default: the fallback policy, the default policy and the policy the controllers name are the
+        // same single requirement, which looks the endpoint up in the permission table (ADR 0002, decisions 4 and 5).
+        services.AddHttpContextAccessor();
+        services.AddSingleton<IAuthorizationHandler, EndpointPermissionHandler>();
         services.AddAuthorization(authorization =>
-            authorization.AddPolicy(AuthenticationConstants.NugetUserPolicy, policy => policy.RequireAuthenticatedUser()));
+        {
+            var policy = new AuthorizationPolicyBuilder().AddRequirements(new EndpointPermissionRequirement()).Build();
+
+            authorization.DefaultPolicy = policy;
+            authorization.FallbackPolicy = policy;
+            authorization.AddPolicy(AuthenticationConstants.NugetUserPolicy, policy);
+        });
+        services.AddSingleton<IHostedService, EndpointInventoryStartupCheck>();
 
         services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton<IApiKeyHashComparer, FixedTimeApiKeyHashComparer>();
