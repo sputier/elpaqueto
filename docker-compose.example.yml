@@ -13,7 +13,8 @@
 #
 # Before the first start, create the secret file (secrets/ is git-ignored). Compose mounts it as it is:
 # without Swarm, the uid/gid/mode options of a secret are ignored, so the file itself must be readable
-# by the container user (UID 1654) and by nobody else:
+# by the container user (UID 1654) and by nobody else. The server reads every file in /run/secrets at
+# startup and does not start if one of them cannot be read:
 #   mkdir -p secrets && (umask 077 && printf '%s' '<a long passphrase>' > secrets/admin_password.txt)
 #   sudo chown 1654:1654 secrets/admin_password.txt && sudo chmod 0400 secrets/admin_password.txt
 #
@@ -77,13 +78,13 @@ services:
       start_period: 30s
       retries: 3
 
-    # Password of the first administrator, read once by the bootstrap command (#20), mounted at
-    # /run/secrets/elpaqueto_admin_password. Its name matches no setting, so the server ignores it.
-    # Remove it from the service after the bootstrap and delete the file.
+    # Password of the first administrator, mounted at /run/secrets/elpaqueto_admin_password and read
+    # once by the bootstrap command. Its name matches no setting, so the server ignores it.
+    # After the first start, create the administrator (see docs/user/administration.md):
+    #   docker compose -f docker-compose.example.yml run --rm elpaqueto admin bootstrap --username admin --password-file /run/secrets/elpaqueto_admin_password
+    # Then remove the secret from the service and delete the file.
     secrets:
       - elpaqueto_admin_password
-    # TODO(#20): once the admin CLI is merged, create the first administrator with:
-    #   docker compose -f docker-compose.example.yml run --rm elpaqueto admin bootstrap --username admin --password-file /run/secrets/elpaqueto_admin_password
 
   # Add your reverse proxy here or in its own Compose project, attached to the "proxy" network.
   # See docs/user/reverse-proxy.md and the configurations in samples/reverse-proxy/.

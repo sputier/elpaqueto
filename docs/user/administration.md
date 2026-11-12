@@ -107,12 +107,14 @@ volumes:
 ```bash
 # Write the password without leaving it in the shell history, then restrict the file.
 read -rs -p "Password: " password && printf '%s\n' "$password" > elpaqueto_admin_password.txt && unset password
-chmod 600 elpaqueto_admin_password.txt
+# Without Swarm, Compose mounts the file as it is (the uid, gid and mode options of a secret are ignored):
+# it must be readable by the container user, UID 1654, and by nobody else.
+sudo chown 1654:1654 elpaqueto_admin_password.txt && sudo chmod 0400 elpaqueto_admin_password.txt
 
 docker compose run --rm elpaqueto admin bootstrap --username admin --password-file /run/secrets/elpaqueto_admin_password
 ```
 
-After the bootstrap, remove the secret from the service and delete the file: the password is only needed once. The server also loads every file in `/run/secrets` as a configuration value, named after the file; a name such as `elpaqueto_admin_password` matches no setting and is ignored.
+A secret file that the container user cannot read (for example `chmod 600` with your own user as owner, on a Linux host) stops the server and every command at startup with `Access to the path '/run/secrets/...' is denied`, because every file in `/run/secrets` is read as configuration. [`docker-compose.example.yml`](../../docker-compose.example.yml) contains the same setup. After the bootstrap, remove the secret from the service and delete the file: the password is only needed once. The server also loads every file in `/run/secrets` as a configuration value, named after the file; a name such as `elpaqueto_admin_password` matches no setting and is ignored.
 
 ### Recovery
 

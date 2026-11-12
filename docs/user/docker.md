@@ -2,7 +2,7 @@
 
 The repository's `Dockerfile` builds a Linux image of the server for `linux/amd64` and `linux/arm64`. No image is published yet: build it yourself. The image is meant to run behind a TLS-terminating reverse proxy or tunnel, see [Running behind a reverse proxy or tunnel](reverse-proxy.md).
 
-The image ships without any account and without any default password.
+The image ships without any account and without any default password. Create the first administrator with `admin bootstrap`, see [Administration from the command line](administration.md).
 
 ## Building the image
 
@@ -52,7 +52,7 @@ The image sets these environment variables. Override any of them with `-e` or in
 | `DOTNET_SHUTDOWNTIMEOUTSECONDS` | `8` |
 | `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT` | `false` (cultures and time zones are installed) |
 
-Secrets can also be given as files in `/run/secrets`, see [configuration](configuration.md#sources-and-precedence).
+Secrets can also be given as files in `/run/secrets`, see [configuration](configuration.md#sources-and-precedence). Every file there must be readable by UID 1654: the server reads them all at startup and stops with `Access to the path '/run/secrets/...' is denied` if one is not. Docker Compose mounts file-based secrets as they are on the host (without Swarm, a secret's `uid`, `gid` and `mode` are ignored), so give the host file to UID 1654 with mode `0400`.
 
 ## Running the container
 
@@ -135,4 +135,4 @@ With Compose, set `stop_grace_period` instead of `docker stop -t`. If the grace 
 
 ## Verifying an image
 
-`eng/docker/smoke-test.sh <image>` runs the checks of the Docker workflow against any local image: non-root user, read-only root filesystem, health, anonymous access rules, owner-only security database, graceful stop and restart on the same volume. See [CONTRIBUTING](../../CONTRIBUTING.md#container-image).
+`eng/docker/smoke-test.sh <image>` runs the checks of the Docker workflow against any local image: non-root user, read-only root filesystem, health, anonymous access rules, owner-only security database, accounts created with the `admin` command, a real `dotnet nuget push` and `dotnet restore`, a graceful stop and a restart on the same volume. See [CONTRIBUTING](../../CONTRIBUTING.md#container-image).
