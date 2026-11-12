@@ -13,14 +13,14 @@ RUN for file in $(ls *.csproj); do mkdir -p ${file%.*}/ && mv $file ${file%.*}/;
 # useful for debugging to display all files
 #RUN echo $(ls)
 # restore packages
-RUN dotnet restore BaGetter/BaGetter.csproj --arch $TARGETARCH
+RUN dotnet restore ElPaqueto/ElPaqueto.csproj --arch $TARGETARCH
 
 ## Publish app (implicitly builds the app)
 FROM build AS publish
 ARG Version
 # copy all files
 COPY /src .
-RUN dotnet publish BaGetter \
+RUN dotnet publish ElPaqueto \
     --configuration Release \
     --output /app \
     --no-restore \
@@ -46,12 +46,12 @@ ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
 ENV Storage__Path "/data"
 ENV Search__Type "Database"
 ENV Database__Type "Sqlite"
-ENV Database__ConnectionString "Data Source=/data/db/bagetter.db"
-LABEL org.opencontainers.image.source="https://github.com/bagetter/BaGetter"
+ENV Database__ConnectionString "Data Source=/data/db/elpaqueto.db"
+LABEL org.opencontainers.image.source="https://github.com/sputier/ElPaqueto"
 # copy default folders
 COPY --from=publish /data /data
 # copy the published app
 WORKDIR /app
 COPY --from=publish /app .
 
-ENTRYPOINT ["dotnet", "BaGetter.dll"]
+ENTRYPOINT ["dotnet", "ElPaqueto.dll"]

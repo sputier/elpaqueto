@@ -7,7 +7,7 @@
             "type": "process",
             "args": [
                 "build",
-                "${workspaceFolder}/src/BaGetter/BaGetter.csproj"
+                "${workspaceFolder}/src/ElPaqueto/ElPaqueto.csproj"
             ],
             "problemMatcher": "$msCompile"
         }

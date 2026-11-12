@@ -269,6 +269,9 @@ __pycache__/
 # tools/
 
 # Ignore database files
+**/elpaqueto.db
+**/elpaqueto.db-shm
+**/elpaqueto.db-wal
 **/bagetter.db
 **/bagetter.db-shm
 **/bagetter.db-wal
