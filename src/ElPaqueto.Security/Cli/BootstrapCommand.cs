@@ -62,7 +62,8 @@ internal static class BootstrapCommand
             UserOperationStatus.Succeeded => Created(invocation, result.User!),
             UserOperationStatus.AdministratorExists => invocation.Fail(
                 AdminExitCode.PreconditionFailed,
-                "An administrator already exists: nothing was changed. The bootstrap command only creates the first administrator."),
+                "An administrator already exists: nothing was changed. The bootstrap command only creates the first administrator: "
+                + "create further users with 'admin user create', recover access with 'admin user enable' or 'admin user reset-password'."),
             UserOperationStatus.UserNameTaken => invocation.Fail(
                 AdminExitCode.PreconditionFailed,
                 $"A user named '{userName}' already exists (user names ignore case): nothing was changed."),

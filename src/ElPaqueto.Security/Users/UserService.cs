@@ -86,6 +86,205 @@ internal sealed class UserService
         return result;
     }
 
+    /// <summary>Creates an active user. Refused when the name is taken, ignoring case.</summary>
+    public async Task<UserOperationResult> CreateAsync(string userName, string password, Permission permissions, CancellationToken cancellationToken)
+    {
+        if (permissions == Permission.None)
+        {
+            return UserOperationResult.Invalid("A user needs at least one permission.");
+        }
+
+        if (!TryPrepareNewUser(userName, password, permissions, out var user, out var invalid))
+        {
+            return invalid;
+        }
+
+        var result = await InWriteTransactionAsync(
+            async () =>
+            {
+                if (await NameIsTakenAsync(user.UserName, cancellationToken))
+                {
+                    return UserOperationResult.Of(UserOperationStatus.UserNameTaken);
+                }
+
+                _db.Users.Add(user);
+                await _db.SaveChangesAsync(cancellationToken);
+                return UserOperationResult.Of(UserOperationStatus.Succeeded, UserSummary.From(user));
+            },
+            cancellationToken);
+
+        if (result.Status == UserOperationStatus.Succeeded)
+        {
+            UserAdministrationLog.UserCreated(_logger, user.UserName, user.Id, user.Permissions);
+        }
+
+        return result;
+    }
+
+    /// <summary>The users ordered by name; disabled users only when asked for.</summary>
+    public async Task<IReadOnlyList<UserSummary>> ListAsync(bool includeDisabled, CancellationToken cancellationToken)
+    {
+        var query = _db.Users.AsNoTracking();
+        if (!includeDisabled)
+        {
+            query = query.Where(u => u.IsActive);
+        }
+
+        var users = await query.OrderBy(u => u.NormalizedUserName).ToListAsync(cancellationToken);
+        return [.. users.Select(UserSummary.From)];
+    }
+
+    /// <summary>The user with this name, ignoring case, or <see langword="null"/>.</summary>
+    public async Task<UserSummary?> FindAsync(string userName, CancellationToken cancellationToken)
+    {
+        var normalized = User.Normalize(userName);
+        var user = await _db.Users.AsNoTracking().SingleOrDefaultAsync(u => u.NormalizedUserName == normalized, cancellationToken);
+        return user is null ? null : UserSummary.From(user);
+    }
+
+    /// <summary>
+    /// Enables or disables a user. Disabling the last active user holding <see cref="Permission.Admin"/> is refused.
+    /// </summary>
+    public async Task<UserOperationResult> SetActiveAsync(string userName, bool active, CancellationToken cancellationToken)
+    {
+        var result = await ChangeAsync(
+            userName,
+            user => user.IsActive == active ? null : () => user.IsActive = active,
+            cancellationToken);
+
+        if (result.Status == UserOperationStatus.Succeeded)
+        {
+            if (active)
+            {
+                UserAdministrationLog.UserEnabled(_logger, result.User!.UserName, result.User.Id);
+            }
+            else
+            {
+                UserAdministrationLog.UserDisabled(_logger, result.User!.UserName, result.User.Id);
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Replaces the permissions of a user. Removing <see cref="Permission.Admin"/> from the last active
+    /// administrator is refused.
+    /// </summary>
+    public async Task<UserOperationResult> SetPermissionsAsync(string userName, Permission permissions, CancellationToken cancellationToken)
+    {
+        if (permissions == Permission.None)
+        {
+            return UserOperationResult.Invalid("A user needs at least one permission: disable the user to remove all access.");
+        }
+
+        var previous = Permission.None;
+        var result = await ChangeAsync(
+            userName,
+            user =>
+            {
+                previous = user.Permissions;
+                return user.Permissions == permissions ? null : () => user.Permissions = permissions;
+            },
+            cancellationToken);
+
+        if (result.Status == UserOperationStatus.Succeeded)
+        {
+            UserAdministrationLog.UserPermissionsChanged(
+                _logger, result.User!.UserName, result.User.Id, previous, permissions);
+        }
+
+        return result;
+    }
+
+    /// <summary>Sets a new password: a new hash and <see cref="User.PasswordChangedAt"/>.</summary>
+    public async Task<UserOperationResult> ResetPasswordAsync(string userName, string password, CancellationToken cancellationToken)
+    {
+        var errors = _passwords.Validate(password, userName);
+        if (errors.Count > 0)
+        {
+            return UserOperationResult.Invalid(errors);
+        }
+
+        var hash = _passwords.Hash(password);
+        var result = await ChangeAsync(
+            userName,
+            user => () =>
+            {
+                user.PasswordHash = hash;
+                user.PasswordChangedAt = _time.GetUtcNow().UtcDateTime;
+            },
+            cancellationToken);
+
+        if (result.Status == UserOperationStatus.Succeeded)
+        {
+            UserAdministrationLog.UserPasswordReset(_logger, result.User!.UserName, result.User.Id);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Loads a user in a write transaction, applies the change returned by <paramref name="plan"/>
+    /// (<see langword="null"/> when the user is already in the requested state), refuses it when it
+    /// would leave no active administrator, and saves it with a new <see cref="User.UpdatedAt"/>.
+    /// </summary>
+    private async Task<UserOperationResult> ChangeAsync(string userName, Func<User, Action?> plan, CancellationToken cancellationToken)
+    {
+        var storedName = userName;
+        var result = await InWriteTransactionAsync(
+            async () =>
+            {
+                var normalized = User.Normalize(userName);
+                var user = await _db.Users.SingleOrDefaultAsync(u => u.NormalizedUserName == normalized, cancellationToken);
+                if (user is null)
+                {
+                    return UserOperationResult.Of(UserOperationStatus.NotFound);
+                }
+
+                storedName = user.UserName;
+
+                var change = plan(user);
+                if (change is null)
+                {
+                    return UserOperationResult.Of(UserOperationStatus.Unchanged, UserSummary.From(user));
+                }
+
+                var wasActiveAdministrator = IsActiveAdministrator(user);
+                change();
+
+                if (wasActiveAdministrator && !IsActiveAdministrator(user)
+                    && !await _db.Users.AnyAsync(
+                        u => u.Id != user.Id && u.IsActive && (u.Permissions & Permission.Admin) == Permission.Admin,
+                        cancellationToken))
+                {
+                    return UserOperationResult.Of(UserOperationStatus.LastActiveAdministrator);
+                }
+
+                user.UpdatedAt = _time.GetUtcNow().UtcDateTime;
+                await _db.SaveChangesAsync(cancellationToken);
+                return UserOperationResult.Of(UserOperationStatus.Succeeded, UserSummary.From(user));
+            },
+            cancellationToken);
+
+        switch (result.Status)
+        {
+            case UserOperationStatus.LastActiveAdministrator:
+                UserAdministrationLog.LastActiveAdministratorProtected(_logger, storedName);
+                break;
+            case UserOperationStatus.ConcurrencyConflict:
+                UserAdministrationLog.ConcurrentChangeRejected(_logger, storedName);
+                break;
+            default:
+                break;
+        }
+
+        return result;
+    }
+
+    private static bool IsActiveAdministrator(User user)
+        => user.IsActive && (user.Permissions & Permission.Admin) == Permission.Admin;
+
     private bool TryPrepareNewUser(
         string userName,
         string password,
