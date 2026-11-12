@@ -55,3 +55,6 @@
 /eng/** text eol=lf
 /src/ElPaqueto.Security/** text eol=lf
 /tests/ElPaqueto.Security.Tests/** text eol=lf
+
+# Byte-exact test fixtures for eng/port-upstream.sh
+eng/tests/fixtures/** -text

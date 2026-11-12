@@ -66,6 +66,8 @@ public class ElPaquetoApplication : WebApplicationFactory<Startup>
                 {
                     { "Database:Type", "Sqlite" },
                     { "Database:ConnectionString", $"Data Source={sqlitePath}" },
+                    // Each test host gets its own security database: hosts run in parallel.
+                    { "Security:Database:ConnectionString", $"Data Source={Path.Combine(tempPath, "auth.db")}" },
                     { "Storage:Type", "FileSystem" },
                     { "Storage:Path", storagePath },
                     { "Search:Type", "Database" },
