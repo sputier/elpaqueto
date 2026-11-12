@@ -19,6 +19,8 @@
     <!-- Pinned (not "latest") so analyzer output does not drift with the SDK. Raise it with any framework retarget. -->
     <AnalysisLevel>10.0-recommended</AnalysisLevel>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- No library is published in V1, so missing XML comments on public members are not an error. -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
     <Deterministic>true</Deterministic>
   </PropertyGroup>
 
