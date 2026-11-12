@@ -184,7 +184,8 @@ The pull request says which and why.
 | `.github/workflows/main.yml`, `release.yml`, `release-helm.yml`, `deploy_docs.yml` | Deleted (#2), replaced by `.github/workflows/ci.yml` (#3). Drop the hunks. |
 | `tests/BaGetter.Tests/BaGetter - Backup.Tests.csproj` | Deleted (#4). Drop the hunks. |
 | `deployment templates/chart/bagetter/` (Helm chart) and `docs/` (Docusaurus site) | Still present and not mapped by the script. If #51 removes them, drop the hunks. |
-| `src/BaGetter.Web/Authentication/NugetBasicAuthenticationHandler.cs` (inherited authentication handler) | To be replaced by #17. Once replaced, keep the ElPaqueto version and re-implement any upstream security fix in the new code. |
+| `src/BaGetter.Web/Authentication/NugetBasicAuthenticationHandler.cs` (inherited authentication handler), its unit tests `tests/BaGetter.Web.Tests/Authentication/NugetBasicAuthenticationHandlerTests.cs`, and `src/BaGetter/IServiceCollectionExtensions.cs` (`AddNugetBasicHttpAuthentication`, `AddNugetBasicHttpAuthorization`) | Deleted (#17), replaced by `src/ElPaqueto.Security/Authentication/`. Drop the hunks and re-implement any upstream security fix in the new code. |
+| `tests/BaGetter.Tests/NugetAuthenticationIntegrationTests.cs`, `tests/BaGetter.Tests/NugetAllowAnonymousAuthenticationIntegrationTests.cs` | Deleted (#17), replaced by `tests/ElPaqueto.Tests/BasicAuthenticationIntegrationTests.cs`. The "anonymous allowed" expectation is inverted: anonymous requests now get 401. Drop the hunks. |
 | `src/BaGetter.Database.MySql/` (MySQL provider) | Still in the tree but excluded from the build: not in `ElPaqueto.sln` and not referenced by the host (#55). Hunks apply but are neither built nor tested; the pull request says so. |
 
 Two documents will complement this list: `docs/technical/upstream-touch-map.md`

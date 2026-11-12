@@ -271,7 +271,77 @@ public class PasswordServiceTests(ITestOutputHelper output)
         Assert.InRange(perVerification, 1, 5_000);
     }
 
-    private static PasswordService Create(int iterations, out CountingHasher counting)
+    [Fact]
+    public void Verify_ForAHashCheaperThanTheConfiguredCost_PadsTheMissingIterationsWhateverTheOutcome()
+    {
+        var pad = new RecordingPad();
+        var service = Create(iterations: 150_000, out _, pad);
+        var cheap = new PasswordHasher<User>(Options.Create(new PasswordHasherOptions
+        {
+            CompatibilityMode = PasswordHasherCompatibilityMode.IdentityV3,
+            IterationCount = 100_000,
+        }));
+        var user = UserWith(cheap.HashPassword(new User(), Password));
+
+        Assert.Equal(PasswordVerification.SuccessRehashNeeded, service.Verify(user, Password));
+        Assert.Equal(PasswordVerification.Failed, service.Verify(user, Password + "x"));
+
+        // Success and failure both cost the configured 150 000 iterations in total.
+        Assert.Equal([50_000, 50_000], pad.Calls);
+    }
+
+    [Fact]
+    public void Verify_ForAHashDearerThanTheConfiguredCost_AsksForAReHashAndPadsNothing()
+    {
+        var pad = new RecordingPad();
+        var service = Create(iterations: 100_000, out _, pad);
+        var dear = new PasswordHasher<User>(Options.Create(new PasswordHasherOptions
+        {
+            CompatibilityMode = PasswordHasherCompatibilityMode.IdentityV3,
+            IterationCount = 150_000,
+        }));
+        var user = UserWith(dear.HashPassword(new User(), Password));
+
+        Assert.Equal(PasswordVerification.SuccessRehashNeeded, service.Verify(user, Password));
+        Assert.Empty(pad.Calls);
+    }
+
+    [Fact]
+    public void Verify_ForAHashAtTheConfiguredCost_AndForUnknownUsers_PadsNothing()
+    {
+        var pad = new RecordingPad();
+        var service = Create(iterations: 100_000, out _, pad);
+        var user = UserWith(service.Hash(Password));
+
+        Assert.Equal(PasswordVerification.Success, service.Verify(user, Password));
+        Assert.Equal(PasswordVerification.Failed, service.Verify(null, Password));
+        Assert.Empty(pad.Calls);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("not base64 at all")]
+    [InlineData("AAAA")]
+    public void PasswordHashFormat_RejectsWhatIsNotAV3Hash(string hash)
+    {
+        Assert.False(PasswordHashFormat.TryGetIterations(hash, out _));
+    }
+
+    [Fact]
+    public void PasswordHashFormat_ReadsTheIterationCountOfAV3Hash()
+    {
+        Assert.True(PasswordHashFormat.TryGetIterations(FixtureHashDefaultCost, out var iterations));
+        Assert.Equal(210_000, iterations);
+    }
+
+    private sealed class RecordingPad : IPasswordTimingPad
+    {
+        public List<int> Calls { get; } = [];
+
+        public void Pad(int iterations) => Calls.Add(iterations);
+    }
+
+    private static PasswordService Create(int iterations, out CountingHasher counting, IPasswordTimingPad? pad = null)
     {
         var inner = new PasswordHasher<User>(Options.Create(new PasswordHasherOptions
         {
@@ -279,13 +349,14 @@ public class PasswordServiceTests(ITestOutputHelper output)
             IterationCount = iterations,
         }));
         counting = new CountingHasher(inner);
+        pad ??= new Pbkdf2TimingPad();
 
         var options = new ElPaquetoSecurityOptions
         {
             Passwords = new SecurityPasswordOptions { IterationCount = iterations },
         };
 
-        return new PasswordService(counting, Options.Create(options));
+        return new PasswordService(counting, Options.Create(options), pad);
     }
 
     private static User UserWith(string passwordHash) => new()

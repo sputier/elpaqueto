@@ -20,6 +20,12 @@ Passwords are normalized to Unicode **NFKC** before hashing and verifying (NIST 
 - `SuccessRehashNeeded` means the password is correct but its hash uses a lower iteration count or an older format. The caller hashes the password again and stores the new hash. (The authentication handler that will do this after a successful login is not part of this change.)
 - **Unknown, disabled or hash-less user, or over-length password:** the submitted password is verified against a dummy hash created once at startup with the current parameters, then `Failed` is returned. The amount of work equals the known-user path, so response times do not reveal which user names exist. Tests assert this by counting calls to the hasher, not by timing.
 
+## Timing and a change of cost
+
+An account whose stored hash is **cheaper** than the configured cost is padded, whatever the outcome, with a key derivation of the missing iterations, so that raising `Security:Passwords:IterationCount` does not make dormant accounts distinguishable from the others by their response time. A hash whose cost differs from the configured one, in either direction, verifies as `SuccessRehashNeeded` and is replaced at the next successful login.
+
+One case cannot be equalized: after the cost is **lowered**, an account whose stored hash is more expensive keeps taking longer than an unknown user until its next login re-hashes it, and the work cannot be reduced for a password that is not known. Lowering the cost on a server that has been reachable by untrusted callers therefore leaks, for each account that has not logged in since, that the account exists. Prefer to keep the default or to raise the cost.
+
 ## Policy
 
 Applied by `Validate` when a password is set (never at login): between `Security:Passwords:MinimumLength` (default 15, floor 12) and 256 characters after normalization; not equal to the user name, ignoring case. There are no composition rules. Messages never contain the password.

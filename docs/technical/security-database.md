@@ -14,6 +14,8 @@ A database file that already exists, for example restored from a backup or creat
 
 ## Startup behaviour
 
+The file and its directory are prepared **once**, by the migrator, never while serving a request.
+
 - The server applies pending migrations **before** it accepts requests, whatever the inherited `RunMigrationsAtStartup` setting says. If the database cannot be created or migrated, the host fails to start with a non-zero exit code and a message that names the path, never the connection string.
 - Every connection sets a busy timeout (the connection string's `Default Timeout`, 30 seconds by default) and `journal_mode = WAL`, so the server and a concurrent command-line process do not fail with `SQLITE_BUSY` under normal use. A writer waits for another writer; readers never block writers.
 - A startup failure ends the process with exit code 1 and a logged error instead of an unhandled exception, so no core dump of the process memory is produced.

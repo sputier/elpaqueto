@@ -1,6 +1,5 @@
 using System.Globalization;
 using System.Security.Cryptography;
-using System.Text;
 using ElPaqueto.Security.Configuration;
 using ElPaqueto.Security.Data;
 using Microsoft.AspNetCore.Identity;
@@ -14,27 +13,30 @@ namespace ElPaqueto.Security.Passwords;
 /// hash itself, so the cost can be raised later without invalidating existing hashes.
 /// </summary>
 /// <remarks>
-/// Passwords are normalized to Unicode NFKC before hashing and verifying (NIST SP 800-63B) so the
-/// same password typed on different systems verifies. Input is bounded before normalization.
+/// Passwords are normalized to Unicode NFKC before hashing and verifying (NIST SP 800-63B). Input is
+/// bounded before normalization. Verification does the same amount of work for every outcome: see
+/// <see cref="Verify"/>.
 /// </remarks>
 internal sealed class PasswordService : IPasswordService
 {
-    // Generous bound applied before normalization: NFKC can lengthen a string, and the policy
-    // limit is applied after it. Anything longer is never hashed in full.
-    private const int MaximumRawLength = 1024;
-
     private static readonly User Placeholder = new();
 
     private readonly IPasswordHasher<User> _hasher;
+    private readonly IPasswordTimingPad _timingPad;
     private readonly SecurityPasswordOptions _options;
     private readonly string _dummyHash;
 
-    public PasswordService(IPasswordHasher<User> hasher, IOptions<ElPaquetoSecurityOptions> options)
+    public PasswordService(
+        IPasswordHasher<User> hasher,
+        IOptions<ElPaquetoSecurityOptions> options,
+        IPasswordTimingPad timingPad)
     {
         ArgumentNullException.ThrowIfNull(hasher);
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(timingPad);
 
         _hasher = hasher;
+        _timingPad = timingPad;
         _options = options.Value.Passwords;
 
         // Made once with the current parameters: verifying against it costs the same as verifying
@@ -46,14 +48,23 @@ internal sealed class PasswordService : IPasswordService
     {
         ArgumentNullException.ThrowIfNull(password);
 
-        return _hasher.HashPassword(Placeholder, Normalize(password));
+        return _hasher.HashPassword(Placeholder, PasswordNormalization.Normalize(password));
     }
 
+    /// <remarks>
+    /// An unknown or disabled user, a missing hash and an over-length password are verified against a
+    /// dummy hash made with the configured cost. A known user whose stored hash is cheaper than the
+    /// configured cost is padded with the missing iterations, whatever the outcome, so that raising
+    /// the cost does not make dormant accounts distinguishable by their response time. A hash with
+    /// a different cost succeeds as <see cref="PasswordVerification.SuccessRehashNeeded"/> in both
+    /// directions. A hash that is MORE expensive than the configured cost cannot be made faster: after
+    /// the cost is lowered, such accounts keep taking longer until their next login re-hashes them.
+    /// </remarks>
     public PasswordVerification Verify(User? user, string password)
     {
         ArgumentNullException.ThrowIfNull(password);
 
-        var normalized = Normalize(password);
+        var normalized = PasswordNormalization.Normalize(password);
 
         if (user is null
             || !user.IsActive
@@ -65,12 +76,27 @@ internal sealed class PasswordService : IPasswordService
             return PasswordVerification.Failed;
         }
 
-        return _hasher.VerifyHashedPassword(user, user.PasswordHash, normalized) switch
+        var outcome = _hasher.VerifyHashedPassword(user, user.PasswordHash, normalized) switch
         {
             PasswordVerificationResult.Success => PasswordVerification.Success,
             PasswordVerificationResult.SuccessRehashNeeded => PasswordVerification.SuccessRehashNeeded,
             _ => PasswordVerification.Failed,
         };
+
+        if (PasswordHashFormat.TryGetIterations(user.PasswordHash, out var stored))
+        {
+            if (stored < _options.IterationCount)
+            {
+                _timingPad.Pad(_options.IterationCount - stored);
+            }
+
+            if (stored != _options.IterationCount && outcome == PasswordVerification.Success)
+            {
+                outcome = PasswordVerification.SuccessRehashNeeded;
+            }
+        }
+
+        return outcome;
     }
 
     public IReadOnlyList<string> Validate(string password, string? userName = null)
@@ -78,7 +104,7 @@ internal sealed class PasswordService : IPasswordService
         ArgumentNullException.ThrowIfNull(password);
 
         var errors = new List<string>();
-        var normalized = Normalize(password);
+        var normalized = PasswordNormalization.Normalize(password);
         var length = LengthOf(normalized);
 
         if (length < _options.MinimumLength)
@@ -96,19 +122,12 @@ internal sealed class PasswordService : IPasswordService
         }
 
         if (userName is not null
-            && string.Equals(normalized, Normalize(userName), StringComparison.OrdinalIgnoreCase))
+            && string.Equals(normalized, PasswordNormalization.Normalize(userName), StringComparison.OrdinalIgnoreCase))
         {
             errors.Add("The password must not be the same as the user name.");
         }
 
         return errors;
-    }
-
-    private static string Normalize(string value)
-    {
-        var bounded = value.Length > MaximumRawLength ? value[..MaximumRawLength] : value;
-
-        return bounded.Normalize(NormalizationForm.FormKC);
     }
 
     private static int LengthOf(string value) => value.EnumerateRunes().Count();
