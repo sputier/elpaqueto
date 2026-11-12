@@ -2,6 +2,8 @@ using ElPaqueto.Core;
 using ElPaqueto.Security.Configuration;
 using ElPaqueto.Security.Data;
 using ElPaqueto.Security.Passwords;
+using ElPaqueto.Security.Transport;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -20,8 +22,9 @@ public static class ElPaquetoSecurityApplicationExtensions
     /// <param name="app">The application to extend.</param>
     /// <returns>The same <paramref name="app"/> instance, to allow chaining.</returns>
     /// <remarks>
-    /// Registers the validated <c>Security</c> options and the security database, which is migrated
-    /// before the server accepts requests. Authentication, authorization and API keys are added by
+    /// Registers the validated <c>Security</c> options, the security database, which is migrated
+    /// before the server accepts requests, password hashing, and the trusted-proxy configuration
+    /// used by <see cref="ElPaquetoSecurityPipelineExtensions.UseElPaquetoForwardedHeaders"/>. Authentication, authorization and API keys are added by
     /// later changes behind this single entry point.
     /// </remarks>
     public static ElPaquetoApplication AddElPaquetoSecurity(this ElPaquetoApplication app)
@@ -56,6 +59,9 @@ public static class ElPaquetoSecurityApplicationExtensions
             }));
         });
         services.AddSingleton<IPasswordService, PasswordService>();
+
+        services.AddSingleton<IPostConfigureOptions<ForwardedHeadersOptions>, ConfigureTrustedForwardedHeaders>();
+        services.AddSingleton<IHostedService, TransportStartupWarnings>();
 
         return app;
     }
