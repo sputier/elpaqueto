@@ -1,0 +1,66 @@
+# EXAMPLE: Traefik v3 in front of ElPaqueto at https://nuget.example.test, configured with Compose labels.
+# Explained in docs/user/reverse-proxy.md. Placeholders as in docker-compose.example.yml:
+# ghcr.io/OWNER/elpaqueto:TAG (or ELPAQUETO_IMAGE), nuget.example.test, and the documentation subnet
+# 198.51.100.0/24 (replace it with a free private subnet, in both places).
+
+services:
+  traefik:
+    image: traefik:v3.7.18
+    restart: unless-stopped
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=elpaqueto-proxy
+      # HTTPS only: no plain-HTTP entry point for the feed (a redirect would make clients resend credentials).
+      - --entrypoints.websecure.address=:443
+      # Traefik v3 reads the whole request within 60 s by default, which cuts long pushes of large
+      # packages. Allow up to 10 minutes; raise it for slower links or larger packages.
+      - --entrypoints.websecure.transport.respondingTimeouts.readTimeout=600s
+      # TLS: add a certificate resolver (ACME) for your public host name, see Traefik's documentation.
+      # Without one, Traefik serves its self-signed default certificate (tests only).
+    ports:
+      - "443:443"
+    volumes:
+      # Read-only access to the Docker API, to read the labels below. Anyone who controls Traefik controls
+      # this socket: keep the Traefik dashboard and API disabled (the default here).
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - proxy
+
+  elpaqueto:
+    image: ${ELPAQUETO_IMAGE:-ghcr.io/OWNER/elpaqueto:TAG}
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 10s
+    environment:
+      Security__PublicBaseUrl: "https://nuget.example.test"
+      Security__ReverseProxy__KnownNetworks__0: "198.51.100.0/24"
+    volumes:
+      - elpaqueto-data:/data
+    networks:
+      - proxy
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.elpaqueto.rule=Host(`nuget.example.test`)
+      - traefik.http.routers.elpaqueto.entrypoints=websecure
+      - traefik.http.routers.elpaqueto.tls=true
+      - traefik.http.services.elpaqueto.loadbalancer.server.port=8080
+      # No body-size middleware: Traefik sets no request body limit unless the "buffering" middleware is
+      # used, and that middleware would also hold whole uploads in memory or on disk. No basicAuth
+      # middleware either: the Authorization header must reach ElPaqueto unchanged.
+
+volumes:
+  elpaqueto-data:
+
+networks:
+  proxy:
+    name: elpaqueto-proxy
+    ipam:
+      config:
+        - subnet: 198.51.100.0/24
