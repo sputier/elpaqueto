@@ -32,6 +32,10 @@ With IIS ([official microsoft documentation](https://learn.microsoft.com/aspnet/
 
 For more information, please refer to the [documentation].
 
+### Building from source
+
+Building requires the **.NET 10 SDK** (the pinned version is in `global.json`; check yours with `dotnet --list-sdks`). If `dotnet` reports `A compatible .NET SDK was not found`, install the .NET 10 SDK. See `CONTRIBUTING.md` for details.
+
 ## 📦 Features
 
 * **Cross-platform**: runs on Windows, macOS, and Linux!

@@ -285,7 +285,7 @@ dotnet nuget add source "http://localhost:5000/v3/index.json" --name "bagetter" 
 
 BaGetter supports multiple database engines for storing package information:
 
-- MySQL: `MySql`
+- MySQL: `MySql` (**not included in this build**: the Pomelo MySQL provider has no release compatible with Entity Framework Core 10 yet)
 - SQLite: `Sqlite`
 - SQL Server: `SqlServer`
 - PostgreSQL: `PostgreSql`

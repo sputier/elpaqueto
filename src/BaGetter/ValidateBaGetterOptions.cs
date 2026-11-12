@@ -20,7 +20,6 @@ public class ValidateBaGetterOptions
         = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "AzureTable",
-            "MySql",
             "PostgreSql",
             "Sqlite",
             "SqlServer",
