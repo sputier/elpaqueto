@@ -1,6 +1,6 @@
 # Authentication
 
-HTTP Basic authentication is implemented by `ElPaquetoBasicAuthenticationHandler` (`src/ElPaqueto.Security/Authentication/`). It replaces the handler inherited from BaGetter and is registered under the same scheme name, `NugetBasicAuthentication`, as default authenticate and challenge scheme, so the controllers that reference it did not change ([ADR 0002](../adr/0002-authentication-architecture.md), decision 3). The policy `NuGetUserPolicy` requires an authenticated user; the permission model and deny-by-default are separate changes.
+HTTP Basic authentication is implemented by `ElPaquetoBasicAuthenticationHandler` (`src/ElPaqueto.Security/Authentication/`). It replaces the handler inherited from BaGetter and is registered under the same scheme name, `NugetBasicAuthentication`, as default authenticate and challenge scheme, so the controllers that reference it did not change ([ADR 0002](../adr/0002-authentication-architecture.md), decision 3). The policy `NuGetUserPolicy` and the fallback policy are decided by the permission table: see [authorization](authorization.md).
 
 ## Flow of a request
 
@@ -28,4 +28,4 @@ NuGet clients send credentials on every request and a password hash is deliberat
 
 ## What is not covered yet
 
-API keys (`X-NuGet-ApiKey`), throttling of failed attempts, HTTPS enforcement, per-route permissions and deny-by-default are separate changes. Until deny-by-default lands, the Razor pages and the publish endpoints are not protected by this handler: **do not expose the server to untrusted networks yet.**
+API keys (`X-NuGet-ApiKey`), throttling of failed attempts and HTTPS enforcement are separate changes: **do not expose the server to untrusted networks yet.**

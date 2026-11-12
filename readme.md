@@ -3,7 +3,7 @@
 BaGetter is a lightweight [NuGet] and [symbol] server, written in C#.
 It's forked from [BaGet] for progressive and community driven development.
 
-> **Development status:** ElPaqueto is a fork of BaGetter that is being turned into a private NuGet server with built-in authentication. Users are now authenticated with HTTP Basic against a security database, but deny-by-default authorization is not in place yet: the web pages and the publish endpoints are not protected. **Do not expose this server to untrusted networks yet.**
+> **Development status:** ElPaqueto is a fork of BaGetter that is being turned into a private NuGet server with built-in authentication. Users are authenticated with HTTP Basic against a security database and every route is denied unless the caller holds the permission it needs. Not in place yet: API keys, throttling of failed login attempts and HTTPS enforcement. **Do not expose this server to untrusted networks yet.**
 
 <p align="center">
   <img width="100%" src="https://user-images.githubusercontent.com/737941/50140219-d8409700-0258-11e9-94c9-dad24d2b48bb.png">

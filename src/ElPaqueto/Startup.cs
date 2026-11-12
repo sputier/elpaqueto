@@ -2,6 +2,7 @@ using System;
 using ElPaqueto.Core;
 using ElPaqueto.Core.Extensions;
 using ElPaqueto.Security;
+using ElPaqueto.Security.Authorization;
 using ElPaqueto.Tencent;
 using ElPaqueto.Web;
 using Microsoft.AspNetCore.Authentication;
@@ -102,18 +103,9 @@ public class Startup
             var elpaqueto = new ElPaquetoEndpointBuilder();
 
             elpaqueto.MapEndpoints(endpoints);
-        });
 
-        app.UseHealthChecks(options.HealthCheck.Path,
-            new HealthCheckOptions
-            {
-                ResponseWriter = async (context, report) =>
-                {
-                    await report.FormatAsJson(context.Response.Body, options.Statistics.ListConfiguredServices, options.HealthCheck.StatusPropertyName,
-                        context.RequestAborted);
-                },
-                Predicate = check => check.IsConfigured(options)
-            }
-        );
+            // A real endpoint, not terminal middleware: authorization must apply to it.
+            endpoints.MapElPaquetoHealthChecks(options);
+        });
     }
 }

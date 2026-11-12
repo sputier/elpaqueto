@@ -1,18 +1,9 @@
 using System;
-using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Threading.Tasks;
-using ElPaqueto.Security.Authentication;
-using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.AspNetCore.TestHost;
-using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -23,17 +14,15 @@ namespace ElPaqueto.Tests;
 /// against the real server sharing the same security database.
 /// </summary>
 /// <remarks>
-/// Only authentication is checked: <c>401</c> for bad credentials, <c>200</c> for good ones. Whether a
-/// permission grants access to an endpoint is the job of authorization, which is not part of this change,
-/// so permission changes are observed through the permission claims of the authenticated caller, read by
-/// a test-only endpoint.
+/// <c>v3/index.json</c> needs <c>Read</c> and <c>health/details</c> needs <c>Admin</c> (deny-by-default
+/// authorization): <c>401</c> means the credentials were refused, <c>403</c> that they were accepted
+/// without the permission.
 /// </remarks>
 public class AdminCommandAuthenticationIntegrationTests : IDisposable
 {
     private const string AdminPassword = "the first administrator passphrase";
     private const string UserPassword = "the passphrase of alice";
     private const string NewUserPassword = "the new passphrase of alice";
-    private const string PermissionsPath = "/test-only/permissions";
 
     private readonly AdminCommandLine _commands = new();
     private readonly ElPaquetoApplication _app;
@@ -60,6 +49,16 @@ public class AdminCommandAuthenticationIntegrationTests : IDisposable
         await _commands.RunAsync(AdminPassword + "\n", 0, "admin", "bootstrap", "--username", "admin", "--password-stdin");
 
         Assert.Equal(HttpStatusCode.OK, await GetIndexAsync("admin", AdminPassword));
+    }
+
+    [Fact]
+    public async Task TheBootstrappedAdministrator_HoldsTheAdminPermission()
+    {
+        await _commands.RunAsync(AdminPassword + "\n", 0, "admin", "bootstrap", "--username", "admin", "--password-stdin");
+
+        using var client = Client("admin", AdminPassword);
+
+        Assert.Equal(HttpStatusCode.OK, await GetAsync(client, "health/details"));
     }
 
     [Fact]
@@ -96,47 +95,48 @@ public class AdminCommandAuthenticationIntegrationTests : IDisposable
     }
 
     [Fact]
-    public async Task ACreatedReader_AuthenticatesWithReadOnly()
+    public async Task ACreatedReader_CanReadButNotAdminister()
     {
         await CreateAliceAsync("reader");
+        using var client = Client("alice", UserPassword);
 
-        Assert.Equal(HttpStatusCode.OK, await GetIndexAsync("alice", UserPassword));
-        Assert.Equal(HttpStatusCode.Unauthorized, await GetIndexAsync("alice", NewUserPassword));
-        Assert.Equal("Read", await GetPermissionsAsync("alice", UserPassword));
+        Assert.Equal(HttpStatusCode.OK, await GetAsync(client, "v3/index.json"));
+        Assert.Equal(HttpStatusCode.Forbidden, await GetAsync(client, "health/details"));
     }
 
     [Fact]
     public async Task Disable_RejectsTheNextRequest_AndEnable_AcceptsItAgain()
     {
         await CreateAliceAsync("reader");
-        using var client = AuthenticatedClient(_app, "alice", UserPassword);
-        Assert.Equal(HttpStatusCode.OK, await GetIndexAsync(client));
+        using var client = Client("alice", UserPassword);
+        Assert.Equal(HttpStatusCode.OK, await GetAsync(client, "v3/index.json"));
 
         await _commands.RunAsync(string.Empty, 0, "admin", "user", "disable", "alice");
 
         // The same client, with the password it was just accepted with: the verification cache must not hide the change.
-        Assert.Equal(HttpStatusCode.Unauthorized, await GetIndexAsync(client));
+        Assert.Equal(HttpStatusCode.Unauthorized, await GetAsync(client, "v3/index.json"));
 
         await _commands.RunAsync(string.Empty, 0, "admin", "user", "enable", "alice");
 
-        Assert.Equal(HttpStatusCode.OK, await GetIndexAsync(client));
+        Assert.Equal(HttpStatusCode.OK, await GetAsync(client, "v3/index.json"));
     }
 
     [Fact]
     public async Task SetPermissions_AppliesToTheNextRequest()
     {
         await CreateAliceAsync("reader");
-        using var app = WithPermissionsEndpoint();
-        using var client = AuthenticatedClient(app, "alice", UserPassword);
-        Assert.Equal("Read", await client.GetStringAsync(PermissionsPath));
+        using var client = Client("alice", UserPassword);
+        Assert.Equal(HttpStatusCode.OK, await GetAsync(client, "v3/index.json"));
 
-        await _commands.RunAsync(string.Empty, 0, "admin", "user", "set-permissions", "alice", "--permissions", "publisher");
-
-        Assert.Equal("Read,Publish", await client.GetStringAsync(PermissionsPath));
-
+        // Read removed: still authenticated, no longer allowed to read.
         await _commands.RunAsync(string.Empty, 0, "admin", "user", "set-permissions", "alice", "--permissions", "publish");
 
-        Assert.Equal("Publish", await client.GetStringAsync(PermissionsPath));
+        Assert.Equal(HttpStatusCode.Forbidden, await GetAsync(client, "v3/index.json"));
+
+        await _commands.RunAsync(string.Empty, 0, "admin", "user", "set-permissions", "alice", "--permissions", "read,admin");
+
+        Assert.Equal(HttpStatusCode.OK, await GetAsync(client, "v3/index.json"));
+        Assert.Equal(HttpStatusCode.OK, await GetAsync(client, "health/details"));
     }
 
     [Fact]
@@ -145,12 +145,12 @@ public class AdminCommandAuthenticationIntegrationTests : IDisposable
         await CreateAliceAsync("reader");
 
         // Signed in once, so the old password is in the verification cache.
-        using var oldClient = AuthenticatedClient(_app, "alice", UserPassword);
-        Assert.Equal(HttpStatusCode.OK, await GetIndexAsync(oldClient));
+        using var oldClient = Client("alice", UserPassword);
+        Assert.Equal(HttpStatusCode.OK, await GetAsync(oldClient, "v3/index.json"));
 
         await _commands.RunAsync(NewUserPassword + "\n", 0, "admin", "user", "reset-password", "alice", "--password-stdin");
 
-        Assert.Equal(HttpStatusCode.Unauthorized, await GetIndexAsync(oldClient));
+        Assert.Equal(HttpStatusCode.Unauthorized, await GetAsync(oldClient, "v3/index.json"));
         Assert.Equal(HttpStatusCode.OK, await GetIndexAsync("alice", NewUserPassword));
     }
 
@@ -168,66 +168,28 @@ public class AdminCommandAuthenticationIntegrationTests : IDisposable
     private Task CreateAliceAsync(string permissions)
         => _commands.RunAsync(UserPassword + "\n", 0, "admin", "user", "create", "alice", "--permissions", permissions, "--password-stdin");
 
-    private async Task<string> GetPermissionsAsync(string userName, string password)
+    private HttpClient Client(string userName, string password)
     {
-        using var app = WithPermissionsEndpoint();
-        using var client = AuthenticatedClient(app, userName, password);
-        return await client.GetStringAsync(PermissionsPath);
-    }
+        var client = _app.CreateAnonymousClient();
+        if (userName is not null)
+        {
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+                "Basic",
+                Convert.ToBase64String(Encoding.UTF8.GetBytes($"{userName}:{password}")));
+        }
 
-    /// <summary>
-    /// The server with an extra endpoint that authenticates the caller with the default scheme and
-    /// returns its permission claims, comma-separated.
-    /// </summary>
-    private WebApplicationFactory<Startup> WithPermissionsEndpoint()
-        => _app.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
-            services.AddSingleton<IStartupFilter, PermissionsEndpointStartupFilter>()));
-
-    private static HttpClient AuthenticatedClient(WebApplicationFactory<Startup> app, string userName, string password)
-    {
-        var client = app.CreateClient();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
-            "Basic",
-            Convert.ToBase64String(Encoding.UTF8.GetBytes($"{userName}:{password}")));
         return client;
     }
 
     private async Task<HttpStatusCode> GetIndexAsync(string userName, string password)
     {
-        if (userName is null)
-        {
-            using var anonymous = _app.CreateAnonymousClient();
-            return await GetIndexAsync(anonymous);
-        }
-
-        using var client = AuthenticatedClient(_app, userName, password);
-        return await GetIndexAsync(client);
+        using var client = Client(userName, password);
+        return await GetAsync(client, "v3/index.json");
     }
 
-    private static async Task<HttpStatusCode> GetIndexAsync(HttpClient client)
+    private static async Task<HttpStatusCode> GetAsync(HttpClient client, string path)
     {
-        using var response = await client.GetAsync("v3/index.json");
+        using var response = await client.GetAsync(path);
         return response.StatusCode;
-    }
-
-    private sealed class PermissionsEndpointStartupFilter : IStartupFilter
-    {
-        public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
-        {
-            app.Map(PermissionsPath, branch => branch.Run(async context =>
-            {
-                var result = await context.AuthenticateAsync();
-                if (!result.Succeeded)
-                {
-                    context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                    return;
-                }
-
-                var permissions = result.Principal.FindAll(ElPaquetoClaimTypes.Permission).Select(claim => claim.Value);
-                await context.Response.WriteAsync(string.Join(",", permissions));
-            }));
-
-            next(app);
-        };
     }
 }

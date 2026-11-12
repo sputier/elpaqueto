@@ -25,6 +25,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="ElPaqueto.Security.Tests" />
+    <InternalsVisibleTo Include="ElPaqueto.Tests" />
   </ItemGroup>
 
 </Project>
