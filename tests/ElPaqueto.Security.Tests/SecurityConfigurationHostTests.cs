@@ -152,6 +152,32 @@ public sealed class SecurityConfigurationHostTests : IDisposable
     }
 
     [Fact]
+    public void PlainValueWhereTheApiKeysSectionIsExpected_IsRejected()
+    {
+        using var host = BuildHost(out var logs, new Dictionary<string, string?>
+        {
+            ["Security:ApiKeys"] = "00:05:00",
+        });
+
+        Assert.False(host.ValidateElPaquetoSecurityOptions());
+        Assert.Contains(logs.Messages, m => m.Contains("Security:ApiKeys is a section", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void LastUsedUpdateInterval_IsBoundFromConfiguration()
+    {
+        using var host = BuildHost(out _, new Dictionary<string, string?>
+        {
+            ["Security:ApiKeys:LastUsedUpdateInterval"] = "00:00:30",
+        });
+
+        Assert.True(host.ValidateElPaquetoSecurityOptions());
+        Assert.Equal(
+            TimeSpan.FromSeconds(30),
+            host.Services.GetRequiredService<IOptions<ElPaquetoSecurityOptions>>().Value.ApiKeys.LastUsedUpdateInterval);
+    }
+
+    [Fact]
     public void NonNumericIterationCount_FailsWithoutEchoingTheValue()
     {
         const string secretMarker = "s3cr3t-marker";
@@ -163,6 +189,47 @@ public sealed class SecurityConfigurationHostTests : IDisposable
         Assert.False(host.ValidateElPaquetoSecurityOptions());
         Assert.NotEmpty(logs.Messages);
         Assert.All(logs.Messages, m => Assert.DoesNotContain(secretMarker, m, StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("Security:ReverseProxy:KnownNetworks:0", "0.0.0.0/0", "Security:ReverseProxy:KnownNetworks:0")]
+    [InlineData("Security:ReverseProxy:KnownNetworks:0", "::/0", "Security:ReverseProxy:KnownNetworks:0")]
+    [InlineData("Security:ReverseProxy:KnownProxies:0", "not-an-address", "Security:ReverseProxy:KnownProxies:0")]
+    [InlineData("Security:ReverseProxy:ForwardLimit", "0", "Security:ReverseProxy:ForwardLimit")]
+    [InlineData("Security:PublicBaseUrl", "http://nuget.example.test", "Security:PublicBaseUrl")]
+    [InlineData("Security:PublicBaseUrl", "nuget.example.test", "Security:PublicBaseUrl")]
+    [InlineData("Security:ReverseProxy", "198.51.100.0/24", "Security:ReverseProxy is a section")]
+    [InlineData("Security:Transport", "false", "Security:Transport is a section")]
+    [InlineData("Security:ReverseProxy:KnownProxies", "198.51.100.1", "Security:ReverseProxy:KnownProxies is a list")]
+    [InlineData("Security:ReverseProxy:KnownNetworks", "198.51.100.0/24", "Security:ReverseProxy:KnownNetworks is a list")]
+    public void InvalidProxyOrTransportSetting_FailsAndNamesTheSetting(string key, string value, string expected)
+    {
+        using var host = BuildHost(out var logs, new Dictionary<string, string?> { [key] = value });
+
+        Assert.False(host.ValidateElPaquetoSecurityOptions());
+        Assert.Contains(logs.Messages, m => m.Contains(expected, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ValidProxyAndTransportSettings_PassValidation()
+    {
+        using var host = BuildHost(out var logs, new Dictionary<string, string?>
+        {
+            ["Security:ReverseProxy:KnownProxies:0"] = "192.0.2.10",
+            ["Security:ReverseProxy:KnownNetworks:0"] = "203.0.113.0/24",
+            ["Security:ReverseProxy:KnownNetworks:1"] = "2001:db8::/32",
+            ["Security:ReverseProxy:ForwardLimit"] = "2",
+            ["Security:PublicBaseUrl"] = "https://nuget.example.test",
+            ["Security:Transport:RequireHttps"] = "true",
+        });
+
+        Assert.True(host.ValidateElPaquetoSecurityOptions());
+        Assert.Empty(logs.Messages);
+
+        var options = host.Services.GetRequiredService<IOptions<ElPaquetoSecurityOptions>>().Value;
+        Assert.Equal(["192.0.2.10"], options.ReverseProxy.KnownProxies);
+        Assert.Equal(["203.0.113.0/24", "2001:db8::/32"], options.ReverseProxy.KnownNetworks);
+        Assert.Equal(2, options.ReverseProxy.ForwardLimit);
     }
 
     private IHost BuildHost(

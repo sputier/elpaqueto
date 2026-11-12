@@ -142,6 +142,10 @@ public sealed class AdminCommandProcessTests : IDisposable
     private Dictionary<string, string> HostEnvironment() => new()
     {
         ["Security__Database__ConnectionString"] = _database.ConnectionString,
+
+        // The same cost as AdminCli, which verifies the stored hashes: a hash of another cost verifies
+        // as SuccessRehashNeeded.
+        ["Security__Passwords__IterationCount"] = "100000",
         ["Database__ConnectionString"] = $"Data Source={PackageDatabasePath}",
         ["Storage__Path"] = Path.Combine(_database.Directory, "packages"),
         ["Logging__Console__LogLevel__Default"] = "Information",

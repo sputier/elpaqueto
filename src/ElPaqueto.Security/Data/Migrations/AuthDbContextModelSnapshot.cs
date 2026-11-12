@@ -17,6 +17,67 @@ namespace ElPaqueto.Security.Data.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.15");
 
+            modelBuilder.Entity("ElPaqueto.Security.Data.ApiKey", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ConcurrencyStamp")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("ExpiresAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("KeyId")
+                        .IsRequired()
+                        .HasMaxLength(12)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastUsedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("OwnerUserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Permissions")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("RevokedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<byte[]>("SecretHash")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("BLOB");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("KeyId")
+                        .IsUnique();
+
+                    b.HasIndex("OwnerUserId");
+
+                    b.ToTable("ApiKeys", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ApiKeys_KeyId", "length(\"KeyId\") = 12");
+
+                            t.HasCheckConstraint("CK_ApiKeys_Permissions", "\"Permissions\" BETWEEN 0 AND 7");
+
+                            t.HasCheckConstraint("CK_ApiKeys_SecretHash", "length(\"SecretHash\") = 32");
+                        });
+                });
+
             modelBuilder.Entity("ElPaqueto.Security.Data.User", b =>
                 {
                     b.Property<Guid>("Id")
@@ -66,6 +127,17 @@ namespace ElPaqueto.Security.Data.Migrations
                         {
                             t.HasCheckConstraint("CK_Users_Permissions", "\"Permissions\" BETWEEN 0 AND 7");
                         });
+                });
+
+            modelBuilder.Entity("ElPaqueto.Security.Data.ApiKey", b =>
+                {
+                    b.HasOne("ElPaqueto.Security.Data.User", "Owner")
+                        .WithMany()
+                        .HasForeignKey("OwnerUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Owner");
                 });
 #pragma warning restore 612, 618
         }

@@ -1,3 +1,4 @@
+using ElPaqueto.Security.Authentication;
 using ElPaqueto.Security.Passwords;
 using ElPaqueto.Security.Users;
 using McMaster.Extensions.CommandLineUtils;

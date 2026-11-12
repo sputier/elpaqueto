@@ -25,6 +25,8 @@ public sealed class AuthDatabaseFixture : IDisposable
 
     public AuthDbContext CreateContext()
     {
+        AuthDatabaseFile.Prepare(ConnectionString);
+
         var builder = new DbContextOptionsBuilder<AuthDbContext>();
         AuthDbContextConfiguration.ConfigureCore(builder, ConnectionString);
         return new AuthDbContext(builder.Options);
