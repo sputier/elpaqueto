@@ -33,6 +33,21 @@ dotnet test --configuration Release --no-build
 
 A failing test must be fixed or explained in the pull request. Do not skip or disable it to make a check pass.
 
+## Code quality
+
+Code written for ElPaqueto builds under a strict baseline: nullable reference types, warnings as errors and a pinned analysis level (`eng/ElPaqueto.Build.props`). The baseline applies only to the projects listed in `ElPaquetoStrictProjects` in that file. Add a new project to the list in the pull request that creates it.
+
+- Code inherited from BaGetter keeps its historical settings. Warnings in inherited code are not fixed here, so that upstream changes stay mechanical to port. Fix them upstream and port the fix back.
+- ElPaqueto code must build without warnings. Every suppression needs a justification, either `[SuppressMessage(Justification = "...")]` or a comment next to the `.editorconfig` entry.
+- Formatting of the strict projects is verified in CI. Run the same check locally, or apply the formatting:
+
+```bash
+bash eng/format-strict.sh          # verify
+bash eng/format-strict.sh --fix    # apply
+```
+
+Files authored for ElPaqueto use LF line endings on every platform (see `.gitattributes`).
+
 ## Proposing a change
 
 1. **Start with an issue.** For a bug, use the bug report form. For a new feature or a behaviour change, open a feature request first and wait for feedback before writing code: it avoids work that cannot be merged. Small fixes such as typos can go straight to a pull request.

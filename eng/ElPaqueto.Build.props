@@ -1,0 +1,27 @@
+<Project>
+
+  <!--
+    Strict build baseline for code written for ElPaqueto (as opposed to code inherited from
+    BaGetter). Inherited projects keep their historical settings so that upstream changes stay
+    mechanical to port. Add a project here in the pull request that creates it.
+    The list is delimited by semicolons on both ends; names are project names without extension.
+  -->
+  <PropertyGroup>
+    <ElPaquetoStrictProjects>;ElPaqueto.Security;ElPaqueto.Security.Tests;</ElPaquetoStrictProjects>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="$(ElPaquetoStrictProjects.Contains(';$(MSBuildProjectName);'))">
+    <ElPaquetoStrict>true</ElPaquetoStrict>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <!-- Pinned (not "latest") so analyzer output does not drift with the SDK. Raise it with any framework retarget. -->
+    <AnalysisLevel>10.0-recommended</AnalysisLevel>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- No library is published in V1, so missing XML comments on public members are not an error. -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+
+</Project>

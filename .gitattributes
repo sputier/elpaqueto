@@ -51,3 +51,7 @@
 *.sln text=auto eol=crlf
 
 *.sh eol=lf
+# Files authored for ElPaqueto use LF on every platform (eng scripts must run on Linux).
+/eng/** text eol=lf
+/src/ElPaqueto.Security/** text eol=lf
+/tests/ElPaqueto.Security.Tests/** text eol=lf
