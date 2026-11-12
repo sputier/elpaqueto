@@ -6,7 +6,7 @@ Per-user API keys are stored in the [security database](security-database.md) an
 
 ```text
 epq_<keyId>_<secret>
-epq_3fK9a0LmQ2xZ_q8VnR1c0dYpT6uWb2sE9hJ4kL7mN0oP3rS5tU8vX1yZ2aB
+epq_AAAAAAAAAAAA_0000000000000000000000000000000000000000000   (shape only: 12 + 43 base62 characters)
 ```
 
 | Part | Length | Content |
