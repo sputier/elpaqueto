@@ -172,11 +172,13 @@ jobs:
       - name: Build
         run: dotnet build --configuration Release --no-restore
 
+      # No memory dump on a hang: the test process holds the generated passwords and keys, and the
+      # results are uploaded as an artifact.
       - name: End-to-end tests
         run: >-
           dotnet test tests/ElPaqueto.EndToEnd.Tests --configuration Release --no-build
           --filter "Category=EndToEnd" --logger trx --results-directory TestResults
-          --blame-hang --blame-hang-timeout 20m
+          --blame-hang --blame-hang-timeout 20m --blame-hang-dump-type none
 
       - name: Fail when no test was executed
         if: always()

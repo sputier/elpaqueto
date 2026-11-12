@@ -60,7 +60,7 @@ With a `Read` user, the crawl reads `v3/index.json`, adds the URLs the V3 protoc
 
 ## What the real clients do
 
-Recorded with the .NET SDK 10.0.401 (NuGet 7.9.0) on Windows and Linux. The tests assert these facts, so a change in a client or in the server shows up as a failing test.
+Recorded with the .NET SDK 10.0.401 (NuGet 7.9.0) on Windows 11 and, in CI, the SDK 10.0.404 that `global.json` rolls forward to on `ubuntu-latest` and `windows-latest`; the same counts were observed on both. The tests assert these facts, so a change in a client or in the server shows up as a failing test.
 
 **Every request is sent twice.** NuGet sends each request (service index, flat container, `.nupkg`, push, delete) first without credentials, gets `401` with the Basic challenge, then sends it again with the source credentials. It never sends Basic credentials pre-emptively. The server log of any scenario shows the pairs.
 
