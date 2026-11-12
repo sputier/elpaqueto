@@ -123,4 +123,37 @@ Health probes from other machines (an orchestrator, a load balancer, an uptime m
 
 `false` disables the check and logs a warning at startup. Use it only on an isolated test network.
 
+### `Security:Throttling`
+
+Failed sign-in attempts are counted in memory and, beyond a limit, refused for a while before any password is checked. See [sign-in throttling](../technical/throttling.md) for the design and its threat model.
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| `Security:Throttling:ClientFailureLimit` | `30` | Failures, for any user name, after which a client address is throttled. Between 1 and 1000. IPv6 addresses are counted by /64 network. |
+| `Security:Throttling:ClientWindow` | `00:10:00` | The window in which client failures are counted. Between `00:00:01` and `1.00:00:00`. |
+| `Security:Throttling:PairFailureLimit` | `5` | Failures for one user name from one client after which that user name is throttled for that client. Between 1 and 1000. |
+| `Security:Throttling:PairWindow` | `00:15:00` | The window in which pair failures are counted. Between `00:00:01` and `1.00:00:00`. |
+| `Security:Throttling:AccountFailureLimit` | `50` | Failures for one user name, from all clients, after which that user name is throttled for the clients that failed for it in the last `PairWindow`. A client without such a failure, such as the account's owner, is not affected. Between 1 and 1000. |
+| `Security:Throttling:AccountWindow` | `01:00:00` | The window in which account failures are counted. Between `00:00:01` and `1.00:00:00`. |
+| `Security:Throttling:InitialThrottleDuration` | `00:01:00` | How long a counter refuses after its first trip. Each further trip doubles it. Between `00:00:01` and `1.00:00:00`, and not more than `MaximumThrottleDuration`. |
+| `Security:Throttling:MaximumThrottleDuration` | `00:15:00` | The longest throttle. Between `00:00:01` and `1.00:00:00`. There is no permanent lockout. |
+| `Security:Throttling:MaxTrackedEntries` | `50000` | Counters kept for each kind (client, pair, user name), which bounds memory whatever an attacker sends. Between 100 and 10000000. |
+| `Security:Throttling:MaxConcurrentVerifications` | `0` | Password hashes that may run at once; `0` means the processor count. Between 0 and 1024. |
+| `Security:Throttling:VerificationQueueLimit` | `100` | Verifications that may wait for a free slot, and attempts that may wait for another attempt of the same user name and client. Beyond it the answer is `503`. Between 0 and 10000. |
+| `Security:Throttling:BusyRetryAfter` | `00:00:05` | The `Retry-After` sent with that `503`. Between `00:00:01` and `00:10:00`. |
+
+Unknown, disabled and existing user names are counted the same way, and a successful sign-in resets only the counter of its own user name and client. The client address is the one left after trusted forwarded headers (`Security:ReverseProxy`): a client cannot change it with its own `X-Forwarded-For`.
+
+Known limitations:
+
+- Counters are per process and are lost when the server restarts.
+- Clients behind one NAT, or behind a proxy that is not listed in `Security:ReverseProxy`, share one address and therefore one client budget. Add proxy-level limits if you need more.
+
+#### Troubleshooting `429` and `503`
+
+- **`429 Too Many Requests`** means too many failed sign-ins from your address, for your user name from your address, or against your user name with a recent failure from your address. Nothing about your credentials is checked while it lasts, even correct ones. Wait for the number of seconds in `Retry-After` (at most `MaximumThrottleDuration`), then fix the credentials before retrying: a stale password in a NuGet configuration or a credential provider keeps failing on its own and keeps the throttle active. The server log shows one warning per trip, with the address and the counter kind.
+- **`503 Service Unavailable`** with `Retry-After` during sign-in means the server is already running as many password checks as it allows. It is transient; if it persists under normal load, raise `MaxConcurrentVerifications` or `VerificationQueueLimit`.
+
+How NuGet clients display a `429` or `503`, and whether they retry, has not been verified yet.
+
 More settings are added to this page as the features that need them are released.
