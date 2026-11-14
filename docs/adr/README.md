@@ -4,9 +4,8 @@ This folder holds the architecture decision records (ADRs) of ElPaqueto. An ADR
 records one significant decision: the context that forced it, the decision
 itself, its consequences and the alternatives that were rejected.
 
-ADRs are plain Markdown files rendered by GitHub. They live outside the
-Docusaurus content folder (`docs/docs/`), so they do not depend on how the user
-documentation is built or published.
+ADRs are plain Markdown files rendered by GitHub, like the rest of the
+documentation: nothing needs to be built or published to read them.
 
 ## Index
 

@@ -73,8 +73,6 @@ Already running BaGetter? Read [Upgrading from BaGetter](docs/user/upgrading-fro
 - [Architecture decision records](docs/adr/README.md).
 - [Documentation index](docs/readme.md).
 
-The inherited BaGetter documentation site under `docs/docs/` is not maintained for ElPaqueto yet: prefer the pages above.
-
 ## Building from source
 
 Building needs the **.NET 10 SDK** (the exact version is pinned in `global.json`):

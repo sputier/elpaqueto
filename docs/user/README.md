@@ -38,5 +38,3 @@ Users, permissions and API keys are all managed with the `admin` commands, so th
 ## Conventions
 
 Examples use placeholders: `nuget.example.test` for the server, `<username>`, `<package>`, and a key in a file (`elpaqueto.key`) or an environment variable. Passwords are never given as command-line arguments: the `admin` commands prompt for them or read them from standard input or a file.
-
-The inherited BaGetter documentation site under [`docs/docs/`](../docs/) is not maintained for ElPaqueto: where it disagrees with these pages, these pages are right.

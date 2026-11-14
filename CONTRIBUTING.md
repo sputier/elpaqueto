@@ -7,7 +7,6 @@ ElPaqueto is a fork of BaGetter. Some of the rules below exist so that upstream 
 ## Prerequisites
 
 - The **.NET 10 SDK**. It includes the runtime. The exact SDK version is pinned in `global.json`. Run `dotnet --list-sdks` to see what is installed.
-- [Node.js], only if you work on the documentation site.
 - Docker, only if you build or test the container image.
 
 If `dotnet` reports `A compatible .NET SDK was not found`, the installed SDK does not satisfy `global.json`: install the .NET 10 SDK from the [.NET download page][.NET SDK]. Do not edit `global.json` to work around it: local builds, CI and the container image must use the same SDK.
@@ -185,7 +184,6 @@ A release is a version tag on `main`. The release workflow (`.github/workflows/r
 Add a line to the `## [Unreleased]` section of [CHANGELOG.md](CHANGELOG.md) in every pull request with a user-visible change.
 
 [.NET SDK]: https://www.microsoft.com/net/download
-[Node.js]: https://nodejs.org/
 [Conventional Commits]: https://www.conventionalcommits.org/
 [#5]: https://github.com/sputier/ElPaqueto/issues/5
 [#6]: https://github.com/sputier/ElPaqueto/issues/6

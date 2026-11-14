@@ -55,15 +55,3 @@ updates:
         update-types: [version-update:semver-major]
       - dependency-name: dotnet/aspnet
         update-types: [version-update:semver-major]
-
-  # Inherited documentation site; remove this entry if the site is dropped.
-  - package-ecosystem: npm
-    directory: /docs
-    target-branch: develop
-    schedule:
-      interval: weekly
-    commit-message:
-      prefix: build(deps)
-    groups:
-      docs-minor-and-patch:
-        update-types: [minor, patch]
