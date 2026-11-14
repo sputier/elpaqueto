@@ -15,6 +15,7 @@ How ElPaqueto is built, for contributors, reviewers and porters of upstream chan
 | [Secrets handling](secrets-handling.md) | Password hashing, API key generation and storage, logging redaction, configuration secrets. |
 | [Threat model](threat-model.md) | Assets, actors, trust boundaries, STRIDE table with the tests that back each mitigation, residual risks. |
 | [Testing](testing.md) | Test projects, how to run them, what each level covers. |
+| [End-to-end tests](e2e-tests.md) | The real-server and real-client harness, its scenarios, and what the `dotnet` CLI was observed to do. |
 
 ## Security module, in detail
 

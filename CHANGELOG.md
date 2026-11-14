@@ -30,6 +30,9 @@ No version of ElPaqueto has been released yet. The first release will contain th
 - Hardened container image, Compose example, reverse-proxy guidance and container CI with a smoke
   test and a vulnerability scan (#44, #91).
 - Release workflow that publishes the container image to the GitHub Container Registry (#47).
+- End-to-end tests with the published server and the real `dotnet` CLI on Linux and Windows (#36–#40,
+  #101).
+- Client compatibility page listing the NuGet clients that are tested, and how (#52).
 
 ### Changed
 
@@ -51,3 +54,5 @@ No version of ElPaqueto has been released yet. The first release will contain th
 
 - Inherited upstream release, documentation deployment and Helm workflows (#2, #54).
 - Stale backup test project (#4, #57).
+- Inherited BaGetter documentation site (Docusaurus) and its Node.js dependencies; its still-accurate
+  content (mirror authentication, retention, importing packages) moved to the user documentation (#51).

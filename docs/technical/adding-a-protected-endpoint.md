@@ -10,6 +10,7 @@ Every endpoint is denied until the permission table has a row for it ([authoriza
   - `EveryMatchableEndpoint_HasARowInThePermissionTable`: an endpoint has no row;
   - `EveryRowOfThePermissionTable_MatchesARealEndpoint`: a row names an endpoint that no longer exists, or the row's `Controller.Action` no longer matches;
   - `EveryRouteNameOfTheWebProject_HasARowAndNoRowIsInvented`: a route name of `src/ElPaqueto.Web/Routes.cs` has no row, or a row names a route that does not exist.
+- Once the row exists, `AuthorizationMatrixIntegrationTests.EveryRowOfThePermissionTable_HasASampleRequest` fails until the row has a sample request.
 
 ## Steps
 
@@ -23,7 +24,7 @@ Every endpoint is denied until the permission table has a row for it ([authoriza
    - for a controller, the `Controller.Action` it is meant for, so that another action reusing the route name is not opened by accident;
    - for any route that changes state, `RequiresApiKeyHeader: true` (the table's `Write` helper sets it), so that only an API key sent in `X-NuGet-ApiKey` can call it. Passwords and keys sent as Basic passwords are then refused, like on the existing write routes.
 
-4. **Add the route to the authorization matrix** in `AuthorizationIntegrationTests`: `ReadRoutes()` or `WriteRoutes()` (method and path). The theories built on them then check, for that route, anonymous `401`, `403` without the permission, success with it, and for writes the refusal of passwords, Basic-sent keys and `Read` keys.
+4. **Add a sample request** for the row in `tests/ElPaqueto.Tests/Support/EndpointSamples.cs`: a path that reaches the endpoint (`EverySample_IsRoutedToItsOwnRow` checks it). The security suites read the rows from the table itself, so the new row is then tested with every kind of credential (`AuthorizationMatrixIntegrationTests`), with every method it does not allow, and, if you add it to `PathCases`, with tampered spellings of its path (`RequestTamperingIntegrationTests`). See [security suites](testing.md#security-suites). Also add the route to `ReadRoutes()` or `WriteRoutes()` in `AuthorizationIntegrationTests`, which check the same decisions with plain request lists.
 
 5. **Add behaviour tests** for anything the matrix does not cover: side effects that must not happen before authorization (see `WebUiIntegrationTests.AnonymousPackagePage_WithMirrorEnabled_MakesNoUpstreamRequest`), new parameters, audit events.
 

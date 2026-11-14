@@ -16,7 +16,7 @@ namespace ElPaqueto.Tests;
 /// <summary>
 /// Uses the official NuGet client to interact with the ElPaqueto test host.
 /// </summary>
-public class NuGetClientIntegrationTests : IDisposable
+public partial class NuGetClientIntegrationTests : IDisposable
 {
     private readonly ElPaquetoApplication _app;
     private readonly HttpClient _client;

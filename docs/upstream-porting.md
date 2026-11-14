@@ -185,15 +185,17 @@ The pull request says which and why.
 | `tests/BaGetter.Tests/BaGetter - Backup.Tests.csproj` | Deleted (#4). Drop the hunks. |
 | `CODE_OF_CONDUCT.md` | Deleted (#7): it routed reports to an upstream maintainer. Drop the hunks. |
 | `.github/ISSUE_TEMPLATE/Bug_report.md`, `Feature_request.md` | Deleted (#8), replaced by issue forms. Drop the hunks. |
-| `deployment templates/chart/bagetter/` (Helm chart) and `docs/` (Docusaurus site) | Still present and not mapped by the script. If #51 removes them, drop the hunks. |
+| `docs/docs/`, `docs/src/`, `docs/static/`, `docs/docusaurus.config.ts`, `docs/sidebars.ts`, `docs/package.json`, `docs/yarn.lock`, `docs/babel.config.js`, `docs/tsconfig.json`, `docs/index.html`, `docs/.gitignore` (Docusaurus site) | Deleted (#51). The script leaves `docs/` paths unmapped, so hunks on them show as `CONFLICT (modify/delete)`: drop them. Read the upstream change first: if it documents a behaviour change that ElPaqueto ports, carry it into `docs/user/` or `docs/technical/`. |
+| `deployment templates/chart/bagetter/` (Helm chart) | Still present and not mapped by the script; its fate is still open (#51). |
 | `src/BaGetter.Web/Authentication/NugetBasicAuthenticationHandler.cs` (inherited authentication handler), its unit tests `tests/BaGetter.Web.Tests/Authentication/NugetBasicAuthenticationHandlerTests.cs`, and `src/BaGetter/IServiceCollectionExtensions.cs` (`AddNugetBasicHttpAuthentication`, `AddNugetBasicHttpAuthorization`) | Deleted (#17), replaced by `src/ElPaqueto.Security/Authentication/`. Drop the hunks and re-implement any upstream security fix in the new code. |
 | `tests/BaGetter.Tests/NugetAuthenticationIntegrationTests.cs`, `tests/BaGetter.Tests/NugetAllowAnonymousAuthenticationIntegrationTests.cs` | Deleted (#17), replaced by `tests/ElPaqueto.Tests/BasicAuthenticationIntegrationTests.cs`. The "anonymous allowed" expectation is inverted: anonymous requests now get 401. Drop the hunks. |
 | `src/BaGetter.Database.MySql/` (MySQL provider) | Still in the tree but excluded from the build: not in `ElPaqueto.sln` and not referenced by the host (#55). Hunks apply but are neither built nor tested; the pull request says so. |
 
 The [upstream touch map](technical/upstream-touch-map.md) lists every inherited
 file ElPaqueto changed or deleted, with the reason: hunks on those files are
-the ones most likely to conflict. `docs/technical/upstream-test-changes.md`
-(#41) will list the upstream tests ElPaqueto changed; it does not exist yet.
+the ones most likely to conflict. [Upstream test changes](technical/upstream-test-changes.md)
+lists the inherited test files ElPaqueto changed, deleted or added to, with the
+reason and what to do with upstream hunks on them.
 
 ## 6. Security review checklist
 
@@ -236,7 +238,10 @@ All of the following are green before a port pull request is merged:
 
 - `dotnet build` and `dotnet test` (unit and integration tests), as run by CI;
 - the endpoint inventory tests of `tests/ElPaqueto.Tests/AuthorizationIntegrationTests.cs`
-  (part of `dotnet test`);
+  and the authorization matrix and tampering suites (part of `dotnet test`).
+  When they fail because the port added an endpoint, add a justified row to
+  the permission table, never an anonymous row by default; see
+  [security suites](technical/testing.md#security-suites);
 - the end-to-end suite (#36 to #40), once it exists;
 - a Docker build: `docker build .`;
 - `bash eng/tests/port-upstream.test.sh`, when the pull request changes the

@@ -10,8 +10,4 @@
 
 Contributing rules are in [CONTRIBUTING.md](../CONTRIBUTING.md), and the vulnerability reporting process in [SECURITY.md](../SECURITY.md).
 
-## Inherited documentation site
-
-`docs/docs/` and the Docusaurus configuration in this folder (`docusaurus.config.ts`, `sidebars.ts`, `src/`, `static/`, `package.json`) come from BaGetter's documentation website. They are **not maintained for ElPaqueto** and are not published: some pages still describe BaGetter's behaviour or cloud deployments that ElPaqueto does not test. Whether they are removed, or kept and rebuilt, is still to be decided. Use the Markdown pages above.
-
-To preview the inherited site locally, with [Node.js](https://nodejs.org/) and Yarn: `yarn` then `yarn start` in this folder.
+The documentation is plain Markdown, rendered by GitHub: there is no site to build. BaGetter's documentation website, which this folder used to contain, was removed (#51); its still-accurate content was moved into the pages above.

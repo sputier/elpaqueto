@@ -15,7 +15,7 @@ changes a setting.
 
 | File | Purpose |
 |---|---|
-| `.github/dependabot.yml` | Weekly version updates for NuGet, GitHub Actions, Docker and the npm documentation site, grouped per ecosystem, targeting `develop`. |
+| `.github/dependabot.yml` | Weekly version updates for NuGet, GitHub Actions and Docker, grouped per ecosystem, targeting `develop`. |
 | `.github/workflows/ci.yml` | Build and test on Linux and Windows (`build-test`). |
 | `.github/workflows/codeql.yml` | CodeQL analysis of C# (manual build) and of the workflows themselves, with the `security-extended` suite, on pull requests, pushes to `develop`/`main` and weekly. |
 | `.github/workflows/docker.yml` | Builds the container image on amd64 and arm64, runs the container smoke test, cross-builds arm64 from amd64, scans the image with Trivy and validates the Compose and reverse-proxy samples. Read-only, pushes no image; also called by the release workflow. |
@@ -195,4 +195,5 @@ Expected: `{"errors":[]}`.
 | 2026-11-12 | Outside contributor approval | `first_time_contributors`: not yet at the expected value |
 | 2026-11-12 | Branch ruleset | exists for `main` only (pull request with one approval, no force push, no deletion); `develop` and required status checks not configured yet |
 | 2026-11-12 | Tag ruleset, `CODEOWNERS` | not configured yet |
+| 2026-11-14 | Branch ruleset (`gh api repos/{owner}/{repo}/rulesets`) | unchanged: one ruleset, `refs/heads/main` only, rules `deletion`, `non_fast_forward`, `pull_request` (one approval); no `required_status_checks`; `develop` has no protection |
 | 2026-11-12 | `release` environment, `RELEASE_REPOSITORY`, GHCR package | not configured yet (release workflow added) |

@@ -11,7 +11,7 @@ dotnet build ElPaqueto.sln --configuration Release
 dotnet test tests/ElPaqueto.EndToEnd.Tests --configuration Release --no-build
 ```
 
-The server must be built first, in the same configuration as the tests: the harness publishes it with `dotnet publish --no-build --no-restore` (the test project references the server project without loading it, so building the tests builds the server). A full run takes about three to five minutes on a developer machine (test classes run two at a time). One test (#38 step 5) restores `Microsoft.NET.Test.Sdk` and `xunit` from nuget.org: the run needs Internet access. Nothing else needs the network, and no test needs a secret.
+The server must be built first, in the same configuration as the tests: the harness publishes it with `dotnet publish --no-build --no-restore` (the test project references the server project without loading it, so building the tests builds the server). A full run takes a few minutes (test classes run two at a time). One test (#38 step 5) restores `Microsoft.NET.Test.Sdk` and `xunit` from nuget.org: the run needs Internet access. Nothing else needs the network, and no test needs a secret.
 
 ## The harness
 
@@ -34,7 +34,7 @@ The server must be built first, in the same configuration as the tests: the harn
 
 ### Transport: plain HTTP on loopback
 
-The harness uses `http://127.0.0.1:<port>`. The server allows plain HTTP from loopback (`Security:Transport`), and NuGet refuses plain-HTTP sources unless the source has `allowInsecureConnections="true"`: the harness adds every source with `dotnet nuget add source --allow-insecure-connections`, exactly as a user would. Trusting a throwaway certificate would need the OS trust store (a UI prompt or administrator rights on Windows, `SSL_CERT_FILE` on Linux) and cannot be done without side effects on a contributor's machine. **TLS itself is therefore not tested here**: it belongs to the reverse-proxy guidance and the validation report.
+The harness uses `http://127.0.0.1:<port>`. The server allows plain HTTP from loopback (`Security:Transport`), and NuGet refuses plain-HTTP sources unless the source has `allowInsecureConnections="true"`: the harness adds every source with `dotnet nuget add source --allow-insecure-connections`, exactly as a user would. Trusting a throwaway certificate would need the OS trust store (a UI prompt or administrator rights on Windows, `SSL_CERT_FILE` on Linux) and cannot be done without side effects on a contributor's machine. **TLS itself is therefore not tested here**: it belongs to the [reverse-proxy guidance](../user/reverse-proxy.md), and [client compatibility](../user/client-compatibility.md) lists it as not verified.
 
 ### Stopping the server
 
@@ -61,7 +61,7 @@ With a `Read` user, the crawl reads `v3/index.json`, adds the URLs the V3 protoc
 
 ## What the real clients do
 
-Recorded with the .NET SDK 10.0.401 (NuGet 7.9.0) on Windows 11 and, in CI, the SDK 10.0.404 that `global.json` rolls forward to on `ubuntu-latest` and `windows-latest`; the same counts were observed on both. The tests assert these facts, so a change in a client or in the server shows up as a failing test.
+Observed with the .NET SDK that `global.json` selects, on Linux and Windows (the `e2e` job runs on `ubuntu-latest` and `windows-latest`). The tests assert these facts, so a change in a client or in the server shows up as a failing test.
 
 **Every request is sent twice.** NuGet sends each request (service index, flat container, `.nupkg`, push, delete) first without credentials, gets `401` with the Basic challenge, then sends it again with the source credentials. It never sends Basic credentials pre-emptively. The server log of any scenario shows the pairs.
 

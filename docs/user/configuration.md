@@ -240,7 +240,7 @@ More settings are added to this page as the features that need them are released
 
 ## Inherited server settings
 
-These settings come from BaGetter and keep their names and behaviour. The table lists the ones an ElPaqueto installation usually needs; the inherited [server configuration reference](../docs/configuration.md) describes the others (search, mirror, retention, cloud storage providers), with the caveat that only the defaults below are tested by this project ([known limitations](known-limitations.md)).
+These settings come from BaGetter and keep their names and behaviour. The table lists the ones an ElPaqueto installation usually needs, and the sections after it describe [mirror authentication](#mirror-authentication) and [retention](#retention). Only the defaults are tested by this project ([known limitations](known-limitations.md)). The other inherited settings, such as the search and cloud storage providers, are not documented here: [BaGetter's documentation](https://github.com/bagetter/BaGetter/tree/main/docs/docs) describes them, has not been validated with ElPaqueto, and describes an authentication model ElPaqueto replaced.
 
 | Setting | Default | Description |
 | --- | --- | --- |
@@ -260,6 +260,58 @@ These settings come from BaGetter and keep their names and behaviour. The table 
 | `Mirror:Enabled` | `false` | Fetch missing packages from `Mirror:PackageSource` (nuget.org by default). Needs outbound access. |
 
 Environment variables use the same names with `__`: `Database__ConnectionString`, `Storage__Path`, `PackageDeletionBehavior`.
+
+### Mirror authentication
+
+With `Mirror:Enabled`, ElPaqueto fetches a package it does not have from `Mirror:PackageSource`, the [service index](https://learn.microsoft.com/nuget/api/service-index) of the upstream feed, and stores it ([restoring](restoring.md#mirror)). `Mirror:Authentication` holds the credentials ElPaqueto sends to that upstream feed. It has nothing to do with the users and keys of ElPaqueto itself. Keep the secret values in environment variables or `/run/secrets` files, as for any other secret ([sources and precedence](#sources-and-precedence)).
+
+| `Mirror:Authentication:Type` | Other settings | Sent to the upstream feed |
+| --- | --- | --- |
+| `None` (default) | none | nothing |
+| `Basic` | `Username`, `Password` (both required) | an `Authorization: Basic` header |
+| `Bearer` | `Token` (required) | an `Authorization: Bearer` header |
+| `Custom` | `CustomHeaders`, a map of header names to values (at least one) | each header as given |
+
+```json
+"Mirror": {
+  "Enabled": true,
+  "PackageSource": "https://upstream.example.test/v3/index.json",
+  "Authentication": {
+    "Type": "Bearer"
+  }
+}
+```
+
+```bash
+Mirror__Authentication__Token=<token>
+```
+
+A missing required value stops the server at startup. `Mirror:Legacy: true` selects a NuGet v2 upstream feed, which accepts only `None` or `Basic`. `Mirror:PackageDownloadTimeoutSeconds` (default `600`) bounds each download from the upstream feed.
+
+### Retention
+
+The `Retention` settings make ElPaqueto delete old versions of a package automatically, each time a version of that package is pushed. They are off by default.
+
+| Setting | Keeps, for each package |
+| --- | --- |
+| `Retention:MaxMajorVersions` | the newest N major versions |
+| `Retention:MaxMinorVersions` | the newest N minor versions of each major version |
+| `Retention:MaxPatchVersions` | the newest N patch versions of each minor version |
+| `Retention:MaxPrereleaseVersions` | the newest N prerelease builds of each patch version, counted separately for each prerelease label and ordered by the build number at the end of the label (`1.0.0-beta.7`) |
+
+```json
+"Retention": {
+  "MaxMajorVersions": 5,
+  "MaxMinorVersions": 5,
+  "MaxPatchVersions": 5,
+  "MaxPrereleaseVersions": 5
+}
+```
+
+- Retention runs only when `Retention:MaxMajorVersions` is set; the other three settings then narrow what it keeps. Set `MaxMajorVersions` to a large number to limit only patches or prereleases.
+- The versions removed are always the lowest ones, unlisted versions included. They are deleted for good, from the package database and from storage, whatever `PackageDeletionBehavior` says.
+- A prerelease version whose label does not end with a build number (`1.0.0-beta.x`) is not counted as a build and is deleted when `MaxPrereleaseVersions` is set: check your versioning scheme first.
+- Any holder of a `Publish` key triggers it by pushing a new version ([threat model](../technical/threat-model.md)).
 
 ### Removed settings
 

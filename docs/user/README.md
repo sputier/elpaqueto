@@ -31,11 +31,10 @@ These pages are for the people who install, configure and use an ElPaqueto serve
 | [Upgrading from BaGetter](upgrading-from-bagetter.md) | Breaking changes for an existing BaGetter installation. |
 | [Troubleshooting](troubleshooting.md) | `401`, `403`, `429`, `503`, `409`, wrong URLs, `NU1301`, `NU1302`. |
 | [Known limitations](known-limitations.md) | What ElPaqueto does not do, or has not validated yet. |
+| [Client compatibility](client-compatibility.md) | Which NuGet clients are tested, what is verified for each, and how. |
 
 Users, permissions and API keys are all managed with the `admin` commands, so the three topics share one page, [Administration](administration.md).
 
 ## Conventions
 
 Examples use placeholders: `nuget.example.test` for the server, `<username>`, `<package>`, and a key in a file (`elpaqueto.key`) or an environment variable. Passwords are never given as command-line arguments: the `admin` commands prompt for them or read them from standard input or a file.
-
-The inherited BaGetter documentation site under [`docs/docs/`](../docs/) is not maintained for ElPaqueto: where it disagrees with these pages, these pages are right.

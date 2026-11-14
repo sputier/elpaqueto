@@ -7,7 +7,6 @@ ElPaqueto is a fork of BaGetter. Some of the rules below exist so that upstream 
 ## Prerequisites
 
 - The **.NET 10 SDK**. It includes the runtime. The exact SDK version is pinned in `global.json`. Run `dotnet --list-sdks` to see what is installed.
-- [Node.js], only if you work on the documentation site.
 - Docker, only if you build or test the container image.
 
 If `dotnet` reports `A compatible .NET SDK was not found`, the installed SDK does not satisfy `global.json`: install the .NET 10 SDK from the [.NET download page][.NET SDK]. Do not edit `global.json` to work around it: local builds, CI and the container image must use the same SDK.
@@ -41,6 +40,12 @@ dotnet test --configuration Release --no-build --filter "Category!=EndToEnd"
 ```
 
 A failing test must be fixed or explained in the pull request. Do not skip or disable it to make a check pass.
+
+Tests inherited from BaGetter are adapted to deny-by-default, never skipped, excluded by trait or commented out: give them credentials, keep their assertions. Record every inherited test file you change, with the reason, in [upstream test changes](docs/technical/upstream-test-changes.md).
+
+### Security suites
+
+`tests/ElPaqueto.Tests` holds suites that check every endpoint against the permission table (`src/ElPaqueto.Security/Authorization/EndpointPermissionTable.cs`): the endpoint inventory, the authorization matrix (every row with every kind of credential) and the path and verb tampering suites. When a new endpoint appears, for example after an upstream port, they fail until the endpoint has a row with a justified permission and a sample request in `tests/ElPaqueto.Tests/Support/EndpointSamples.cs`. Never make an endpoint anonymous to get them green. See [Testing](docs/technical/testing.md#security-suites).
 
 ### End-to-end tests
 
@@ -99,6 +104,38 @@ bash eng/format-strict.sh --fix    # apply
 ```
 
 Files authored for ElPaqueto use LF line endings on every platform (see `.gitattributes`).
+
+## Repository hygiene
+
+The `hygiene` job of the `CI` workflow enforces rules that are easy to break by accident. Run the same checks before you push (Python 3.10 or later; on Windows use `python`):
+
+```bash
+dotnet restore ElPaqueto.sln
+python3 eng/hygiene/run_all.py --range origin/develop..HEAD
+```
+
+The checks fail when:
+
+- a workflow has a lint error, an action not pinned to a commit SHA, no top-level `permissions:`, `pull_request_target`, a self-hosted runner, a secret reachable from `pull_request`, or a publishing scope reachable from anything but a tag push or a manual run;
+- a folder holds more than one project, or a project is missing from `ElPaqueto.sln`;
+- a forbidden file is tracked: certificates and keys (`*.pfx`, `*.p12`, `*.pem`, `*.key`, `*.snk`), `.env`, databases (`*.db` and their `-wal`/`-shm` files), `appsettings.*.local.json`;
+- a tracked file contains infrastructure details: a private, shared or link-local address, or a host under a non-public suffix such as `.lan` or `.internal`. Use `example.com`, `*.test`, `localhost` and the documentation address ranges instead;
+- gitleaks finds a secret in the tracked files or in the commits of the range;
+- a commit of the range is authored by, or credits, a code-generation tool or a bot account other than Dependabot and GitHub Actions;
+- a package has a High or Critical vulnerability.
+
+**Exceptions** are added in the pull request that needs them, in the allow-list of the check (for example `eng/hygiene/allowlist/content.txt`), each with a reason, and the pull request description explains why the rule does not apply. They are reviewed like code. A real secret is never allow-listed: revoke it. The exact rules, the allow-list formats and the expiry of vulnerability exceptions are in [hygiene checks](docs/maintainers/hygiene-checks.md).
+
+## Required status checks
+
+A pull request is merged only when the checks of its head commit pass. The jobs that run on every pull request are:
+
+- `CI`: `hygiene`, `build-test (ubuntu-latest)`, `build-test (windows-latest)`, `e2e (ubuntu-latest)` and `e2e (windows-latest)`;
+- `CodeQL`: `analyze (csharp)` and `analyze (actions)`;
+- `Docker`: `image (amd64)`, `image (arm64)`, `cross-build (arm64 from amd64)`, `scan` and `samples`;
+- `Dependency review`: `dependency-review`.
+
+The repository settings that should make a subset of them required on `main` and `develop` are listed in [repository settings](docs/maintainers/repository-settings.md#branch-rulesets), with the date each setting was last checked. As of the last check (see the verification log there), the branch ruleset covers `main` only and declares no required status check: until it does, maintainers check that every job above is green before merging, and do not merge on a red or missing check.
 
 ## Proposing a change
 
@@ -185,7 +222,6 @@ A release is a version tag on `main`. The release workflow (`.github/workflows/r
 Add a line to the `## [Unreleased]` section of [CHANGELOG.md](CHANGELOG.md) in every pull request with a user-visible change.
 
 [.NET SDK]: https://www.microsoft.com/net/download
-[Node.js]: https://nodejs.org/
 [Conventional Commits]: https://www.conventionalcommits.org/
 [#5]: https://github.com/sputier/ElPaqueto/issues/5
 [#6]: https://github.com/sputier/ElPaqueto/issues/6

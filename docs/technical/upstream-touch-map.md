@@ -9,7 +9,7 @@ referenced by path, never by line number.
 
 Kept current by every pull request that touches inherited files.
 
-Upstream test changes: see `upstream-test-changes.md` (#41) once it exists.
+Upstream test changes: see [upstream test changes](upstream-test-changes.md), which explains each inherited test file listed here.
 
 ## How it was produced
 
@@ -21,7 +21,7 @@ differs only by the rename is therefore not listed.
 | | |
 |---|---|
 | Upstream baseline | `02b6706` (see section 2 of [Porting upstream changes](../upstream-porting.md#2-baseline-record)) |
-| ElPaqueto revision compared | `develop` of 2026-11-12 with the documentation and branding changes of #48 to #53 |
+| ElPaqueto revision compared | `develop` of 2026-11-12 with the documentation and branding changes of #48 to #53; deleted files refreshed on 2026-11-14 after the removal of the documentation site (#51) |
 | Line endings | CR at end of line ignored (`--ignore-cr-at-eol`) |
 | Renames | not detected (`--no-renames`): a moved file shows as deleted plus added |
 
@@ -40,8 +40,11 @@ Steps:
 Limits of the comparison:
 
 - `docs/` and `deployment templates/` are not mapped by the script (section 4
-  of the porting guide). They are left out of the tables below; upstream
-  patches on them apply to unrenamed content.
+  of the porting guide). They are left out of the modified-files tables below;
+  upstream patches on them apply to unrenamed content. The deleted
+  documentation site is listed under [deleted inherited files](#deleted-inherited-files).
+  The only other inherited file left in `docs/` is `docs/readme.md`, rewritten
+  as the ElPaqueto documentation index.
 - Markdown files keep their upstream content (only their path is mapped), as
   #58 did, so the counts for `readme.md` and `CONTRIBUTING.md` are ElPaqueto
   edits only.
@@ -153,6 +156,7 @@ mapped baseline.
 | `tests/ElPaqueto.Core.Tests/ElPaqueto.Core.Tests.csproj` | +1/-1 | .NET 10 (#1) |
 | `tests/ElPaqueto.Protocol.Tests/ElPaqueto.Protocol.Tests.csproj` | +1/-1 | .NET 10 (#1) |
 | `tests/Directory.Build.props` | +3/-0 | Imports the strict build baseline `eng/ElPaqueto.Build.props` (#9) |
+| `tests/ElPaqueto.Tests/ApiIntegrationTests.cs`, `ElPaquetoClientIntegrationTests.cs`, `NuGetClientIntegrationTests.cs`, `MirrorIntegrationTests.cs` | +1/-1 each | Class declared `partial`, so that the anonymous `401` checks live in a separate `*.Anonymous.cs` file (#41) |
 
 ### Samples
 
@@ -197,8 +201,11 @@ Paths are shown as upstream names them.
 | `src/BaGetter/IServiceCollectionExtensions.cs` | #17 | `src/ElPaqueto.Security/` (`AddElPaquetoSecurity`) |
 | `tests/BaGetter.Web.Tests/Authentication/NugetBasicAuthenticationHandlerTests.cs` | #17 | `tests/ElPaqueto.Security.Tests/` |
 | `tests/BaGetter.Tests/NugetAuthenticationIntegrationTests.cs`, `NugetAllowAnonymousAuthenticationIntegrationTests.cs` | #17 | `tests/ElPaqueto.Tests/BasicAuthenticationIntegrationTests.cs` |
+| Documentation site: `docs/docs/**`, `docs/src/**`, `docs/static/**`, `docs/docusaurus.config.ts`, `docs/sidebars.ts`, `docs/package.json`, `docs/yarn.lock`, `docs/babel.config.js`, `docs/tsconfig.json`, `docs/index.html`, `docs/.gitignore` | #51 | the Markdown pages of `docs/user/` and `docs/technical/` |
 
-That is 13 files. `src/BaGetter.Database.MySql/` is not deleted: it stays in
+That is 13 files outside `docs/`, and 46 files of the documentation site.
+`.github/workflows/release.yml` was later re-created for ElPaqueto (#47), so
+`eng/regenerate-touch-map.sh` counts 58 deleted files, not 59. `src/BaGetter.Database.MySql/` is not deleted: it stays in
 the tree, excluded from the build (#1, #55).
 
 ## ElPaqueto-only areas

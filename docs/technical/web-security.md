@@ -78,7 +78,7 @@ What it **does not** protect against:
 
 Removing `'unsafe-inline'` and `'unsafe-eval'` needs UI changes (moving inline scripts to files, replacing or upgrading Alpine.js) and is a follow-up.
 
-The policy was checked with the UI loaded in Chromium 145 (Playwright) against the real pipeline on Kestrel: search, the prerelease toggle (inline `onclick`), the icon fallback (inline `onerror`) on the list and package pages, the install tabs and copy button, the expandable sections, the version list toggle, the README and release notes, the upload page tabs and the statistics page, with no policy violation reported. Framing a page from another document was blocked by `frame-ancestors`.
+The integration tests check the headers, not their effect in a browser: no automated browser test runs the UI. After a change to the pages, the scripts or the policy, load each page in a browser with the developer tools open and use every interactive element (search, the prerelease toggle, the icon fallback, the install tabs and copy button, the expandable sections, the version list toggle, the README and release notes, the upload page tabs, the statistics page): the console must report no policy violation.
 
 In Development, the developer exception page is an HTML response too and gets the page policy: its inline styles are blocked, so it renders without styling.
 
