@@ -9,7 +9,7 @@ referenced by path, never by line number.
 
 Kept current by every pull request that touches inherited files.
 
-Upstream test changes: see `upstream-test-changes.md` (#41) once it exists.
+Upstream test changes: see [upstream test changes](upstream-test-changes.md), which explains each inherited test file listed here.
 
 ## How it was produced
 
@@ -156,6 +156,7 @@ mapped baseline.
 | `tests/ElPaqueto.Core.Tests/ElPaqueto.Core.Tests.csproj` | +1/-1 | .NET 10 (#1) |
 | `tests/ElPaqueto.Protocol.Tests/ElPaqueto.Protocol.Tests.csproj` | +1/-1 | .NET 10 (#1) |
 | `tests/Directory.Build.props` | +3/-0 | Imports the strict build baseline `eng/ElPaqueto.Build.props` (#9) |
+| `tests/ElPaqueto.Tests/ApiIntegrationTests.cs`, `ElPaquetoClientIntegrationTests.cs`, `NuGetClientIntegrationTests.cs`, `MirrorIntegrationTests.cs` | +1/-1 each | Class declared `partial`, so that the anonymous `401` checks live in a separate `*.Anonymous.cs` file (#41) |
 
 ### Samples
 

@@ -8,7 +8,7 @@ using Xunit.Abstractions;
 
 namespace ElPaqueto.Tests;
 
-public class ApiIntegrationTests : IDisposable
+public partial class ApiIntegrationTests : IDisposable
 {
     private readonly ElPaquetoApplication _app;
     private readonly HttpClient _client;

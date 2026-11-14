@@ -13,7 +13,7 @@ namespace ElPaqueto.Tests;
 /// <summary>
 /// Uses ElPaqueto's client SDK to interact with the ElPaqueto test host.
 /// </summary>
-public class ElPaquetoClientIntegrationTests : IDisposable
+public partial class ElPaquetoClientIntegrationTests : IDisposable
 {
     private readonly ElPaquetoApplication _app;
     private readonly HttpClient _httpClient;
