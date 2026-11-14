@@ -221,7 +221,7 @@ The user-facing list is [known limitations](user/known-limitations.md); the reas
 - Throttling counters, the verification cache and the failed-attempt fingerprints live in memory, per process: single node only, reset on restart.
 - An attacker with many addresses can fill the fingerprint store (50 000 counted failures per hour by default); legitimate clients then fall back to counting each retry, which can trip the pair throttle again (#107).
 - Clients behind one NAT share one throttle budget.
-- NuGet clients do not honour `Retry-After`: a throttled restore fails within seconds instead of waiting.
+- The `dotnet` CLI does not honour `Retry-After`: a throttled restore fails within seconds instead of waiting (other clients not observed).
 - ASP.NET Core data protection keys are kept in memory: web forms opened before a restart must be reloaded ([Docker](user/docker.md#data-protection-keys)).
 - On Windows the security database file inherits the ACL of its folder; ElPaqueto does not manage Windows ACLs.
 - `/stats` needs `Read`, not `Admin`; the list of configured services is off by default.
