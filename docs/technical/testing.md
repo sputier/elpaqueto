@@ -8,6 +8,7 @@
 | Process | `tests/ElPaqueto.Security.Tests` (`*ProcessTests`, `HostProcess`) | The real server or `admin` command as a separate process: exit codes, startup failures, configuration loading, standard output and error. Some are Unix-only (`UnixFact`), for file modes and signals. | `dotnet test`, CI on Linux and Windows |
 | Inherited unit | `tests/ElPaqueto.Core.Tests`, `tests/ElPaqueto.Protocol.Tests`, `tests/ElPaqueto.Web.Tests` | Inherited BaGetter tests, kept, plus the safe Markdown rendering of package READMEs. | `dotnet test`, CI |
 | Integration | `tests/ElPaqueto.Tests` | The whole pipeline in-process (`ElPaquetoApplication`, a `WebApplicationFactory` with its own security database): authentication, the authorization matrix and endpoint inventory, API keys, throttling, transport and proxies, CORS, headers, audit logging, the web UI and its branding, the NuGet client libraries against the host, BaGetter upgrade checks. | `dotnet test`, CI |
+| End to end | `tests/ElPaqueto.EndToEnd.Tests` (`Category=EndToEnd`) | The published server as a child process, driven by the real `dotnet` CLI with isolated NuGet folders: source setup, push, add package, restore, build, test, search, unlist and delete, the authorization matrix, the service index crawl, client behaviour on 401/403/429/503, restart persistence. See [end-to-end tests](e2e-tests.md). | CI `e2e` job on Linux and Windows |
 | Container | `eng/docker/smoke-test.sh` | The built image as documented: non-root, read-only root filesystem, health, anonymous rules, `admin` commands, a real `dotnet nuget push` and `dotnet restore` with keys and passwords, revocation, graceful stop and restart. | `Docker` workflow (amd64 and arm64), or locally |
 | Repository | `eng/hygiene/run_all.py`, `eng/format-strict.sh`, `eng/tests/port-upstream.test.sh` | Commit and content hygiene, secret scanning, strict formatting of ElPaqueto projects, the upstream port script. | CI `hygiene` and `build-test` jobs |
 
@@ -15,7 +16,8 @@
 
 ```bash
 dotnet build ElPaqueto.sln
-dotnet test ElPaqueto.sln                                              # everything
+dotnet test ElPaqueto.sln                                              # everything, end-to-end tests included
+dotnet test ElPaqueto.sln --filter "Category!=EndToEnd"                # what the build-test CI job runs
 dotnet test tests/ElPaqueto.Security.Tests                             # one project
 dotnet test ElPaqueto.sln --filter "FullyQualifiedName~Authorization"  # by name
 bash eng/format-strict.sh                                              # --fix applies the formatting
@@ -44,4 +46,4 @@ It publishes a port on `127.0.0.1` (18080 by default, `SMOKE_PORT`), creates ran
 
 ## What the tests do not cover
 
-The NuGet clients other than the `dotnet` CLI and the client libraries, IDEs, debuggers fetching symbols, the non-default database and storage providers, and deployments with several instances are not tested: see [known limitations](../user/known-limitations.md).
+The NuGet clients other than the `dotnet` CLI and the client libraries, IDEs, debuggers fetching symbols, TLS (except a manual check through the proxy samples), the non-default database and storage providers, and deployments with several instances are not tested. See [client compatibility](../user/client-compatibility.md) and the [known limitations](../user/known-limitations.md).

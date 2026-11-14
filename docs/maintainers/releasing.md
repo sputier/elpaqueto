@@ -141,11 +141,14 @@ commands that verify them.
 
 1. Make sure `develop` is green and holds everything planned for the release.
 2. Run a dry run on `develop` (see above) and check its summary.
-3. Open a pull request from `develop` to `main`. In it, move the
+3. Review [client compatibility](../user/client-compatibility.md) and the
+   [known limitations](../user/known-limitations.md) against what the
+   release contains.
+4. Open a pull request from `develop` to `main`. In it, move the
    `## [Unreleased]` entries of `CHANGELOG.md` under a new
    `## [X.Y.Z] - YYYY-MM-DD` heading, leave an empty `## [Unreleased]` heading
    above it, and update the comparison links at the bottom.
-4. Merge it, then tag the merge commit on `main` with a signed, annotated tag
+5. Merge it, then tag the merge commit on `main` with a signed, annotated tag
    and push the tag:
 
    ```sh
@@ -154,10 +157,10 @@ commands that verify them.
    git push origin vX.Y.Z
    ```
 
-5. Follow the run in the Actions tab. When `rehearse` has passed, the
+6. Follow the run in the Actions tab. When `rehearse` has passed, the
    `publish` job waits for approval: review the rehearsal summary, then
    approve the deployment to `release`.
-6. Check the result:
+7. Check the result:
 
    ```sh
    gh release view vX.Y.Z
@@ -169,7 +172,7 @@ commands that verify them.
      --repo <owner>/<repository> --predicate-type https://spdx.dev/Document/v2.3
    ```
 
-7. Merge `main` back into `develop` so that the changelog heading reaches it.
+8. Merge `main` back into `develop` so that the changelog heading reaches it.
 
 A real release can also be started by hand on the tag, which is useful when a
 transient failure stopped the tag's run before publishing anything:

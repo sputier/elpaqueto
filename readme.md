@@ -20,7 +20,7 @@ ElPaqueto is a private, self-hosted [NuGet] server with built-in authentication.
 
 ## Status
 
-ElPaqueto has **no release yet** (version `0.1.0-prerelease`) and no published container image: build it from this repository. The authentication, authorization, API key, transport and throttling features are implemented and tested; the end-to-end validation of clients and platforms is still in progress. Read the [known limitations](docs/user/known-limitations.md) before you deploy it.
+ElPaqueto has **no release yet** (version `0.1.0-prerelease`) and no published container image: build it from this repository. The authentication, authorization, API key, transport and throttling features are implemented and tested. The `dotnet` CLI is validated end to end on Linux and Windows; `nuget.exe` and Visual Studio are not validated yet. See [client compatibility](docs/user/client-compatibility.md), and read the [known limitations](docs/user/known-limitations.md) before you deploy it.
 
 ## Quick start (Docker, local evaluation)
 
@@ -81,6 +81,8 @@ Building needs the **.NET 10 SDK** (the exact version is pinned in `global.json`
 dotnet build ElPaqueto.sln
 dotnet test ElPaqueto.sln
 ```
+
+The end-to-end tests in this run start the server and the real `dotnet` CLI, and one of them restores packages from nuget.org; `--filter "Category!=EndToEnd"` leaves them out ([testing](docs/technical/testing.md)).
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for running the server from source and for the rules of a pull request.
 
