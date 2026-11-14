@@ -65,10 +65,10 @@ Test cases reported by `dotnet test`, per project. "Before" is the #58 rename (`
 | `ElPaqueto.Core.Tests` | 187 | 0 | 187 | 187 |
 | `ElPaqueto.Protocol.Tests` | 59 | 0 | 59 | 59 |
 | `ElPaqueto.Web.Tests` | 25 | 5 | 20 | 82 |
-| `ElPaqueto.Tests` | 71 | 5 | 66 | 1677 |
+| `ElPaqueto.Tests` | 71 | 5 | 66 | 1690 |
 | `ElPaqueto.Protocol.Samples.Tests` | 8 | 0 | 8 | 8 |
 | `ElPaqueto.Security.Tests` | (ElPaqueto only) | | | 859 |
-| Total | 350 | 10 | 340 | 2872 |
+| Total | 350 | 10 | 340 | 2885 |
 
 "Inherited tests now" counts the test cases of the classes that come from upstream, without the tests ElPaqueto added to them (the `*.Anonymous.cs` files, and the seven README tests #27 added to `PackageModelFacts`). Every inherited test that was not removed still runs: 350 − 10 = 340. Counted on 2026-11-15 on Windows, end-to-end tests excluded.
 
