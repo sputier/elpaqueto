@@ -228,7 +228,7 @@ The user-facing list is [known limitations](user/known-limitations.md); the reas
 - The content security policy allows `'unsafe-inline'` and `'unsafe-eval'` (Alpine.js 2 and inline handlers): it does not stop injected script; the server-side Markdown and encoding rules do.
 - HTTP Basic only: no web login, session or logout; `Read` sees every package; users cannot be deleted; the `admin` commands do not authenticate their caller.
 - The logo's licence is not decided (#53).
-- The inherited Docusaurus site and Helm chart are stale (#51).
+- The inherited Docusaurus site and Helm chart are stale (#51). On 2026-11-14, Dependabot reports 114 open alerts on the default branch (3 critical, 51 high, 47 medium, 13 low), all in `docs/yarn.lock`, the Node.js tooling of that site; five Dependabot pull requests for it are open (#102–#106). The site is neither built by CI nor shipped in the image, but a contributor who runs `yarn` in `docs/` installs those packages. The .NET packages have no known vulnerability (hygiene `vulnerable-packages` check), and the image has no fixable high or critical one (Trivy scan, K5).
 - Upstream fixes, security fixes included, reach ElPaqueto only when ported; the baseline is `02b6706`.
 
 **Defects and test reliability**

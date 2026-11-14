@@ -46,4 +46,4 @@ See the [threat model](../technical/threat-model.md) for the residual risks and 
 ## Project
 
 - The ElPaqueto logo has no stated licence yet ([assets/branding](../../assets/branding/README.md)).
-- The inherited documentation site under `docs/docs/` and the Helm chart under `deployment templates/` come from BaGetter and are not maintained for ElPaqueto: their fate is still being decided. Use the [user documentation](README.md).
+- The inherited documentation site under `docs/docs/` and the Helm chart under `deployment templates/` come from BaGetter and are not maintained for ElPaqueto: their fate is still being decided. Use the [user documentation](README.md). The Node.js packages of that site (`docs/yarn.lock`) have open vulnerability alerts; the site is neither built by CI nor shipped in the image, but running `yarn` in `docs/` installs those packages.
