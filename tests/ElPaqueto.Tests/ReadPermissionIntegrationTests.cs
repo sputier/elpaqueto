@@ -4,7 +4,6 @@ using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Text.Json;
-using System.Threading;
 using System.Threading.Tasks;
 using ElPaqueto.Security;
 using ElPaqueto.Security.ApiKeys;
@@ -320,6 +319,9 @@ public class ReadPermissionIntegrationTests : IDisposable
             }
 
             _output.WriteLine($"{method} {url}");
+            // The request really runs, as the test user (Basic credentials, no key): reads are answered, the publish
+            // URLs are refused by authorization (writes need a key in X-NuGet-ApiKey), so nothing is changed. The
+            // endpoint chosen by routing stays on the returned context; if it did not, every URL would fail below.
             var uri = new Uri(url);
             var context = await _app.Server.SendAsync(c =>
             {
@@ -334,9 +336,9 @@ public class ReadPermissionIntegrationTests : IDisposable
             {
                 failures.Add($"{method} {url}: matches no row of the permission table (key {key ?? "none"})");
             }
-            else if (rule.Anonymous || (rule.Required & expected) != expected || !rule.Methods.Contains(method))
+            else if (rule.Anonymous || rule.Required != expected || !rule.Methods.Contains(method))
             {
-                failures.Add($"{method} {url}: row {rule.Key} does not require {expected} for {method}");
+                failures.Add($"{method} {url}: row {rule.Key} does not require exactly {expected} for {method}");
             }
         }
 
@@ -496,17 +498,4 @@ public class ReadPermissionIntegrationTests : IDisposable
     }
 
     private sealed record ReadRoute(string Key, string Existing, string Missing, HttpStatusCode ReadGet, HttpStatusCode ReadHead);
-
-    private sealed class CountingHandler : DelegatingHandler
-    {
-        private int _count;
-
-        public int Count => Volatile.Read(ref _count);
-
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            Interlocked.Increment(ref _count);
-            return base.SendAsync(request, cancellationToken);
-        }
-    }
 }

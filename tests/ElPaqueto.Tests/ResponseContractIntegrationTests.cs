@@ -5,6 +5,8 @@ using System.Net;
 using System.Net.Http;
 using System.Threading.Tasks;
 using ElPaqueto.Security;
+using ElPaqueto.Security.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Xunit;
 using Xunit.Abstractions;
@@ -183,6 +185,34 @@ public class ResponseContractIntegrationTests : IDisposable
         {
             Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         }
+    }
+
+    [Fact]
+    public async Task TheRoutesOfTheRedirectTest_CoverEveryRowOfThePermissionTable()
+    {
+        await SeedAsync();
+        var covered = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var row in EveryRoute())
+        {
+            var (method, path) = ((string)row[0], (string)row[1]);
+            var uri = new Uri(_app.Server.BaseAddress, path);
+            var context = await _app.Server.SendAsync(c =>
+            {
+                c.Request.Method = method;
+                c.Request.Path = uri.AbsolutePath;
+                c.Request.QueryString = new QueryString(uri.Query);
+            });
+
+            if (EndpointKey.Resolve(context.GetEndpoint()) is { } key)
+            {
+                covered.Add(key);
+            }
+        }
+
+        // The liveness endpoint is the one row that is never refused.
+        var expected = EndpointPermissionTable.Rules.Where(rule => !rule.Anonymous).Select(rule => rule.Key);
+
+        Assert.Empty(expected.Except(covered));
     }
 
     [Theory]

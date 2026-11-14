@@ -27,7 +27,7 @@ public sealed class ReadOnlyModeTests : EndToEndTest<ReadOnlyModeTests.Setup>, I
 
         var result = await client.PushAsync(package, Fixture.PublishKey);
 
-        var refusals = Answers("PUT", "api/v2/package", Fixture.Server.Log[logStart..]);
+        var refusals = await AnswersAsync("PUT", "api/v2/package", logStart);
         Output.WriteLine($"Push in read-only mode: {result.Duration.TotalSeconds:0.0} s; PUT api/v2/package answers: {string.Join(", ", refusals)}.");
         result.ShouldFail().ShouldContain("401 (Unauthorized)");
         AssertNoLoop(refusals);
@@ -45,7 +45,7 @@ public sealed class ReadOnlyModeTests : EndToEndTest<ReadOnlyModeTests.Setup>, I
 
         var result = await client.PushAsync(symbols, Fixture.PublishKey);
 
-        var refusals = Answers("PUT", "api/v2/symbol", Fixture.Server.Log[logStart..]);
+        var refusals = await AnswersAsync("PUT", "api/v2/symbol", logStart);
         Output.WriteLine($"Symbol push in read-only mode: {result.Duration.TotalSeconds:0.0} s; PUT api/v2/symbol answers: {string.Join(", ", refusals)}.");
         result.ShouldFail().ShouldContain("401 (Unauthorized)");
         AssertNoLoop(refusals);
@@ -59,7 +59,7 @@ public sealed class ReadOnlyModeTests : EndToEndTest<ReadOnlyModeTests.Setup>, I
 
         var result = await client.DeleteAsync(PackageSet.BaseId, "1.0.0", Fixture.PublishKey);
 
-        var refusals = Answers("DELETE", "api/v2/package/" + PackageSet.BaseId + "/1.0.0", Fixture.Server.Log[logStart..]);
+        var refusals = await AnswersAsync("DELETE", "api/v2/package/" + PackageSet.BaseId + "/1.0.0", logStart);
         Output.WriteLine($"Delete in read-only mode: {result.Duration.TotalSeconds:0.0} s; DELETE answers: {string.Join(", ", refusals)}.");
         result.ShouldFail().ShouldContain("401 (Unauthorized)");
         AssertNoLoop(refusals);
@@ -71,6 +71,20 @@ public sealed class ReadOnlyModeTests : EndToEndTest<ReadOnlyModeTests.Setup>, I
         Assert.NotEmpty(answers);
         Assert.All(answers, status => Assert.Equal("401", status));
         Assert.InRange(answers.Count, 1, 6);
+    }
+
+    // The log line of a request is written asynchronously and may arrive after the command has exited: wait for it,
+    // then a little longer, so that a retry sent right after is counted too.
+    private async Task<List<string>> AnswersAsync(string method, string path, int logStart)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (Answers(method, path, Fixture.Server.Log[logStart..]).Count == 0 && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(100));
+        }
+
+        await Task.Delay(TimeSpan.FromSeconds(1));
+        return Answers(method, path, Fixture.Server.Log[logStart..]);
     }
 
     // NuGet pushes to the advertised URL with a trailing slash.

@@ -31,23 +31,18 @@ internal static class ResponseSnapshot
     /// reaches the test instead of the page it points to.
     /// </summary>
     public static HttpClient CreateClientWithoutRedirects(this WebApplicationFactory<Startup> app)
-    {
-        var client = app.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, HandleCookies = false });
-        client.DefaultRequestHeaders.Authorization = null;
-        client.DefaultRequestHeaders.Remove(TestUserExtensions.ApiKeyHeader);
-        return client;
-    }
+        => app.CreateAnonymousClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, HandleCookies = false });
 
     /// <summary>Sends a request with an empty body for the methods that carry one.</summary>
-    public static Task<HttpResponseMessage> SendAsync(HttpClient client, string method, string path, Action<HttpRequestMessage> credentials = null)
+    public static async Task<HttpResponseMessage> SendAsync(HttpClient client, string method, string path, Action<HttpRequestMessage> credentials = null)
     {
-        var request = new HttpRequestMessage(new HttpMethod(method), path);
+        using var request = new HttpRequestMessage(new HttpMethod(method), path);
         if (method is "PUT" or "POST")
         {
             request.Content = new ByteArrayContent([]);
         }
 
         credentials?.Invoke(request);
-        return client.SendAsync(request);
+        return await client.SendAsync(request);
     }
 }

@@ -131,9 +131,9 @@ public class ReadOnlyModeIntegrationTests
         }
     }
 
-    private static Task<HttpResponseMessage> SendAsync(HttpClient client, string write, string apiKey)
+    private static async Task<HttpResponseMessage> SendAsync(HttpClient client, string write, string apiKey)
     {
-        var request = write switch
+        using var request = write switch
         {
             "push" => new HttpRequestMessage(HttpMethod.Put, "api/v2/package") { Content = PackageContent(TestResources.Package) },
             "symbol push" => new HttpRequestMessage(HttpMethod.Put, "api/v2/symbol") { Content = PackageContent(TestResources.SymbolPackage) },
@@ -147,7 +147,7 @@ public class ReadOnlyModeIntegrationTests
             request.Headers.TryAddWithoutValidation(TestUserExtensions.ApiKeyHeader, apiKey);
         }
 
-        return client.SendAsync(request);
+        return await client.SendAsync(request);
     }
 
     private static MultipartFormDataContent PackageContent(string resource)
