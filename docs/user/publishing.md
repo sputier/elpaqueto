@@ -56,6 +56,17 @@ printf 'header = "X-NuGet-ApiKey: %s"\n' "$ELPAQUETO_PUBLISH_KEY" \
 
 The answer is `200` when the version exists. `PathBase`, if set, goes before `/api`.
 
+## Importing packages from another feed
+
+There is no import command: push the existing `.nupkg` files with a `Publish` key. For a [local folder feed](https://learn.microsoft.com/nuget/hosting-packages/local-feeds), or the `Packages` folder of a NuGet.Server installation, push every file of the folder tree:
+
+```bash
+find /path/to/feed -name '*.nupkg' -print0 |
+  xargs -0 -n 1 dotnet nuget push --source elpaqueto --api-key "$ELPAQUETO_PUBLISH_KEY" --skip-duplicate
+```
+
+`--skip-duplicate` lets you run the import again after an interruption. Each version keeps its content, but not its download count or listing state: unlist again what was unlisted ([unlist and delete](#unlist-and-delete)). With `Mirror:Enabled`, packages from the mirrored feed need no import: they are fetched on first use ([restoring](restoring.md#mirror)).
+
 ## From the web UI
 
 The **Upload** page of the web UI shows the commands for the common clients; it does not accept uploads itself. Publishing always goes through a client and an API key.

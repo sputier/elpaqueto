@@ -15,7 +15,7 @@ changes a setting.
 
 | File | Purpose |
 |---|---|
-| `.github/dependabot.yml` | Weekly version updates for NuGet, GitHub Actions, Docker and the npm documentation site, grouped per ecosystem, targeting `develop`. |
+| `.github/dependabot.yml` | Weekly version updates for NuGet, GitHub Actions and Docker, grouped per ecosystem, targeting `develop`. |
 | `.github/workflows/ci.yml` | Build and test on Linux and Windows (`build-test`). |
 | `.github/workflows/codeql.yml` | CodeQL analysis of C# (manual build) and of the workflows themselves, with the `security-extended` suite, on pull requests, pushes to `develop`/`main` and weekly. |
 | `.github/workflows/docker.yml` | Builds the container image on amd64 and arm64, runs the container smoke test, cross-builds arm64 from amd64, scans the image with Trivy and validates the Compose and reverse-proxy samples. Read-only, pushes no image; also called by the release workflow. |

@@ -28,4 +28,4 @@ ElPaqueto inherits BaGetter's storage, database and search providers. Only the d
 
 ## Documentation
 
-The inherited documentation site under `docs/docs/` and the Helm chart under `deployment templates/` come from BaGetter and are not maintained for ElPaqueto: their fate is still being decided. Use the [user documentation](README.md).
+The Helm chart under `deployment templates/` comes from BaGetter and is not maintained for ElPaqueto: its fate is still being decided. Use the [user documentation](README.md).
