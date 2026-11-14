@@ -19,6 +19,10 @@ The request carried no usable credentials. The answer is the same whatever the c
 
 `X-NuGet-ApiKey` wins over Basic credentials: a request that sends an invalid key in that header fails even with a valid password.
 
+**A push, delete or relist with a valid `publish` key gets `401`**, with no failed sign-in in the log: the server runs with `IsReadOnlyMode: true` ([configuration](configuration.md#inherited-server-settings)). This `401` carries no `WWW-Authenticate` header. `dotnet nuget push` and `dotnet nuget delete` report `Response status code does not indicate success: 401 (Unauthorized).` after a single request, without retrying or prompting. Restores keep working.
+
+A `401` or `403` never redirects, and its body is empty (no `Content-Type`). The challenge is exactly `WWW-Authenticate: Basic realm="ElPaqueto"`, without a `charset` parameter.
+
 ## `403 Forbidden`
 
 - **Body `HTTPS is required.`**: a plain-HTTP request from another machine. Use the `https://` URL. Behind a reverse proxy, the proxy is not trusted (`Security:ReverseProxy`) or does not send `X-Forwarded-Proto: https`; the log shows event 1202 once with the ignored address. See [Running behind a reverse proxy](reverse-proxy.md#checking-the-setup).

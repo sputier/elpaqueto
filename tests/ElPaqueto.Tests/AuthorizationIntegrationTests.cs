@@ -453,6 +453,39 @@ public class AuthorizationIntegrationTests : IDisposable
         Assert.Contains(checkName, details, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task Health_KeepsItsContract_WithAPathBase()
+    {
+        const string checkName = "a-distinctive-check-name";
+        using var baseApp = new ElPaquetoApplication(_output, inMemoryConfiguration: dict => dict["PathBase"] = "/feed");
+        using var app = baseApp.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+            services.AddHealthChecks().AddCheck(checkName, () => HealthCheckResult.Healthy())));
+        await app.AddUserAsync("reader", Password, Permission.Read);
+        using var anonymous = app.CreateAnonymousClient();
+        using var reader = app.CreateClientFor("reader", Password);
+        using var admin = app.CreateClient();
+
+        using var liveness = await anonymous.GetAsync("feed/health");
+        var livenessBody = await liveness.Content.ReadAsStringAsync();
+        using var anonymousDetails = await anonymous.GetAsync("feed/health/details");
+        using var readerDetails = await reader.GetAsync("feed/health/details");
+        using var adminDetails = await admin.GetAsync("feed/health/details");
+        var detailsBody = await adminDetails.Content.ReadAsStringAsync();
+
+        // Liveness: anonymous, the overall status only.
+        Assert.Equal(HttpStatusCode.OK, liveness.StatusCode);
+        Assert.Contains("\"Status\"", livenessBody, StringComparison.Ordinal);
+        Assert.DoesNotContain(checkName, livenessBody, StringComparison.Ordinal);
+        Assert.DoesNotContain("Sqlite", livenessBody, StringComparison.OrdinalIgnoreCase);
+
+        // Details: Admin only, with the per-check entries.
+        Assert.Equal(HttpStatusCode.Unauthorized, anonymousDetails.StatusCode);
+        Assert.Equal(new[] { "Basic realm=\"ElPaqueto\"" }, anonymousDetails.Headers.GetValues("WWW-Authenticate"));
+        Assert.Equal(HttpStatusCode.Forbidden, readerDetails.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, adminDetails.StatusCode);
+        Assert.Contains(checkName, detailsBody, StringComparison.Ordinal);
+    }
+
     private sealed class MapExtraEndpointFilter(string? routeName) : IStartupFilter
     {
         public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>

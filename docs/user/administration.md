@@ -158,6 +158,25 @@ All commands below follow the conventions above (password sources, exit codes, o
 
 The permissions are independent: `admin` does not imply `read` or `publish`. An unknown entry is a usage error (exit code 2) that lists the valid values. An empty list is refused: use `disable` to remove all access.
 
+### Read permission
+
+`read` is what a NuGet client needs to restore, and what a person needs to browse the feed. It grants `GET` and `HEAD` on:
+
+| What | URLs |
+| --- | --- |
+| Service index | `/v3/index.json` (`GET` only) |
+| Search | `/v3/search`, `/v3/autocomplete`, `/v3/dependents` |
+| Package metadata (registrations) | `/v3/registration/<id>/index.json`, `/v3/registration/<id>/<version>.json` (`GET` only) |
+| Packages (flat container) | `/v3/package/<id>/index.json` (versions), the `.nupkg`, the `.nuspec`, the readme and the icon |
+| Symbols | `/api/download/symbols/...` (`.pdb` files) |
+| Web UI | the home page and search, the package pages, the upload instructions page and the statistics page |
+
+Each URL in the service index and in the package metadata leads to one of these, except the two publish URLs, which need a `publish` key.
+
+`read` does not grant pushing, deleting or relisting (a key with `publish`, sent with `--api-key`), nor the detailed health report (`admin`). Only `/health`, which reports the overall status, needs no credentials.
+
+A request without valid credentials gets `401`, and valid credentials without `read` get `403`, before the server looks anything up: the answer is the same whether the package exists or not, a refused download is not counted, and with `Mirror:Enabled` a refused request never makes the server contact the upstream source. See [troubleshooting](troubleshooting.md#401-unauthorized).
+
 ### Last active administrator
 
 `disable` and `set-permissions` refuse (exit code 3, nothing changed) a change that would leave no **active** user holding `admin`. With two active administrators, one of them can be disabled or demoted. The check and the change happen in one database write transaction, so two concurrent commands cannot each remove "the other" last administrator.
