@@ -39,7 +39,7 @@ docker run --rm -v elpaqueto-data-restored:/data -v "$PWD":/backup:ro alpine:3 \
 
 Then start the server on `elpaqueto-data-restored` with the same settings, check that users can sign in and that packages restore, and remove the old volume only after that.
 
-This procedure was run against the image built from this repository: a backup of a stopped container, a restore into a new volume, and a server started on it with the same users, API keys and packages. It is not covered by an automated test yet.
+This procedure is not covered by an automated test yet ([#42](https://github.com/sputier/ElPaqueto/issues/42)): check each restore as described above before you rely on it.
 
 ## Online backup
 
