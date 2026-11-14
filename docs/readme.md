@@ -5,6 +5,7 @@
 | [User documentation](user/README.md) | People who install, configure and use the server | [Installation](user/installation.md) |
 | [Technical documentation](technical/README.md) | Contributors, reviewers, porters of upstream changes | [Architecture](technical/architecture.md) |
 | [Architecture decision records](adr/README.md) | Anyone who wants to know why | [ADR 0002: authentication architecture](adr/0002-authentication-architecture.md) |
+| [Validation report](validation-report.md) | Anyone deciding whether to rely on ElPaqueto, release reviewers | [Platform and client matrix](validation-report.md#2-platform-and-client-matrix) |
 | [Porting upstream changes](upstream-porting.md) | Maintainers porting BaGetter changes | Section 4, porting procedure |
 | [Maintainer notes](maintainers/) | Maintainers | [Repository settings](maintainers/repository-settings.md), [hygiene checks](maintainers/hygiene-checks.md) |
 

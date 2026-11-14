@@ -20,7 +20,7 @@ ElPaqueto is a private, self-hosted [NuGet] server with built-in authentication.
 
 ## Status
 
-ElPaqueto has **no release yet** (version `0.1.0-prerelease`) and no published container image: build it from this repository. The authentication, authorization, API key, transport and throttling features are implemented and tested; the end-to-end validation of clients and platforms is still in progress. Read the [known limitations](docs/user/known-limitations.md) before you deploy it.
+ElPaqueto has **no release yet** (version `0.1.0-prerelease`) and no published container image: build it from this repository. The authentication, authorization, API key, transport and throttling features are implemented and tested. The `dotnet` CLI is validated end to end on Linux and Windows; `nuget.exe` and Visual Studio are not validated yet. The [validation report](docs/validation-report.md) maps every acceptance criterion to its evidence; read the [known limitations](docs/user/known-limitations.md) before you deploy it.
 
 ## Quick start (Docker, local evaluation)
 
@@ -71,6 +71,7 @@ Already running BaGetter? Read [Upgrading from BaGetter](docs/user/upgrading-fro
 - [User documentation](docs/user/README.md): installation, configuration, administration, client setup, publishing, troubleshooting.
 - [Technical documentation](docs/technical/README.md): architecture, request pipeline, security design, threat model, testing.
 - [Architecture decision records](docs/adr/README.md).
+- [Validation report](docs/validation-report.md): what was tested, with which clients and platforms, and what was not.
 - [Documentation index](docs/readme.md).
 
 The inherited BaGetter documentation site under `docs/docs/` is not maintained for ElPaqueto yet: prefer the pages above.
@@ -83,6 +84,8 @@ Building needs the **.NET 10 SDK** (the exact version is pinned in `global.json`
 dotnet build ElPaqueto.sln
 dotnet test ElPaqueto.sln
 ```
+
+The end-to-end tests in this run start the server and the real `dotnet` CLI, and one of them restores packages from nuget.org; `--filter "Category!=EndToEnd"` leaves them out ([testing](docs/technical/testing.md)).
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for running the server from source and for the rules of a pull request.
 
