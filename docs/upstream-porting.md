@@ -193,8 +193,9 @@ The pull request says which and why.
 
 The [upstream touch map](technical/upstream-touch-map.md) lists every inherited
 file ElPaqueto changed or deleted, with the reason: hunks on those files are
-the ones most likely to conflict. `docs/technical/upstream-test-changes.md`
-(#41) will list the upstream tests ElPaqueto changed; it does not exist yet.
+the ones most likely to conflict. [Upstream test changes](technical/upstream-test-changes.md)
+lists the inherited test files ElPaqueto changed, deleted or added to, with the
+reason and what to do with upstream hunks on them.
 
 ## 6. Security review checklist
 
@@ -237,7 +238,10 @@ All of the following are green before a port pull request is merged:
 
 - `dotnet build` and `dotnet test` (unit and integration tests), as run by CI;
 - the endpoint inventory tests of `tests/ElPaqueto.Tests/AuthorizationIntegrationTests.cs`
-  (part of `dotnet test`);
+  and the authorization matrix and tampering suites (part of `dotnet test`).
+  When they fail because the port added an endpoint, add a justified row to
+  the permission table, never an anonymous row by default; see
+  [security suites](technical/testing.md#security-suites);
 - the end-to-end suite (#36 to #40), once it exists;
 - a Docker build: `docker build .`;
 - `bash eng/tests/port-upstream.test.sh`, when the pull request changes the

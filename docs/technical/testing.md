@@ -41,8 +41,25 @@ It publishes a port on `127.0.0.1` (18080 by default, `SMOKE_PORT`), creates ran
 - **Real behaviour over mocks** for protocol and process behaviour: the integration host runs the real pipeline, process tests start the real binary, and the smoke test uses the real `dotnet` CLI.
 - **Never log or print a secret**, even in tests: generate throwaway values, and pass them through standard input or the environment rather than arguments.
 - **Each integration host has its own databases** in a temporary folder; tests do not share state and can run in parallel. The SQLite provider runs its asynchronous calls synchronously: use `Task.Run` to make concurrent writers really concurrent.
-- **New route**: add it to the authorization matrix, see [adding a protected endpoint](adding-a-protected-endpoint.md).
+- **New route**: add a row to the permission table and a sample request, see [adding a protected endpoint](adding-a-protected-endpoint.md) and [security suites](#security-suites).
+- **Inherited tests** are adapted, never skipped: see [upstream test changes](upstream-test-changes.md). The only `Skip` in the tree is the one `UnixFact` and `UnprivilegedUnixFact` set on Windows (or as root) for tests of Unix file modes and signals, which cannot run there; those tests run on the Linux leg of the CI.
 - **New `Security` setting**: document it in [`docs/user/configuration.md`](../user/configuration.md) with its full key; `ConfigurationDocumentationTests` fails otherwise.
+
+## Security suites
+
+These suites in `tests/ElPaqueto.Tests` check the permission table (`EndpointPermissionTable`) against the endpoints the server really builds, and against the requests an attacker can send. They take their list of rows from the table itself; `Support/EndpointSamples.cs` only gives one concrete request per row.
+
+| Suite | Checks |
+| --- | --- |
+| Endpoint inventory (`AuthorizationIntegrationTests`) | Every endpoint that can match a request has a row, and every row has an endpoint (`EveryMatchableEndpoint_HasARowInThePermissionTable`, `EveryRowOfThePermissionTable_MatchesARealEndpoint`, `EveryRouteNameOfTheWebProject_HasARowAndNoRowIsInvented`). An endpoint added without a row is denied and logged (`AnEndpointWithNoRow_IsDeniedAndLogged`, which builds a host with an extra route). |
+| Authorization matrix (`AuthorizationMatrixIntegrationTests`) | Every row with every kind of credential: none, wrong password, unknown user, disabled user, users holding no permission, `Read`, `Publish`, `Admin` or all three, API keys with each permission in `X-NuGet-ApiKey`, revoked, expired, wrong-secret keys and keys of a disabled user, keys sent as a Basic password. The expected answer is computed from the row (401, 403, or allowed). A refusal must carry the right challenge, run nothing behind the endpoint and leave the packages and package storage unchanged; an allowed request must reach the code of the row. A second host checks the delete row when packages are deleted for good (Admin needed). |
+| Request tampering (`RequestTamperingIntegrationTests`, `PathBaseTamperingIntegrationTests`) | Sent byte for byte through a real Kestrel listener, so that no client normalizes them: about thirty spellings of protected paths (case, trailing slash, `//`, `.` and `..` segments, `%2F`, `%2e`, double encoding, `;` parameters, backslashes, suffixes, absolute-form targets, the `/Index` alias, path base variants), every method a row does not allow (including `OPTIONS`, `TRACE`, WebDAV and unknown methods), and the `X-HTTP-Method-Override`, `X-HTTP-Method` and `X-Method-Override` headers. None may answer 2xx or 3xx, run the code of an endpoint, or change state. Control tests check that the canonical paths are refused for the same credentials and that the variants still work with every permission. |
+
+They rely on `Support/RequestProbe.cs`, test instrumentation that adds an `X-Test-Endpoint` response header naming the row of the endpoint the router chose, and records every MVC action, Razor page and health check that runs.
+
+### When the inventory or the matrix fails after an upstream port
+
+A port that adds or renames an endpoint fails these suites. Follow [adding a protected endpoint](adding-a-protected-endpoint.md): add a row with the least permission the endpoint needs and the reason in the pull request, then a sample request. Never fix the failure with an anonymous row, a broader permission than the endpoint needs, or by removing or loosening a test: an anonymous endpoint needs its own security review.
 
 ## What the tests do not cover
 
