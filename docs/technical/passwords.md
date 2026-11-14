@@ -32,12 +32,11 @@ Applied by `Validate` when a password is set (never at login): between `Security
 
 ## Cost
 
-Every NuGet request carries Basic credentials, and a restore can issue hundreds of requests, so the per-verification cost matters. Measured on this code at 210000 iterations (informational, from `PasswordServiceTests.VerificationCost_AtTheDefaultIterationCount_IsMeasured`):
+Every NuGet request carries Basic credentials, and a restore can issue hundreds of requests, so the per-verification cost matters. At the default 210000 iterations, one verification takes on the order of 100 ms of processor time on a typical x64 machine. `PasswordServiceTests.VerificationCost_AtTheDefaultIterationCount_IsMeasured` prints the cost on the machine that runs it:
 
-| Environment | Time per verification |
-| --- | --- |
-| Windows 11 workstation | about 86 ms |
-| Linux container (`mcr.microsoft.com/dotnet/sdk:10.0`, 8 CPUs) | about 129 ms |
+```bash
+dotnet test tests/ElPaqueto.Security.Tests --filter "FullyQualifiedName~VerificationCost" --logger "console;verbosity=detailed"
+```
 
 The amount of hashing is limited by the [verification cache](authentication.md#verification-cache), which skips the hash for a recently verified password, and by [sign-in throttling](throttling.md), which refuses failed attempts beyond a limit before hashing and bounds the number of hashes running at once. The cost itself is configurable down to 100000 iterations for small hosts.
 
