@@ -80,7 +80,11 @@ public sealed class RequestProbe
 
     private static string KeyOf(HttpContext context) => EndpointKey.Resolve(context?.GetEndpoint()) ?? "(none)";
 
-    /// <summary>Outermost middleware: names the chosen endpoint on the way out, whatever the answer.</summary>
+    /// <summary>
+    /// Wraps the application pipeline (a test startup filter, registered after those of the application): names the
+    /// chosen endpoint on the way out, whatever the answer. A request refused before the pipeline, by Kestrel, has no
+    /// such header.
+    /// </summary>
     private sealed class EndpointHeaderFilter : IStartupFilter
     {
         public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
@@ -115,7 +119,8 @@ public sealed class RequestProbe
     {
         public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
         {
-            // The checks run inside the request, so the accessor sees it.
+            // The checks run inside the request, and the application registers IHttpContextAccessor (the security
+            // module does), so the accessor's async-local context is the request's.
             probe.Record(KeyOf(new HttpContextAccessor().HttpContext));
             return Task.FromResult(HealthCheckResult.Healthy());
         }

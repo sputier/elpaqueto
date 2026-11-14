@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Net.Sockets;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace ElPaqueto.Tests;
@@ -12,8 +13,16 @@ namespace ElPaqueto.Tests;
 /// Sends an HTTP/1.1 request byte for byte over a socket: no client library normalizes the method, the request
 /// target or the headers, so the server sees exactly what an attacker would send.
 /// </summary>
+/// <remarks>
+/// The response is read until the server closes the connection (<c>Connection: close</c>), within
+/// <see cref="Timeout"/>. Chunked bodies are not decoded: the suites only read short bodies, or check that a body
+/// is empty.
+/// </remarks>
 internal static class RawHttp
 {
+    /// <summary>How long one exchange may take before the test fails instead of hanging.</summary>
+    public static readonly TimeSpan Timeout = TimeSpan.FromSeconds(30);
+
     /// <summary>The answer: the status code, the headers (names in lower case) and the body as text.</summary>
     public sealed record Response(int Status, IReadOnlyDictionary<string, string> Headers, string Body)
     {
@@ -27,8 +36,9 @@ internal static class RawHttp
         IEnumerable<KeyValuePair<string, string>> headers = null,
         byte[] body = null)
     {
+        using var timeout = new CancellationTokenSource(Timeout);
         using var tcp = new TcpClient();
-        await tcp.ConnectAsync(server.Host, server.Port);
+        await tcp.ConnectAsync(server.Host, server.Port, timeout.Token);
         await using var stream = tcp.GetStream();
 
         var head = new StringBuilder()
@@ -47,14 +57,21 @@ internal static class RawHttp
         }
 
         head.Append("\r\n");
-        await stream.WriteAsync(Encoding.ASCII.GetBytes(head.ToString()));
+        var text = head.ToString();
+        if (text.Any(c => c > 0x7F))
+        {
+            // Encoding.ASCII would silently send '?' instead: the request would not be the one the test means.
+            throw new ArgumentException("A raw request must be ASCII; percent-encode anything else: " + target, nameof(target));
+        }
+
+        await stream.WriteAsync(Encoding.ASCII.GetBytes(text), timeout.Token);
         if (body is { Length: > 0 })
         {
-            await stream.WriteAsync(body);
+            await stream.WriteAsync(body, timeout.Token);
         }
 
         using var received = new MemoryStream();
-        await stream.CopyToAsync(received);
+        await stream.CopyToAsync(received, timeout.Token);
         return Parse(Encoding.UTF8.GetString(received.ToArray()));
     }
 

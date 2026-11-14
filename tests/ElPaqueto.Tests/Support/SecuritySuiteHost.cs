@@ -35,8 +35,9 @@ public sealed record SuiteCredential(string Name, Permission Granted, bool Valid
 /// published, and the <see cref="RequestProbe"/> installed.
 /// </summary>
 /// <remarks>
-/// Throttling limits are raised: the suites send hundreds of failed credentials on purpose, and throttling has its
-/// own tests. Every other security setting is the default.
+/// Throttling limits are raised to the highest values the options accept: the suites send hundreds of failed
+/// credentials on purpose (a few hundred per host, well below the limits), and throttling has its own tests. A trip
+/// would show as a 429 where 401 is expected, never as a silent pass. Every other security setting is the default.
 /// </remarks>
 public class SecuritySuiteHost : IAsyncLifetime
 {
@@ -95,6 +96,46 @@ public class SecuritySuiteHost : IAsyncLifetime
     protected virtual WebApplicationFactory<Startup> Customize(WebApplicationFactory<Startup> app) => app;
 
     public async Task InitializeAsync()
+    {
+        try
+        {
+            await StartAsync();
+        }
+        catch
+        {
+            // xunit does not dispose a fixture whose initialization failed: stop the host, and Kestrel, here.
+            await DisposeAsync();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Puts the test package back the way <see cref="InitializeAsync"/> left it, published and listed, after an allowed
+    /// write unlisted or deleted it: a refused write that follows is then checked against a state it could change.
+    /// </summary>
+    public async Task RestoreBaselineAsync()
+    {
+        using (var scope = App.Services.CreateScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<IContext>();
+            var package = await context.Packages.SingleOrDefaultAsync(p => p.Id == "TestData");
+            if (package is not null)
+            {
+                if (!package.Listed)
+                {
+                    package.Listed = true;
+                    await context.SaveChangesAsync(default);
+                }
+
+                return;
+            }
+        }
+
+        await App.AddPackageAsync(TestResources.GetResourceStream(TestResources.Package));
+        await App.AddSymbolPackageAsync(TestResources.GetResourceStream(TestResources.SymbolPackage));
+    }
+
+    private async Task StartAsync()
     {
         _application = new ElPaquetoApplication(new NullTestOutput(), inMemoryConfiguration: Configure);
         App = Customize(_application.WithWebHostBuilder(Probe.Install));
@@ -182,7 +223,7 @@ public class SecuritySuiteHost : IAsyncLifetime
         var context = scope.ServiceProvider.GetRequiredService<IContext>();
         var packages = await context.Packages
             .OrderBy(p => p.Id).ThenBy(p => p.NormalizedVersionString)
-            .Select(p => p.Id + "/" + p.NormalizedVersionString + "/listed=" + p.Listed)
+            .Select(p => p.Id + "/" + p.NormalizedVersionString + "/" + (p.Listed ? "listed" : "unlisted"))
             .ToListAsync();
 
         var storage = App.Services.GetRequiredService<IConfiguration>()["Storage:Path"];

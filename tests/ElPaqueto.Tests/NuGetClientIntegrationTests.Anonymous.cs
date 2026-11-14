@@ -27,7 +27,7 @@ public partial class NuGetClientIntegrationTests
         var refused = await Assert.ThrowsAnyAsync<Exception>(() => anonymousRepository.GetResourceAsync<ServiceIndexResourceV3>());
 
         Assert.NotNull(index);
-        Assert.Contains("401", Flatten(refused), StringComparison.Ordinal);
+        Assert.Contains("401 (Unauthorized)", Flatten(refused), StringComparison.Ordinal);
     }
 
     private static string Flatten(Exception exception)

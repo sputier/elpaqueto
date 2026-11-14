@@ -33,7 +33,11 @@ public partial class MirrorIntegrationTests
         using var direct = await anonymousUpstream.GetAsync("v3/package/TestData/index.json");
         using var mirrored = await client.GetAsync("v3/package/TestData/1.2.3/TestData.1.2.3.nupkg");
 
+        // Control: the same request through the mirror of the class, whose upstream client authenticates.
+        using var authenticatedMirror = await _downstreamClient.GetAsync("v3/package/TestData/1.2.3/TestData.1.2.3.nupkg");
+
         Assert.Equal(HttpStatusCode.Unauthorized, direct.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, mirrored.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, authenticatedMirror.StatusCode);
     }
 }

@@ -85,6 +85,8 @@ public class RequestTamperingIntegrationTests(KestrelSecuritySuiteHost host) : I
             "/" + route + "/x",
             "/" + route + "%00",
             "/feed/" + route,
+            // Absolute-form targets: one naming this server, one naming another host (Kestrel refuses it: 400).
+            Origin + "/" + route,
             "http://localhost/" + route,
         };
 
@@ -97,6 +99,16 @@ public class RequestTamperingIntegrationTests(KestrelSecuritySuiteHost host) : I
         return variants.Where(v => v != "/" + route).Distinct(StringComparer.Ordinal).Select(v => v + query);
     }
 
+    /// <summary>Replaced by the scheme and authority of the listener when the request is sent.</summary>
+    internal const string Origin = "{origin}";
+
+    /// <summary>
+    /// The only spellings Kestrel itself may refuse with 400, before the application sees them: a NUL byte, and an
+    /// absolute-form target whose authority is not the Host header. Every other variant must reach authorization.
+    /// </summary>
+    internal static bool KestrelMayRefuse(string target)
+        => target.Contains("%00", StringComparison.Ordinal) || target.StartsWith("http://localhost/", StringComparison.Ordinal);
+
     [Theory]
     [MemberData(nameof(PathCases))]
     public async Task AnotherSpellingOfAProtectedPath_NeverReachesItsEndpoint(string key, string credential, string target)
@@ -105,9 +117,9 @@ public class RequestTamperingIntegrationTests(KestrelSecuritySuiteHost host) : I
         var before = await host.SnapshotStateAsync();
         host.Probe.Clear();
 
-        var response = await RawHttp.SendAsync(host.Address, method, target, host.HeadersFor(credential));
+        var response = await RawHttp.SendAsync(host.Address, method, target.Replace(Origin, host.Address.GetLeftPart(UriPartial.Authority), StringComparison.Ordinal), host.HeadersFor(credential));
 
-        AssertRefused(response, credential, $"{method} {target} (row '{key}') with {credential}", before, await host.SnapshotStateAsync());
+        AssertRefused(response, credential, $"{method} {target} (row '{key}') with {credential}", before, await host.SnapshotStateAsync(), KestrelMayRefuse(target));
     }
 
     [Fact]
@@ -221,21 +233,21 @@ public class RequestTamperingIntegrationTests(KestrelSecuritySuiteHost host) : I
     /// <summary>
     /// The answer must be the refusal of the authorization layer itself: 401 without a valid credential, 403 with one.
     /// A 404 or 405 is not accepted: deny-by-default answers 401/403 even when no endpoint matches, so a 404 would
-    /// mean that authorization let the request through. Only a 400 from Kestrel, for a request target it cannot
-    /// parse, is accepted besides, and only when no endpoint was chosen.
+    /// mean that authorization let the request through. A 400 is accepted only for the targets of
+    /// <see cref="KestrelMayRefuse"/>, and only when it comes from Kestrel (the application never saw the request).
     /// </summary>
-    internal static void AssertAuthorizationRefusal(RawHttp.Response response, string credential, string scenario)
+    internal static void AssertAuthorizationRefusal(RawHttp.Response response, string credential, string scenario, bool kestrelMayRefuse = false)
     {
         var expected = SecuritySuiteHost.Credential(credential).Valid ? 403 : 401;
         var endpoint = response.Header(RequestProbe.EndpointHeader);
         Assert.True(
-            response.Status == expected || (response.Status == 400 && endpoint is null or "(none)"),
+            response.Status == expected || (kestrelMayRefuse && response.Status == 400 && endpoint is null),
             $"{scenario}: answered {response.Status} (endpoint {endpoint ?? "not reached"}); expected {expected}.");
     }
 
-    private void AssertRefused(RawHttp.Response response, string credential, string scenario, string before, string after)
+    private void AssertRefused(RawHttp.Response response, string credential, string scenario, string before, string after, bool kestrelMayRefuse = false)
     {
-        AssertAuthorizationRefusal(response, credential, scenario);
+        AssertAuthorizationRefusal(response, credential, scenario, kestrelMayRefuse);
         Assert.True(host.Probe.Executed.Count == 0, $"{scenario}: answered {response.Status}, and this ran: {string.Join(", ", host.Probe.Executed)}.");
         Assert.True(before == after, $"{scenario}: the packages or package storage changed.");
     }

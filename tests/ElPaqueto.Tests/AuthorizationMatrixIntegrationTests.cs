@@ -36,6 +36,27 @@ public class AuthorizationMatrixIntegrationTests(SecuritySuiteHost host) : IClas
             "Sample requests for rows the permission table does not have: " + string.Join(", ", EndpointSamples.SamplesWithoutRow()));
     }
 
+    [Fact]
+    public void TheSensitiveRows_StillRequireWhatTheyMust()
+    {
+        // The matrix derives its expectations from the table; these rows are also pinned by hand, so that a weakened
+        // row fails here even though the matrix would follow it.
+        Assert.Equal(new[] { EndpointPermissionTable.HealthKey }, EndpointSamples.Keys().Where(key => EndpointSamples.Rule(key).Anonymous));
+        Assert.Equal(Security.Permission.Admin, EndpointSamples.Rule(EndpointPermissionTable.HealthDetailsKey).Required);
+        foreach (var write in new[] { "upload-package", "upload-symbol", "relist", "delete" })
+        {
+            var rule = EndpointSamples.Rule(write);
+            Assert.True(rule.Required == Security.Permission.Publish && rule.RequiresApiKeyHeader, $"The write row '{write}' must need Publish through X-NuGet-ApiKey.");
+            Assert.Single(rule.Methods);
+        }
+
+        foreach (var key in EndpointSamples.Keys().Where(key => !EndpointSamples.IsWrite(key) && !EndpointSamples.Rule(key).Anonymous && key != EndpointPermissionTable.HealthDetailsKey))
+        {
+            Assert.Equal(Security.Permission.Read, EndpointSamples.Rule(key).Required);
+            Assert.Equal(new[] { "GET", "HEAD" }, EndpointSamples.Rule(key).Methods);
+        }
+    }
+
     [Theory]
     [MemberData(nameof(EveryKey))]
     public async Task EverySample_IsRoutedToItsOwnRow(string key)
@@ -63,7 +84,9 @@ public class AuthorizationMatrixIntegrationTests(SecuritySuiteHost host) : IClas
 
         using var client = host.ClientFor(credentialName);
         using var request = EndpointSamples.Request(key);
+        await host.RestoreBaselineAsync();
         var before = await host.SnapshotStateAsync();
+        Assert.Contains("/1.2.3/listed", before, System.StringComparison.Ordinal);
         host.Probe.Clear();
 
         using var response = await client.SendAsync(request);
