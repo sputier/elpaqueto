@@ -5,7 +5,6 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.RegularExpressions;
-using System.Threading;
 using System.Threading.Tasks;
 using ElPaqueto.Security;
 using NuGet.Packaging;
@@ -210,18 +209,5 @@ public class WebUiIntegrationTests
         public DateTimeOffset LastWriteTime => DateTimeOffset.UnixEpoch.AddYears(30);
 
         public Stream GetStream() => new MemoryStream(content, writable: false);
-    }
-
-    private sealed class CountingHandler : DelegatingHandler
-    {
-        private int _count;
-
-        public int Count => Volatile.Read(ref _count);
-
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            Interlocked.Increment(ref _count);
-            return base.SendAsync(request, cancellationToken);
-        }
     }
 }

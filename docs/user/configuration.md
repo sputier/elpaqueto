@@ -251,7 +251,7 @@ These settings come from BaGetter and keep their names and behaviour. The table 
 | `PathBase` | not set | A path prefix when the feed is served below the root, such as `/nuget`. Forwarded prefixes (`X-Forwarded-Prefix`) are not supported. |
 | `PackageDeletionBehavior` | `Unlist` | What `dotnet nuget delete` does: `Unlist`, or `HardDelete`, which also requires the `Admin` permission. See [publishing](publishing.md#unlist-and-delete). |
 | `AllowPackageOverwrites` | `false` | `false`, `PrereleaseOnly` or `true`. When allowed, a push replaces an existing version instead of failing with `409`. |
-| `IsReadOnlyMode` | `false` | Refuse every push. |
+| `IsReadOnlyMode` | `false` | Refuse every push, symbol push, delete and relist with a `401` that carries no `WWW-Authenticate` header, even with a valid `publish` key; nothing is changed. Missing or insufficient credentials still get the usual `401` or `403` first. Reads are not affected. See [troubleshooting](troubleshooting.md#401-unauthorized). |
 | `MaxPackageSizeGiB` | `8` | Largest accepted package, in GiB. |
 | `RunMigrationsAtStartup` | `true` | Migrate the package database at startup. The security database is always migrated. |
 | `HealthCheck:Path` | `/health` | Anonymous liveness endpoint; `<path>/details` requires `Admin`. Must not be `/`. |

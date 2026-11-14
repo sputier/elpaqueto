@@ -77,8 +77,12 @@ internal static class TestUserExtensions
 
     /// <summary>Creates a client that sends no credential at all.</summary>
     public static HttpClient CreateAnonymousClient(this WebApplicationFactory<Startup> app)
+        => app.CreateAnonymousClient(app.ClientOptions);
+
+    /// <summary>Creates a client with the given options that sends no credential at all.</summary>
+    public static HttpClient CreateAnonymousClient(this WebApplicationFactory<Startup> app, WebApplicationFactoryClientOptions options)
     {
-        var client = app.CreateClient();
+        var client = app.CreateClient(options);
         client.DefaultRequestHeaders.Authorization = null;
         client.DefaultRequestHeaders.Remove(ApiKeyHeader);
         return client;
