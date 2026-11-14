@@ -8,7 +8,7 @@ using Xunit.Abstractions;
 
 namespace ElPaqueto.Tests;
 
-public class MirrorIntegrationTests : IDisposable
+public partial class MirrorIntegrationTests : IDisposable
 {
     private readonly ElPaquetoApplication _upstream;
     private readonly ElPaquetoApplication _downstream;
