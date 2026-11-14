@@ -141,9 +141,9 @@ commands that verify them.
 
 1. Make sure `develop` is green and holds everything planned for the release.
 2. Run a dry run on `develop` (see above) and check its summary.
-3. Update the [validation report](../validation-report.md#7-updating-this-report)
-   for the release commit: re-run or downgrade every row, link the CI runs,
-   review the known limitations. A failing row blocks the release.
+3. Review [client compatibility](../user/client-compatibility.md) and the
+   [known limitations](../user/known-limitations.md) against what the
+   release contains.
 4. Open a pull request from `develop` to `main`. In it, move the
    `## [Unreleased]` entries of `CHANGELOG.md` under a new
    `## [X.Y.Z] - YYYY-MM-DD` heading, leave an empty `## [Unreleased]` heading

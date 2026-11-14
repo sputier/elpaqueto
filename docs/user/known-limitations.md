@@ -1,6 +1,6 @@
 # Known limitations
 
-What ElPaqueto does not do, or has not validated yet. Read this page before you rely on it. The [validation report](../validation-report.md) lists every acceptance criterion with its evidence, and the clients and platforms that were really tested.
+What ElPaqueto does not do, or has not validated yet. Read this page before you rely on it. [Client compatibility](client-compatibility.md) lists the NuGet clients that are tested, and how.
 
 ## Not released yet
 
@@ -9,13 +9,13 @@ What ElPaqueto does not do, or has not validated yet. Read this page before you 
 
 ## Clients and platforms
 
-- **Validated client: the `dotnet` CLI of the .NET 10 SDK**, on Windows and Linux, by the end-to-end tests (push, add package, restore, build, test, search, unlist, delete, refusals) and by the container smoke test. See the [platform and client matrix](../validation-report.md#2-platform-and-client-matrix).
+- **Validated client: the `dotnet` CLI of the .NET 10 SDK**, on Windows and Linux, by the end-to-end tests (push, add package, restore, build, test, search, unlist, delete, refusals) and by the container smoke test. See [client compatibility](client-compatibility.md).
 - **Not validated:** `nuget.exe` (on Windows or on Mono), Visual Studio, Rider, VS Code, MSBuild-only builds, Paket, PowerShellGet, any client on macOS, and debuggers fetching symbols. They use the same NuGet protocol and configuration, but their prompts, retries and credential storage have not been observed.
 - **The `dotnet` CLI does not wait for `Retry-After`.** A throttled (429) or busy (503) restore fails after a few quick retries instead of waiting. See [what the real clients do](../technical/e2e-tests.md#what-the-real-clients-do).
 - **An unlisted version is still chosen by a version range** in restore, as with upstream BaGetter and nuget.org: unlisting only hides a version from search.
-- **TLS is not tested automatically.** HTTPS through the nginx, Caddy and Traefik samples was checked by hand once; tunnels were not.
+- **TLS is not tested automatically.** CI checks only the syntax of the nginx, Caddy and Traefik samples; no automated test runs a client over HTTPS through a proxy or a tunnel.
 - The container image is built and smoke-tested in CI on Linux for `linux/amd64` and `linux/arm64`. Outside a container, the server runs in the test suites on Windows and Linux; Windows service, systemd and IIS hosting are not tested.
-- The web UI was checked in Chromium only.
+- The web UI has no automated browser test: its headers and content security policy are tested over HTTP, not in a browser.
 
 ## Security model
 
@@ -39,7 +39,7 @@ See the [threat model](../technical/threat-model.md) for the residual risks and 
 - ElPaqueto inherits BaGetter's storage, database and search providers. Only the defaults are tested here: SQLite for both databases and the file system for packages. The PostgreSQL and SQL Server package databases, the Azure Table database, and the cloud storage providers (AWS S3, Azure Blob, Google Cloud Storage, Alibaba Cloud OSS, Tencent COS) are built but not tested by this project. The MySQL provider is excluded from the build until its EF Core 10 support exists ([#55](https://github.com/sputier/ElPaqueto/issues/55)). The security database is always SQLite.
 - **SQLite allows one writer at a time.** Writes are rare (administration, debounced last-use times of API keys); the databases use write-ahead logging and a busy timeout.
 - A hard delete leaves the empty version folder in the file storage.
-- The [backup](backup.md) procedure for a stopped container was run by hand; the online variant has not been tested.
+- Backup and restore have no automated test. The [backup](backup.md) procedure for a stopped container is the recommended one; the online variant is described but not tested.
 - **Upgrading from BaGetter** requires renaming `BAGET_CONFIG_ROOT` and the default database file, and recreating users and keys: BaGetter's `ApiKey` and `Authentication` settings stop the server ([upgrading from BaGetter](upgrading-from-bagetter.md)). The upgrade was tested with a database created under BaGetter's file name, not with a database written by BaGetter itself.
 - Upstream fixes, security fixes included, reach ElPaqueto only when they are ported ([porting upstream changes](../upstream-porting.md)).
 

@@ -2,7 +2,7 @@
 
 ElPaqueto is meant for the stock NuGet clients, with no plugin or credential provider. Every request needs credentials, so a client needs two things: the **source** (the URL of the service index) and **credentials** for it.
 
-The commands on this page were run with the `dotnet` CLI of the .NET 10 SDK, the only client validated so far. `nuget.exe` and the IDEs read the same NuGet configuration but have not been tested against ElPaqueto (see the [validation report](../validation-report.md#2-platform-and-client-matrix) and the [known limitations](known-limitations.md)).
+The commands on this page use the `dotnet` CLI of the .NET 10 SDK, the only client tested by the end-to-end tests. `nuget.exe` and the IDEs read the same NuGet configuration but have not been tested against ElPaqueto (see [client compatibility](client-compatibility.md)).
 
 ## Which credential for what
 

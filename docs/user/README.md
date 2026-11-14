@@ -31,7 +31,7 @@ These pages are for the people who install, configure and use an ElPaqueto serve
 | [Upgrading from BaGetter](upgrading-from-bagetter.md) | Breaking changes for an existing BaGetter installation. |
 | [Troubleshooting](troubleshooting.md) | `401`, `403`, `429`, `503`, `409`, wrong URLs, `NU1301`, `NU1302`. |
 | [Known limitations](known-limitations.md) | What ElPaqueto does not do, or has not validated yet. |
-| [Validation report](../validation-report.md) | Every acceptance criterion with its evidence, and the clients and platforms tested. |
+| [Client compatibility](client-compatibility.md) | Which NuGet clients are tested, what is verified for each, and how. |
 
 Users, permissions and API keys are all managed with the `admin` commands, so the three topics share one page, [Administration](administration.md).
 

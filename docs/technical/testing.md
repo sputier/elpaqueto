@@ -46,4 +46,4 @@ It publishes a port on `127.0.0.1` (18080 by default, `SMOKE_PORT`), creates ran
 
 ## What the tests do not cover
 
-The NuGet clients other than the `dotnet` CLI and the client libraries, IDEs, debuggers fetching symbols, TLS (except a manual check through the proxy samples), the non-default database and storage providers, and deployments with several instances are not tested. The [validation report](../validation-report.md) maps every acceptance criterion to its evidence; see also the [known limitations](../user/known-limitations.md).
+The NuGet clients other than the `dotnet` CLI and the client libraries, IDEs, debuggers fetching symbols, TLS (except a manual check through the proxy samples), the non-default database and storage providers, and deployments with several instances are not tested. See [client compatibility](../user/client-compatibility.md) and the [known limitations](../user/known-limitations.md).
