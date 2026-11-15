@@ -45,5 +45,5 @@ See the [threat model](../technical/threat-model.md) for the residual risks and 
 
 ## Project
 
-- The ElPaqueto logo has no stated licence yet ([assets/branding](../../assets/branding/README.md)).
+- The ElPaqueto logo is not under the MIT License of the code: it is all rights reserved, with a nominative-use allowance. It was generated with an AI image tool, so its copyright status cannot be guaranteed ([assets/branding](../../assets/branding/README.md)).
 - The Helm chart under `deployment templates/` comes from BaGetter and is not maintained for ElPaqueto: its fate is still being decided. Use the [user documentation](README.md).
