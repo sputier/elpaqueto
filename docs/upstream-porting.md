@@ -133,8 +133,9 @@ Exclusions, following the preserved items of ADR 0001:
 - Lines containing `[Migration("` are left unchanged: EF Core migration IDs
   must not change. A new upstream migration therefore keeps its ID while its
   class and file names are renamed, which EF Core accepts.
-- Sections under `docs/` and `deployment templates/` are left unchanged, paths
-  and content.
+- Sections under `docs/` are left unchanged, paths and content. The inherited
+  `deployment templates/` directory was deleted (#51): drop upstream hunks that
+  touch it.
 - Markdown files (`*.md`) elsewhere get their path mapped (for example
   `src/BaGetter.Core/readme.md` becomes `src/ElPaqueto.Core/readme.md`) and
   their content left unchanged, as #58 did.
@@ -186,7 +187,7 @@ The pull request says which and why.
 | `CODE_OF_CONDUCT.md` | Deleted (#7): it routed reports to an upstream maintainer. Drop the hunks. |
 | `.github/ISSUE_TEMPLATE/Bug_report.md`, `Feature_request.md` | Deleted (#8), replaced by issue forms. Drop the hunks. |
 | `docs/docs/`, `docs/src/`, `docs/static/`, `docs/docusaurus.config.ts`, `docs/sidebars.ts`, `docs/package.json`, `docs/yarn.lock`, `docs/babel.config.js`, `docs/tsconfig.json`, `docs/index.html`, `docs/.gitignore` (Docusaurus site) | Deleted (#51). The script leaves `docs/` paths unmapped, so hunks on them show as `CONFLICT (modify/delete)`: drop them. Read the upstream change first: if it documents a behaviour change that ElPaqueto ports, carry it into `docs/user/` or `docs/technical/`. |
-| `deployment templates/chart/bagetter/` (Helm chart) | Still present and not mapped by the script; its fate is still open (#51). |
+| `deployment templates/chart/bagetter/` (Helm chart) | Deleted (#51). Drop the hunks. |
 | `src/BaGetter.Web/Authentication/NugetBasicAuthenticationHandler.cs` (inherited authentication handler), its unit tests `tests/BaGetter.Web.Tests/Authentication/NugetBasicAuthenticationHandlerTests.cs`, and `src/BaGetter/IServiceCollectionExtensions.cs` (`AddNugetBasicHttpAuthentication`, `AddNugetBasicHttpAuthorization`) | Deleted (#17), replaced by `src/ElPaqueto.Security/Authentication/`. Drop the hunks and re-implement any upstream security fix in the new code. |
 | `tests/BaGetter.Tests/NugetAuthenticationIntegrationTests.cs`, `tests/BaGetter.Tests/NugetAllowAnonymousAuthenticationIntegrationTests.cs` | Deleted (#17), replaced by `tests/ElPaqueto.Tests/BasicAuthenticationIntegrationTests.cs`. The "anonymous allowed" expectation is inverted: anonymous requests now get 401. Drop the hunks. |
 | `src/BaGetter.Database.MySql/` (MySQL provider) | Still in the tree but excluded from the build: not in `ElPaqueto.sln` and not referenced by the host (#55). Hunks apply but are neither built nor tested; the pull request says so. |

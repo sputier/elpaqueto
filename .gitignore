@@ -284,8 +284,5 @@ __pycache__/
 
 .vscode/
 
-# Chart dependencies
-charts/
-Chart.lock
 # Docker secrets of docker-compose.example.yml (never committed)
 secrets/
