@@ -53,6 +53,8 @@ No version of ElPaqueto has been released yet. The first release will contain th
 ### Removed
 
 - Inherited upstream release, documentation deployment and Helm workflows (#2, #54).
+- Inherited BaGetter Helm chart (`deployment templates/`): it deployed the upstream image without any of
+  ElPaqueto's security settings (#51).
 - Stale backup test project (#4, #57).
 - Inherited BaGetter documentation site (Docusaurus) and its Node.js dependencies; its still-accurate
   content (mirror authentication, retention, importing packages) moved to the user documentation (#51).
