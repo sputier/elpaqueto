@@ -1,0 +1,45 @@
+# Password hashing
+
+Passwords are hashed by `PasswordService` (`src/ElPaqueto.Security/Passwords/`), a thin layer over ASP.NET Core Identity's `PasswordHasher<TUser>`. ElPaqueto implements no cryptography of its own.
+
+## Algorithm and parameters
+
+- Format: Identity **V3**. The hash records its own algorithm, iteration count and salt size, so the cost can be raised later without invalidating existing hashes.
+- Key derivation: PBKDF2 with **HMAC-SHA512**, a random 128-bit salt and a 256-bit derived key.
+- Iterations: `Security:Passwords:IterationCount`, default **210000** (OWASP Password Storage Cheat Sheet). The framework default is 100000.
+- A test decodes a fresh hash to assert the V3 marker, the HMAC-SHA512 identifier and the configured iteration count, and verifies two hashes committed in the test project (one at the default cost, one at 100000 iterations) so that a framework update changing the format fails the build instead of locking users out.
+
+## Normalization and limits
+
+Passwords are normalized to Unicode **NFKC** before hashing and verifying (NIST SP 800-63B), identically on both paths, so a password typed on different systems verifies. Input is cut at 1024 characters before normalization (NFKC can lengthen a string); the policy limit of 256 characters is applied after it. A password longer than the limit is never hashed in full.
+
+## Verification
+
+`Verify(user, password)` returns `Failed`, `Success` or `SuccessRehashNeeded`.
+
+- `SuccessRehashNeeded` means the password is correct but its hash uses a lower iteration count or an older format. The caller hashes the password again and stores the new hash. (The authentication handler that will do this after a successful login is not part of this change.)
+- **Unknown, disabled or hash-less user, or over-length password:** the submitted password is verified against a dummy hash created once at startup with the current parameters, then `Failed` is returned. The amount of work equals the known-user path, so response times do not reveal which user names exist. Tests assert this by counting calls to the hasher, not by timing.
+
+## Timing and a change of cost
+
+An account whose stored hash is **cheaper** than the configured cost is padded, whatever the outcome, with a key derivation of the missing iterations, so that raising `Security:Passwords:IterationCount` does not make dormant accounts distinguishable from the others by their response time. A hash whose cost differs from the configured one, in either direction, verifies as `SuccessRehashNeeded` and is replaced at the next successful login.
+
+One case cannot be equalized: after the cost is **lowered**, an account whose stored hash is more expensive keeps taking longer than an unknown user until its next login re-hashes it, and the work cannot be reduced for a password that is not known. Lowering the cost on a server that has been reachable by untrusted callers therefore leaks, for each account that has not logged in since, that the account exists. Prefer to keep the default or to raise the cost.
+
+## Policy
+
+Applied by `Validate` when a password is set (never at login): between `Security:Passwords:MinimumLength` (default 15, floor 12) and 256 characters after normalization; not equal to the user name, ignoring case; not in the [API key token format](api-keys.md) (`epq_` + 12 + `_` + 43 base62 characters), checked on the password as entered and after normalization, because a Basic password with that format is validated as an API key only and could never be used as a password. There are no composition rules. Messages never contain the password.
+
+## Cost
+
+Every NuGet request carries Basic credentials, and a restore can issue hundreds of requests, so the per-verification cost matters. At the default 210000 iterations, one verification takes on the order of 100 ms of processor time on a typical x64 machine. `PasswordServiceTests.VerificationCost_AtTheDefaultIterationCount_IsMeasured` prints the cost on the machine that runs it:
+
+```bash
+dotnet test tests/ElPaqueto.Security.Tests --filter "FullyQualifiedName~VerificationCost" --logger "console;verbosity=detailed"
+```
+
+The amount of hashing is limited by the [verification cache](authentication.md#verification-cache), which skips the hash for a recently verified password, and by [sign-in throttling](throttling.md), which refuses failed attempts beyond a limit before hashing and bounds the number of hashes running at once. The cost itself is configurable down to 100000 iterations for small hosts.
+
+## What is not logged
+
+Passwords are never logged, never placed in exception messages and not kept longer than needed. A test captures all logging and messages while hashing, verifying and validating a sentinel password and asserts it appears nowhere.

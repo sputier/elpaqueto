@@ -1,0 +1,55 @@
+name: Docker scan report
+
+# Publishes the Trivy scan of the container image to code scanning. Pushes only: pull requests never
+# get the write scope. Kept apart from docker.yml so that docker.yml stays read-only and can be called
+# by the release workflow without granting it a write scope.
+
+on:
+  push:
+    branches: [develop, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-scan-report-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scan-report:
+    name: scan-report
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      # Required by the SARIF upload, granted to this job alone.
+      security-events: write
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build
+        run: |
+          docker buildx build \
+            --platform linux/amd64 \
+            --build-arg Version="0.0.0-ci.${GITHUB_RUN_NUMBER}" \
+            --build-arg REVISION="$GITHUB_SHA" \
+            --tag elpaqueto:ci \
+            --load \
+            .
+          docker save elpaqueto:ci -o "$RUNNER_TEMP/elpaqueto-image.tar"
+
+      - name: Install Trivy and its vulnerability database
+        run: bash eng/docker/scan-image.sh --prepare
+
+      - name: Write the SARIF report
+        run: bash eng/docker/scan-image.sh "$RUNNER_TEMP/elpaqueto-image.tar" --format sarif --output "$RUNNER_TEMP/trivy.sarif" --exit-code 0
+
+      - name: Upload the SARIF report
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: ${{ runner.temp }}/trivy.sarif
+          category: container-image

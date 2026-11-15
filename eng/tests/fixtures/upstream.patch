@@ -1,0 +1,99 @@
+From 947fec777e170647b0a3a7cbf2cb555aa34ca6bb Mon Sep 17 00:00:00 2001
+From: Upstream Author <author@example.com>
+Date: Sat, 2 May 2026 10:00:00 +0000
+Subject: [PATCH] Read BAGET_CONFIG_ROOT with a fallback
+
+Fall back to the application folder when BAGET_CONFIG_ROOT is not set,
+and add the AddBaGetterFlag migration.
+
+Fixes https://github.com/bagetter/BaGetter/issues/297
+---
+ docs/docs/configuration.md                            |  2 ++
+ src/BaGetter.Core/readme.md                           |  2 +-
+ .../20260501100000_AddBaGetterFlag.Designer.cs        | 11 +++++++++++
+ src/BaGetter/BaGetter.csproj                          |  1 +
+ src/BaGetter/Startup.cs                               |  8 +++++---
+ 5 files changed, 20 insertions(+), 4 deletions(-)
+ create mode 100644 src/BaGetter.Database.Sqlite/Migrations/20260501100000_AddBaGetterFlag.Designer.cs
+
+diff --git a/docs/docs/configuration.md b/docs/docs/configuration.md
+index 052170a..d903954 100644
+--- a/docs/docs/configuration.md
++++ b/docs/docs/configuration.md
+@@ -1,3 +1,5 @@
+ # Configure BaGetter
+ 
+ Set `BAGET_CONFIG_ROOT` to change the configuration folder of BaGetter.
++
++The default database file is `bagetter.db`.
+diff --git a/src/BaGetter.Core/readme.md b/src/BaGetter.Core/readme.md
+index adae381..67ce0c0 100644
+--- a/src/BaGetter.Core/readme.md
++++ b/src/BaGetter.Core/readme.md
+@@ -1,3 +1,3 @@
+ # BaGetter.Core
+ 
+-The core libraries of BaGetter.
++The core libraries of BaGetter, used by the BaGetter host.
+diff --git a/src/BaGetter.Database.Sqlite/Migrations/20260501100000_AddBaGetterFlag.Designer.cs b/src/BaGetter.Database.Sqlite/Migrations/20260501100000_AddBaGetterFlag.Designer.cs
+new file mode 100644
+index 0000000..b4a1a34
+--- /dev/null
++++ b/src/BaGetter.Database.Sqlite/Migrations/20260501100000_AddBaGetterFlag.Designer.cs
+@@ -0,0 +1,11 @@
++using BaGetter.Database.Sqlite;
++using Microsoft.EntityFrameworkCore.Infrastructure;
++using Microsoft.EntityFrameworkCore.Migrations;
++
++namespace BaGetter.Database.Sqlite.Migrations;
++
++[DbContext(typeof(SqliteContext))]
++[Migration("20260501100000_AddBaGetterFlag")]
++partial class AddBaGetterFlag
++{
++}
+diff --git a/src/BaGetter/BaGetter.csproj b/src/BaGetter/BaGetter.csproj
+index 928ce72..fe00d8f 100644
+--- a/src/BaGetter/BaGetter.csproj
++++ b/src/BaGetter/BaGetter.csproj
+@@ -2,5 +2,6 @@
+   <PropertyGroup>
+     <RootNamespace>BaGetter</RootNamespace>
+     <AssemblyName>BaGetter</AssemblyName>
++    <UserSecretsId>bagetter</UserSecretsId>
+   </PropertyGroup>
+ </Project>
+diff --git a/src/BaGetter/Startup.cs b/src/BaGetter/Startup.cs
+index d167843..b6b24bc 100644
+--- a/src/BaGetter/Startup.cs
++++ b/src/BaGetter/Startup.cs
+@@ -1,5 +1,6 @@
+ using System;
+ using BaGetter.Core;
++using BaGetter.Core.Indexing;
+ using Microsoft.Extensions.Options;
+ 
+ namespace BaGetter;
+@@ -13,15 +14,16 @@ public class Startup
+         _baGetterOptions = baGetterOptions.Value;
+     }
+ 
+-    public string ConfigRoot => Environment.GetEnvironmentVariable("BAGET_CONFIG_ROOT");
++    public string ConfigRoot => Environment.GetEnvironmentVariable("BAGET_CONFIG_ROOT") ?? AppContext.BaseDirectory;
+ 
+     public string DatabaseFile => "bagetter.db";
+ 
+-    public string Analyzer => "baget-exact-match-analyzer";
++    public const string Analyzer = "baget-exact-match-analyzer";
+ 
+     public void Configure()
+     {
+-        var baget = new BaGetterEndpointBuilder();
++        // See: https://github.com/bagetter/BaGetter/issues/297
++        var baget = new BaGetterEndpointBuilder(_baGetterOptions);
+         baget.MapEndpoints();
+     }
+ }
+-- 
+2.53.0
+

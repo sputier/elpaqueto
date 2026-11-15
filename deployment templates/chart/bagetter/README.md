@@ -22,7 +22,6 @@ A Helm chart for BaGetter nuget package server
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | configMaps | object | See below | environment variables. See more environment variables in the [BaGetter documentation](https://www.bagetter.com/docs/Installation/docker). |
-| configMaps.bagetter-env.data.ApiKey | string | `"ChangeMe"` | Set the Nuget API key |
 | configMaps.bagetter-env.data.Storage__Type | string | `"FileSystem"` | Set database and storage settings |
 | controllers | object | See values.yaml | Configures containers for the chart. |
 | controllers.bagetter.containers.bagetter.image.pullPolicy | string | `"IfNotPresent"` | image pull policy |

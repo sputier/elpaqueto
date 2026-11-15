@@ -13,8 +13,6 @@
 configMaps:
   bagetter-env:
     data:
-      # -- Set the Nuget API key
-      ApiKey: "ChangeMe"
       # -- Set database and storage settings
       Storage__Type: "FileSystem"
       Storage__Path: "/data"

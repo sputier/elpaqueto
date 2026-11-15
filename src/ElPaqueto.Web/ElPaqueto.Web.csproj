@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+
+    <PackageTags>NuGet</PackageTags>
+    <Description>ElPaqueto's NuGet server implementation</Description>
+    <RootNamespace>ElPaqueto.Web</RootNamespace>
+
+    <AddRazorSupportForMvc>true</AddRazorSupportForMvc>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Humanizer" />
+    <PackageReference Include="Markdig" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ElPaqueto.Core\ElPaqueto.Core.csproj" />
+  </ItemGroup>  
+
+</Project>

@@ -1,0 +1,104 @@
+# EXAMPLE Docker Compose deployment of ElPaqueto behind a TLS-terminating reverse proxy.
+# It describes no real environment: copy it, then adapt every placeholder.
+# Documentation: docs/user/docker.md and docs/user/reverse-proxy.md.
+#
+# Placeholders:
+#   ghcr.io/OWNER/elpaqueto:TAG   the image to run. No image is published yet: build one with
+#                                 `docker build -t elpaqueto:local .` and set ELPAQUETO_IMAGE=elpaqueto:local,
+#                                 or replace the value below.
+#   nuget.example.test            the public host name of the feed.
+#   198.51.100.0/24               the subnet of the network shared with the reverse proxy. It is a
+#                                 documentation range: replace it with a private subnet that is free on
+#                                 your Docker host, in both places below.
+#
+# Before the first start, create the secret file (secrets/ is git-ignored). Compose mounts it as it is:
+# without Swarm, the uid/gid/mode options of a secret are ignored, so the file itself must be readable
+# by the container user (UID 1654) and by nobody else. The server reads every file in /run/secrets at
+# startup and does not start if one of them cannot be read:
+#   mkdir -p secrets && (umask 077 && printf '%s' '<a long passphrase>' > secrets/admin_password.txt)
+#   sudo chown 1654:1654 secrets/admin_password.txt && sudo chmod 0400 secrets/admin_password.txt
+#
+# Usage:
+#   docker compose -f docker-compose.example.yml up -d
+#   docker compose -f docker-compose.example.yml ps      # STATUS shows "healthy" after a few seconds
+
+services:
+  elpaqueto:
+    image: ${ELPAQUETO_IMAGE:-ghcr.io/OWNER/elpaqueto:TAG}
+    restart: unless-stopped
+
+    # Hardened runtime: read-only root filesystem, no capabilities, no privilege escalation.
+    # Only /data (the volume) and /tmp are writable. /tmp is required: uploads are buffered there
+    # before they are stored, and .NET keeps its diagnostics sockets there. A tmpfs lives in memory:
+    # give it room for the largest package you accept (MaxPackageSizeGiB), for example
+    # "/tmp:size=2g", or mount a volume on /tmp instead.
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+    # The server gets SIGTERM, finishes in-flight requests for up to DOTNET_SHUTDOWNTIMEOUTSECONDS
+    # (8 s in the image), then exits. Keep the grace period above that value; raise both together if
+    # large uploads must be allowed to complete during a shutdown.
+    stop_grace_period: 10s
+
+    environment:
+      # The URL NuGet clients use. Every URL in the service index is built from it.
+      Security__PublicBaseUrl: "https://nuget.example.test"
+      # Trust forwarded headers only from the proxy network below.
+      Security__ReverseProxy__KnownNetworks__0: "198.51.100.0/24"
+      # Defaults set by the image, repeated here because they must stay on the /data volume:
+      # Storage__Path: "/data"
+      # Database__ConnectionString: "Data Source=/data/db/elpaqueto.db"
+      # Security__Database__ConnectionString: "Data Source=/data/db/auth.db"
+
+    volumes:
+      # Packages, symbols and both SQLite databases (/data/db/elpaqueto.db and /data/db/auth.db).
+      # Back up the whole volume while the service is stopped; auth.db holds the users and API keys.
+      - elpaqueto-data:/data
+
+    # No port is published: only the reverse proxy, on the "proxy" network, reaches the server.
+    expose:
+      - "8080"
+    # For a local test only (plain HTTP from loopback on the Docker host is still refused, see
+    # docs/user/reverse-proxy.md):
+    # ports:
+    #   - "127.0.0.1:8080:8080"
+    networks:
+      - proxy
+
+    # Same check as the image's; tune it here. The path is the HealthCheck:Path setting (/health).
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
+    # Password of the first administrator, mounted at /run/secrets/elpaqueto_admin_password and read
+    # once by the bootstrap command. Its name matches no setting, so the server ignores it.
+    # After the first start, create the administrator (see docs/user/administration.md):
+    #   docker compose -f docker-compose.example.yml run --rm elpaqueto admin bootstrap --username admin --password-file /run/secrets/elpaqueto_admin_password
+    # Then remove the secret from the service and delete the file.
+    secrets:
+      - elpaqueto_admin_password
+
+  # Add your reverse proxy here or in its own Compose project, attached to the "proxy" network.
+  # See docs/user/reverse-proxy.md and the configurations in samples/reverse-proxy/.
+
+volumes:
+  elpaqueto-data:
+
+networks:
+  proxy:
+    name: elpaqueto-proxy
+    ipam:
+      config:
+        - subnet: 198.51.100.0/24
+
+secrets:
+  elpaqueto_admin_password:
+    file: ./secrets/admin_password.txt

@@ -1,0 +1,38 @@
+# Example Caddyfile for ElPaqueto at https://nuget.example.test.
+# Explained in docs/user/reverse-proxy.md. Checked in CI with `caddy validate` (eng/docker/validate-proxy-samples.sh).
+{
+	# Caddy redirects HTTP to HTTPS for every path by default. Turn that off: a client that follows a
+	# redirect sends its credentials again. Port 80 then only serves the ACME HTTP challenge and the
+	# site block below.
+	auto_https disable_redirects
+
+	# Long pushes: if you set "servers { timeouts { read_body ... } }", remember that it limits the
+	# reading of the whole request body, so it must cover the slowest push of the largest package.
+}
+
+# Plain HTTP: redirect only a browser's bare "GET /", everything else gets 404.
+http://nuget.example.test {
+	@home {
+		method GET
+		path /
+	}
+	redir @home https://nuget.example.test/ 301
+	respond 404
+}
+
+nuget.example.test {
+	# TLS is automatic (ACME) for a public host name. For a test without a public name, use "tls internal".
+
+	request_body {
+		# At least MaxPackageSizeGiB (8 GiB by default).
+		max_size 8GiB
+	}
+
+	reverse_proxy elpaqueto:8080 {
+		# Caddy sets X-Forwarded-For, X-Forwarded-Proto and X-Forwarded-Host itself and ignores the
+		# client's values (it trusts no upstream proxy unless "trusted_proxies" is set).
+		# Do not override X-Forwarded-Proto with header_up. Uploads are streamed (no request buffering
+		# by default).
+		# The Authorization and X-NuGet-ApiKey headers pass through unchanged. Do not add basic_auth here.
+	}
+}

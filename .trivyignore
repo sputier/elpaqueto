@@ -1,0 +1,9 @@
+# Findings accepted by the container image scan (.github/workflows/docker.yml, eng/docker/scan-image.sh).
+# Policy: see "Container image scan" in CONTRIBUTING.md. Every entry is a finding id followed by an expiry
+# date, directly below a comment that justifies it:
+#
+#   # <why the finding does not apply, or why it cannot be fixed yet>
+#   CVE-YYYY-NNNNN exp:YYYY-MM-DD
+#
+# After the expiry date Trivy reports the finding again and the hygiene check fails: re-review it, then
+# extend or remove the entry. eng/hygiene/check_trivyignore.py enforces this format.

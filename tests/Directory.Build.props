@@ -23,4 +23,7 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
     </PackageReference>
   </ItemGroup>
+  <!-- Strict baseline for ElPaqueto-authored projects only (see eng/ElPaqueto.Build.props) -->
+  <Import Project="$(MSBuildThisFileDirectory)../eng/ElPaqueto.Build.props" />
+
 </Project>

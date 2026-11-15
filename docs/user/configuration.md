@@ -1,0 +1,322 @@
+# Configuration
+
+This page documents every setting of ElPaqueto's security module, then the [inherited server settings](#inherited-server-settings) an installation usually needs (database, storage, deletion, health check). A test fails when a `Security` setting of the code is missing from this page. Users are created and managed with the [administration commands](administration.md).
+
+## Sources and precedence
+
+Settings are read from, in increasing order of precedence:
+
+1. `appsettings.json` and `appsettings.<Environment>.json`
+2. environment variables, with `__` as the section separator (`Security__Database__ConnectionString`)
+3. command-line arguments
+4. files in `/run/secrets` (Docker secrets), where each file is named after the setting with `__` as the separator and contains the value
+
+A secret file therefore overrides the same setting from an environment variable. Put anything sensitive in a secret file or an environment variable, never in `appsettings.json` under version control.
+
+`appsettings.json` is read from the working directory, or from the folder named by the environment variable `ELPAQUETO_CONFIG_ROOT`. BaGetter's `BAGET_CONFIG_ROOT` is still read, with a deprecation warning, when `ELPAQUETO_CONFIG_ROOT` is not set ([upgrading from BaGetter](upgrading-from-bagetter.md)).
+
+A configuration file that cannot be read or parsed (for example a file in `/run/secrets` that the server's user cannot read) stops the server and every command with exit code 1 and `ElPaqueto could not load its configuration: ...`, naming the file but never quoting its content.
+
+## Validation
+
+The server and every command-line command validate the security settings before doing anything. An invalid setting stops the process with a non-zero exit code. The log names the setting and the reason, and never prints the value:
+
+```text
+Invalid 'Security' configs: Security:Database:ConnectionString is required and must not be empty.
+```
+
+BaGetter's authentication settings, `ApiKey`, `Authentication:Credentials` and `Authentication:ApiKeys`, are rejected the same way when they have a non-empty value, whatever their source: they no longer do anything. See [upgrading from BaGetter](upgrading-from-bagetter.md) for their replacements.
+
+## Settings
+
+### `Security:Database`
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| `Security:Database:ConnectionString` | `Data Source=auth.db` | SQLite connection string of the database that stores users, permissions and API keys. Required, at most 1024 characters. A relative path is resolved against the working directory. |
+
+Examples:
+
+```bash
+# Environment variable
+export Security__Database__ConnectionString="Data Source=/data/db/auth.db"
+
+# Docker secret file (the file name is the setting name, with __ as separator)
+printf '%s' 'Data Source=/data/db/auth.db' > /run/secrets/Security__Database__ConnectionString
+```
+
+### `Security:Passwords`
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| `Security:Passwords:IterationCount` | `210000` | PBKDF2-HMAC-SHA512 iterations for new password hashes. Between 100000 and 10000000. Hashes made with a lower count still verify and are re-hashed after a successful login. |
+| `Security:Passwords:MinimumLength` | `15` | Minimum password length, counted in characters after Unicode normalization. Between 12 and 256. |
+
+The maximum password length is fixed at 256 characters. The policy has no composition rules (no required digits or symbols): long passphrases are preferred. A password equal to the user name (ignoring case) is rejected. The policy applies when a password is set, never at login.
+
+### `Security:Authentication`
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| `Security:Authentication:VerificationCacheTtl` | `00:05:00` | How long a successful password verification is remembered in memory, as a time span up to `01:00:00`. `00:00:00` disables the cache. A disabled user, changed permissions and a changed password always apply to the next request: the cache only keeps an unchanged, valid password cheap. |
+
+**Upgrading from BaGetter:** users are stored, hashed, in the security database, and a request that carries credentials only authenticates if the user exists there. Publishing needs a per-user API key stored in the security database (below), and **an empty `ApiKey` no longer opens publishing to everyone**. The inherited settings `ApiKey`, `Authentication:Credentials` (plain-text users) and `Authentication:ApiKeys` stop the server at startup: see [upgrading from BaGetter](upgrading-from-bagetter.md).
+
+### `Security:ApiKeys`
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| `Security:ApiKeys:LastUsedUpdateInterval` | `00:05:00` | Minimum time between two writes of an API key's "last used" timestamp, as `[d.]hh:mm:ss`. Between `00:00:01` and `1.00:00:00`. The timestamp is accurate to within this value; a shorter interval means more writes to the security database. |
+
+API keys are stored hashed: the complete key (`epq_...`) is shown once, when it is created, and cannot be displayed again. A lost key is revoked and replaced. Passwords that have the format of an API key are refused. Keys are created, listed, revoked and rotated with the `admin key` commands: see [API keys](administration.md#api-keys) in the administration guide.
+
+#### Using an API key
+
+A key holds some of its owner's permissions (`Read`, `Publish`, `Admin`) and never more than the owner currently holds.
+
+- **Push, delete, unlist, relist and symbol push need a key with `Publish` sent as the API key** (the `X-NuGet-ApiKey` header): `dotnet nuget push <package> --source <source> --api-key <key>`. A user password, or a key sent as the source password, is refused (403) for these operations even with `Publish`.
+- **Restore and every other read** can use a key with `Read` as the password of the source credentials, with any non-empty user name (`apikey` by convention). The user name is ignored.
+- `dotnet nuget push` to a V3 source reads the service index with the source credentials (unless it is in the NuGet HTTP cache), then pushes with the API key: the source credentials need `Read`, the API key needs `Publish`. One key holding both can be used for both, or two keys can be used. Prefer a `Read`-only key for restore jobs and a separate `Publish` key for publishing jobs.
+
+For CI, keep the key out of `NuGet.Config` and inject it from the CI secret store:
+
+```xml
+<!-- NuGet.Config committed to the repository: no secret -->
+<configuration>
+  <packageSources>
+    <clear />
+    <add key="elpaqueto" value="https://nuget.example.com/v3/index.json" />
+  </packageSources>
+</configuration>
+```
+
+```bash
+# Set by the CI system from its secret store. The variable name ends with the source key.
+export NuGetPackageSourceCredentials_elpaqueto="Username=apikey;Password=$ELPAQUETO_READ_KEY"
+dotnet restore
+dotnet nuget push artifacts/*.nupkg --source elpaqueto --api-key "$ELPAQUETO_PUBLISH_KEY"
+```
+
+`ClearTextPassword` in a `NuGet.Config` is for local tests only, and an encrypted `Password` only works on Windows (DPAPI). A key used as the source password travels on every request: serve the feed over HTTPS only (see `Security:Transport`).
+
+### `Security:ReverseProxy`
+
+Which reverse proxies are trusted to report the client's address, the original scheme and the original host. See [Running behind a reverse proxy or tunnel](reverse-proxy.md) for complete examples.
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| `Security:ReverseProxy:KnownProxies` | empty | List of proxy IP addresses, such as `192.0.2.10` or `2001:db8::10`. |
+| `Security:ReverseProxy:KnownNetworks` | empty | List of proxy networks in CIDR notation, such as `198.51.100.0/24`. The address must not have bits set beyond the prefix (`198.51.100.1/24` is rejected). |
+| `Security:ReverseProxy:ForwardLimit` | `1` | Number of proxies in front of the server: how many entries of `X-Forwarded-For` and `X-Forwarded-Proto` are processed, starting from the right. Between 1 and 10. |
+
+When neither list is set, only loopback (`127.0.0.0/8` and `::1`) is trusted. Setting either list **replaces** that default: add `127.0.0.1` and `::1` yourself if a proxy on the same machine also connects. There is no setting that trusts every address, and networks that cover every address (`0.0.0.0/0`, `::/0`, or an IPv6 network containing all IPv4-mapped addresses such as `::ffff:0:0/96`) are rejected.
+
+Addresses must be written in full: four decimal octets for IPv4 (`127.1` or hexadecimal forms are rejected), IPv6 without a zone id (`%eth0`) and not in IPv4-mapped form (`::ffff:192.0.2.10`; write `192.0.2.10`, which also matches clients of a dual-stack listener).
+
+Lists are set with one key per entry:
+
+```bash
+export Security__ReverseProxy__KnownNetworks__0="198.51.100.0/24"
+export Security__ReverseProxy__KnownProxies__0="192.0.2.10"
+```
+
+Entries are merged by index across configuration sources: an environment variable `..__0` replaces entry 0 of `appsettings.json` but keeps its entry 1. Set the whole list in a single source so that no stale proxy stays trusted.
+
+Setting the list itself as a single value (`Security__ReverseProxy__KnownNetworks=198.51.100.0/24`) is rejected at startup, because it would otherwise be silently ignored.
+
+Forwarded headers sent by any other address are ignored: the request keeps the scheme, host and client address of its connection. The headers processed are `X-Forwarded-For`, `X-Forwarded-Proto` and, only when `Security:PublicBaseUrl` is not set, `X-Forwarded-Host`. `X-Forwarded-Prefix` is not supported: use `PathBase`.
+
+Why the default is loopback only: trusting a whole private range by default would let any host on a shared private network (another container, another tenant on the same network) forge its address and the scheme. A server behind a proxy on another host or in another container must list that proxy. Until it does, remote requests are rejected with `403 HTTPS is required.` (see `Security:Transport`), and the server logs once that it ignored forwarded headers from an untrusted address.
+
+### `Security:PublicBaseUrl`
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| `Security:PublicBaseUrl` | not set | The URL clients use to reach the server, such as `https://nuget.example.test`. Optional; an empty value means not set. |
+
+NuGet clients follow the absolute URLs listed in the service index (`/v3/index.json`) and in registration responses. When `Security:PublicBaseUrl` is set, every such URL uses its scheme and host, whatever the request's `Host` or `X-Forwarded-Host` header says. The path prefix still comes from `PathBase`: with `PathBase=/feed`, the service index is `https://nuget.example.test/feed/v3/index.json`.
+
+The value must be an absolute `https` URL without path, query, fragment or user information. An invalid value stops the server at startup.
+
+When it is not set, URLs are built from the request's `Host` header (or `X-Forwarded-Host` from a trusted proxy), and the server logs a warning at startup if it listens on anything other than loopback. Set it for every deployment that is reachable from other machines.
+
+If you cannot set it, restrict the accepted `Host` header with ASP.NET Core's built-in host filtering, the top-level `AllowedHosts` setting (a `;`-separated list, such as `AllowedHosts=nuget.example.test`): a request with another `Host` gets `400`. This filter checks the `Host` header the server receives, before forwarded headers are applied.
+
+### `Security:Transport`
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| `Security:Transport:RequireHttps` | `true` | Requests from clients that are not on the same machine must use HTTPS. |
+
+The scheme and the client address are the ones left after trusted forwarded headers: a request that reaches the server through a trusted proxy counts as HTTPS when the proxy reports `X-Forwarded-Proto: https`, and counts as remote when the proxy reports a remote `X-Forwarded-For`.
+
+A remote plain-HTTP request is answered with status `403` and the plain-text body `HTTPS is required.`, before any authentication, whatever its route and whether or not it carries credentials (`Authorization` or `X-NuGet-ApiKey`). The answer has no `WWW-Authenticate` header, so clients are never invited to send credentials over plain HTTP, and it is never a redirect: a client that already sent credentials over HTTP would send them again.
+
+Requests from loopback (`127.0.0.0/8`, `::1`) and over non-IP transports (Unix sockets, named pipes) are allowed over plain HTTP, for local development, the container health check and local tests. Note that with Docker port publishing, a request from the Docker host reaches the container from the bridge gateway address, not from loopback.
+
+Health probes from other machines (an orchestrator, a load balancer, an uptime monitor) are remote requests too: send them through the HTTPS endpoint or the reverse proxy, or run them from inside the container or host, otherwise they get `403`.
+
+`false` disables the check and logs a warning at startup. Use it only on an isolated test network.
+
+### `Security:Throttling`
+
+Failed sign-in attempts are counted in memory and, beyond a limit, refused for a while before any password is checked. See [sign-in throttling](../technical/throttling.md) for the design and its threat model.
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| `Security:Throttling:ClientFailureLimit` | `30` | Failures, for any user name, after which a client address is throttled. Between 1 and 1000. IPv6 addresses are counted by /64 network. |
+| `Security:Throttling:ClientWindow` | `00:10:00` | The window in which client failures are counted. Between `00:00:01` and `1.00:00:00`. |
+| `Security:Throttling:NetworkFailureLimit` | `300` | Failures, for any user name, from all the /64 networks of one IPv6 /48, after which that /48 is throttled. Counted in `ClientWindow`. IPv4 clients are not grouped. Between 1 and 10000. |
+| `Security:Throttling:PairFailureLimit` | `5` | Failures for one user name from one client after which that user name is throttled for that client. Between 1 and 1000. |
+| `Security:Throttling:PairWindow` | `00:15:00` | The window in which pair failures are counted. Between `00:00:01` and `1.00:00:00`. |
+| `Security:Throttling:AccountFailureLimit` | `50` | Failures for one user name, from all clients, after which that user name is throttled for the clients that failed for it in the last `PairWindow`. A client without such a failure, such as the account's owner, is not affected. Between 1 and 1000. |
+| `Security:Throttling:AccountWindow` | `01:00:00` | The window in which account failures are counted. Between `00:00:01` and `1.00:00:00`. |
+| `Security:Throttling:InitialThrottleDuration` | `00:01:00` | How long a counter refuses after its first trip. Each further trip doubles it. Between `00:00:01` and `1.00:00:00`, and not more than `MaximumThrottleDuration`. |
+| `Security:Throttling:MaximumThrottleDuration` | `00:15:00` | The longest throttle. Between `00:00:01` and `1.00:00:00`. There is no permanent lockout. |
+| `Security:Throttling:MaxTrackedEntries` | `50000` | Counters kept for each kind (client, pair, user name), and fingerprints of failed attempts kept, which bounds memory whatever an attacker sends. When the fingerprints are full, failures are counted every time. Between 100 and 10000000. |
+| `Security:Throttling:MaxConcurrentVerifications` | `0` | Password hashes that may run at once; `0` means the processor count. Between 0 and 1024. |
+| `Security:Throttling:VerificationQueueLimit` | `100` | Verifications that may wait for a free slot, and attempts that may wait for another attempt of the same user name and client. Beyond it the answer is `503`. Between 0 and 10000. |
+| `Security:Throttling:BusyRetryAfter` | `00:00:05` | The `Retry-After` sent with that `503`. Between `00:00:01` and `00:10:00`. |
+
+Unknown, disabled and existing user names are counted the same way, and a successful sign-in resets only the counter of its own user name and client. **A repeated identical failure is counted once**: the same password for the same user name from the same client (or the same API key from the same client), within the longest window, counts on no counter, because NuGet clients retry a refused request several times with the same credentials. Each *distinct* wrong password still counts, and a client that keeps repeating (more than ten times `ClientFailureLimit` repetitions in `ClientWindow`) is throttled too. See [repeated identical attempts](../technical/throttling.md#repeated-identical-attempts). The client address is the one left after trusted forwarded headers (`Security:ReverseProxy`): a client cannot change it with its own `X-Forwarded-For`.
+
+Known limitations:
+
+- Counters are per process and are lost when the server restarts.
+- Clients behind one NAT, or behind a proxy that is not listed in `Security:ReverseProxy`, share one address and therefore one client budget. Add proxy-level limits if you need more.
+
+#### Troubleshooting `429` and `503`
+
+- **`429 Too Many Requests`** means too many failed sign-ins from your address (or your IPv6 /48 network), for your user name from your address, or against your user name with a recent failure from your address. Nothing about your credentials is checked while it lasts, even correct ones. Wait for the number of seconds in `Retry-After` (at most `MaximumThrottleDuration`), then fix the credentials before retrying. A stale password retried by the client counts once and does not cause a `429` by itself; several *different* wrong passwords (or user names) do, for example a configuration that rotates through old passwords. The server log shows one warning per trip, with the address and the counter kind.
+- **`503 Service Unavailable`** with `Retry-After` during sign-in means the server is already running as many password checks as it allows. It is transient; if it persists under normal load, raise `MaxConcurrentVerifications` or `VerificationQueueLimit`.
+
+The `dotnet` CLI reports them as `Response status code does not indicate success: 429 (Too Many Requests)` (or `503 (Service Unavailable)`), after retrying a few times within seconds: it does not wait for `Retry-After`. A restore with a wrong password retries six times with the same password: it is counted once, and the client reports `401`. See [what the real clients do](../technical/e2e-tests.md#what-the-real-clients-do). `nuget.exe` and Visual Studio have not been verified.
+
+### `Security:Cors`
+
+Which other web sites may call the server from a browser script. NuGet clients and the server's own web UI never need it.
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| `Security:Cors:AllowedOrigins` | empty | List of origins, such as `https://ui.example.test`: scheme, host and optional port, nothing else. Empty: no cross-origin access. |
+| `Security:Cors:AllowedMethods` | empty, meaning `GET`, `HEAD` | List of methods a script may use. Only `GET`, `HEAD`, `PUT`, `POST` and `DELETE` are accepted. A configured list replaces the default. |
+| `Security:Cors:AllowedHeaders` | empty, meaning `Authorization` | List of request headers a script may send, such as `X-NuGet-ApiKey`. A configured list replaces the default. |
+
+```bash
+export Security__Cors__AllowedOrigins__0="https://ui.example.test"
+```
+
+Origins are compared exactly: `https://ui.example.test` does not allow `http://ui.example.test`, `https://ui.example.test:8443` or a subdomain. The wildcard `*`, the `null` origin, a path (`https://ui.example.test/app`) and user information are rejected at startup. A trailing `/`, upper case and the default port are accepted and normalized.
+
+Cross-origin requests never run in credentials mode: the server never sends `Access-Control-Allow-Credentials`, so the Basic credentials a browser remembered for the web UI are never usable by another site's script. A script authenticates by setting the `Authorization` header itself. Preflight requests are answered before authentication is required, with approval only for an allowed origin, method and header list.
+
+### `Security:Hsts`
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| `Security:Hsts:Enabled` | `false` | Send `Strict-Transport-Security` on responses to HTTPS requests. |
+| `Security:Hsts:MaxAgeSeconds` | `31536000` (one year) | How long browsers remember to use HTTPS only. Between `0` and `63072000` (two years); `0` makes browsers forget it. |
+| `Security:Hsts:IncludeSubDomains` | `false` | Extend the policy to every subdomain of the server's host name. Enable it only if every subdomain serves HTTPS. |
+
+The header is sent only when the request is HTTPS after trusted forwarded headers (a trusted proxy reporting `X-Forwarded-Proto: https`, or `Security:PublicBaseUrl` set), and never for `localhost` or a loopback address. Leave it off when your reverse proxy already sends `Strict-Transport-Security` (see [Running behind a reverse proxy](reverse-proxy.md)).
+
+### Response headers and the web UI
+
+These are not settings, but they affect what a reverse proxy or a browser sees:
+
+- every response carries `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` and `X-Frame-Options: DENY`: the web UI cannot be embedded in another site;
+- HTML pages carry a `Content-Security-Policy` that allows scripts and styles from the server only (plus the inline scripts the UI uses), package icons from any `https` host and the UI's icon font from Microsoft's CDN; other responses carry a policy that forbids everything;
+- pages and error responses carry `Cache-Control: no-store`; package downloads and protocol responses keep their caching.
+
+The web UI needs `Read`. The browser shows its own credential prompt; there is no login page and no logout: close the browser to forget the credentials.
+
+Package READMEs and release notes are rendered from Markdown with HTML disabled: HTML they contain is shown as text, and links that do not use `http`, `https`, `mailto` or a relative URL are removed.
+
+The shipped `appsettings.json` sets `Statistics:ListConfiguredServices` to `false`, so the statistics page does not list the database, storage and search services. Set it to `true` to show them to every user with `Read`.
+
+See [web security](../technical/web-security.md) for the details and the limits of the content security policy.
+
+More settings are added to this page as the features that need them are released.
+
+## Inherited server settings
+
+These settings come from BaGetter and keep their names and behaviour. The table lists the ones an ElPaqueto installation usually needs, and the sections after it describe [mirror authentication](#mirror-authentication) and [retention](#retention). Only the defaults are tested by this project ([known limitations](known-limitations.md)). The other inherited settings, such as the search and cloud storage providers, are not documented here: [BaGetter's documentation](https://github.com/bagetter/BaGetter/tree/main/docs/docs) describes them, has not been validated with ElPaqueto, and describes an authentication model ElPaqueto replaced.
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| `Database:Type` | `Sqlite` | Package database provider: `Sqlite`, `PostgreSql`, `SqlServer` or `AzureTable`. |
+| `Database:ConnectionString` | `Data Source=elpaqueto.db` (image: `Data Source=/data/db/elpaqueto.db`) | Connection string of the package database. Not the security database. |
+| `Storage:Type` | `FileSystem` | Package storage provider. |
+| `Storage:Path` | the working directory (image: `/data`) | Folder of the package and symbol files, for `FileSystem`. |
+| `PathBase` | not set | A path prefix when the feed is served below the root, such as `/nuget`. Forwarded prefixes (`X-Forwarded-Prefix`) are not supported. |
+| `PackageDeletionBehavior` | `Unlist` | What `dotnet nuget delete` does: `Unlist`, or `HardDelete`, which also requires the `Admin` permission. See [publishing](publishing.md#unlist-and-delete). |
+| `AllowPackageOverwrites` | `false` | `false`, `PrereleaseOnly` or `true`. When allowed, a push replaces an existing version instead of failing with `409`. |
+| `IsReadOnlyMode` | `false` | Refuse every push, symbol push, delete and relist with a `401` that carries no `WWW-Authenticate` header, even with a valid `publish` key; nothing is changed. Missing or insufficient credentials still get the usual `401` or `403` first. Reads are not affected. See [troubleshooting](troubleshooting.md#401-unauthorized). |
+| `MaxPackageSizeGiB` | `8` | Largest accepted package, in GiB. |
+| `RunMigrationsAtStartup` | `true` | Migrate the package database at startup. The security database is always migrated. |
+| `HealthCheck:Path` | `/health` | Anonymous liveness endpoint; `<path>/details` requires `Admin`. Must not be `/`. |
+| `Statistics:EnableStatisticsPage` | `true` | Show the statistics page of the web UI (requires `Read`). |
+| `Statistics:ListConfiguredServices` | `false` in the shipped `appsettings.json` | List the database, storage and search providers on the statistics page. |
+| `Mirror:Enabled` | `false` | Fetch missing packages from `Mirror:PackageSource` (nuget.org by default). Needs outbound access. |
+
+Environment variables use the same names with `__`: `Database__ConnectionString`, `Storage__Path`, `PackageDeletionBehavior`.
+
+### Mirror authentication
+
+With `Mirror:Enabled`, ElPaqueto fetches a package it does not have from `Mirror:PackageSource`, the [service index](https://learn.microsoft.com/nuget/api/service-index) of the upstream feed, and stores it ([restoring](restoring.md#mirror)). `Mirror:Authentication` holds the credentials ElPaqueto sends to that upstream feed. It has nothing to do with the users and keys of ElPaqueto itself. Keep the secret values in environment variables or `/run/secrets` files, as for any other secret ([sources and precedence](#sources-and-precedence)).
+
+| `Mirror:Authentication:Type` | Other settings | Sent to the upstream feed |
+| --- | --- | --- |
+| `None` (default) | none | nothing |
+| `Basic` | `Username`, `Password` (both required) | an `Authorization: Basic` header |
+| `Bearer` | `Token` (required) | an `Authorization: Bearer` header |
+| `Custom` | `CustomHeaders`, a map of header names to values (at least one) | each header as given |
+
+```json
+"Mirror": {
+  "Enabled": true,
+  "PackageSource": "https://upstream.example.test/v3/index.json",
+  "Authentication": {
+    "Type": "Bearer"
+  }
+}
+```
+
+```bash
+Mirror__Authentication__Token=<token>
+```
+
+A missing required value stops the server at startup. `Mirror:Legacy: true` selects a NuGet v2 upstream feed, which accepts only `None` or `Basic`. `Mirror:PackageDownloadTimeoutSeconds` (default `600`) bounds each download from the upstream feed.
+
+### Retention
+
+The `Retention` settings make ElPaqueto delete old versions of a package automatically, each time a version of that package is pushed. They are off by default.
+
+| Setting | Keeps, for each package |
+| --- | --- |
+| `Retention:MaxMajorVersions` | the newest N major versions |
+| `Retention:MaxMinorVersions` | the newest N minor versions of each major version |
+| `Retention:MaxPatchVersions` | the newest N patch versions of each minor version |
+| `Retention:MaxPrereleaseVersions` | the newest N prerelease builds of each patch version, counted separately for each prerelease label and ordered by the build number at the end of the label (`1.0.0-beta.7`) |
+
+```json
+"Retention": {
+  "MaxMajorVersions": 5,
+  "MaxMinorVersions": 5,
+  "MaxPatchVersions": 5,
+  "MaxPrereleaseVersions": 5
+}
+```
+
+- Retention runs only when `Retention:MaxMajorVersions` is set; the other three settings then narrow what it keeps. Set `MaxMajorVersions` to a large number to limit only patches or prereleases.
+- The versions removed are always the lowest ones, unlisted versions included. They are deleted for good, from the package database and from storage, whatever `PackageDeletionBehavior` says.
+- A prerelease version whose label does not end with a build number (`1.0.0-beta.x`) is not counted as a build and is deleted when `MaxPrereleaseVersions` is set: check your versioning scheme first.
+- Any holder of a `Publish` key triggers it by pushing a new version ([threat model](../technical/threat-model.md)).
+
+### Removed settings
+
+BaGetter's `ApiKey`, `Authentication:Credentials` and `Authentication:ApiKeys` stop the server when they have a value (see [Validation](#validation)). Replace them with users and API keys as described in [upgrading from BaGetter](upgrading-from-bagetter.md). `Mirror:Authentication` is a different setting and still works.
+
+## Logging
+
+There is no `Security` setting for logging: the security audit trail uses the standard `Logging` section, under the category `ElPaqueto.Security.Audit`. See [Logging and monitoring](logging.md).
