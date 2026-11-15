@@ -2,15 +2,23 @@
 
 This folder holds the ElPaqueto logo and the images derived from it.
 
-## Licence status: to be confirmed
+## Licence and usage terms
 
-**The licence and usage terms of the logo are not decided yet.** The MIT License in [`LICENSE`](../../LICENSE) covers the source code; it is not stated to cover these images. Until the maintainer publishes the terms here:
+The logo, the mascot and every image in this folder and in the derivative list below are **not** covered by the MIT License of the source code ([`LICENSE`](../../LICENSE)). All rights in them are reserved by the ElPaqueto maintainer, except for the nominative use described here. The project name "ElPaqueto" is treated the same way.
 
-- the provenance of the image and the right to redistribute it are to be confirmed by the maintainer;
-- do not assume that the logo may be reused, modified or redistributed outside this repository;
-- forks and derived works should not use the logo to present themselves as the official ElPaqueto project.
+**Allowed without asking**, for the unmodified images:
 
-This section will be replaced by the provenance and the usage terms once they are decided.
+- showing the logo to refer to the ElPaqueto project: in articles, talks, documentation, package-feed listings and integrations that name ElPaqueto;
+- keeping the files as they are in a fork of this repository that exists to contribute back, or in a clone for local use.
+
+**Not allowed without written permission:**
+
+- modifying the logo or the mascot, or building on them;
+- using them as the logo or the identity of another product, of a rebranded fork, or of a redistributed derived project: such a project must replace them and its name;
+- presenting a project or a service as the official ElPaqueto project, or as endorsed by it;
+- merchandise and any other commercial use of the images themselves.
+
+**Provenance.** The image was generated with an AI image tool and selected by the maintainer. For that reason the copyright status of the image, and the absence of third-party rights in it, cannot be guaranteed: these terms are the maintainer's usage policy for the project, offered without warranty. To ask for permission, open an issue on this repository.
 
 ## Files
 
