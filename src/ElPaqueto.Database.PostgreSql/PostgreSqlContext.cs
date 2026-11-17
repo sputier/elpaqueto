@@ -17,6 +17,11 @@ public class PostgreSqlContext : AbstractContext<PostgreSqlContext>
     /// </summary>
     private const int UniqueConstraintViolationErrorCode = 23505;
 
+    // Serializes the migrations of several servers that start together on one database (a restart racing another
+    // start, two replicas): without it both apply the same migration and one fails with "column already exists".
+    private const string AcquireMigrationLock = "SELECT pg_advisory_lock(4991760371337265);";
+    private const string ReleaseMigrationLock = "SELECT pg_advisory_unlock(4991760371337265);";
+
     public PostgreSqlContext(DbContextOptions<PostgreSqlContext> efOptions, IOptionsSnapshot<ElPaquetoOptions> elpaquetoOptions)
         : base(efOptions)
     {
@@ -32,20 +37,35 @@ public class PostgreSqlContext : AbstractContext<PostgreSqlContext>
 
     public override async Task RunMigrationsAsync(CancellationToken cancellationToken)
     {
-        await base.RunMigrationsAsync(cancellationToken);
-
-        // Npgsql caches the database's type information on the initial connection.
-        // This causes issues when ElPaqueto creates the database as it may add the citext
-        // extension to support case insensitive columns.
-        // See: https://github.com/loic-sharma/BaGet/issues/442
-        // See: https://github.com/npgsql/efcore.pg/issues/170#issuecomment-303417225
-        if (Database.GetDbConnection() is NpgsqlConnection connection)
+        // The advisory lock belongs to the session: keep one connection open for the lock and the migrations.
+        await Database.OpenConnectionAsync(cancellationToken);
+        try
         {
-            // The connection may be open if migrations were applied.
-            // See: https://github.com/bagetter/BaGetter/issues/196
-            if (connection.State == System.Data.ConnectionState.Closed)
-                await connection.OpenAsync(cancellationToken);
-            connection.ReloadTypes();
+            await Database.ExecuteSqlRawAsync(AcquireMigrationLock, cancellationToken);
+            try
+            {
+                await base.RunMigrationsAsync(cancellationToken);
+            }
+            finally
+            {
+                await Database.ExecuteSqlRawAsync(ReleaseMigrationLock, CancellationToken.None);
+            }
+
+            // Npgsql caches the database's type information on the initial connection.
+            // This causes issues when ElPaqueto creates the database as it may add the citext
+            // extension to support case insensitive columns.
+            // See: https://github.com/loic-sharma/BaGet/issues/442
+            // See: https://github.com/npgsql/efcore.pg/issues/170#issuecomment-303417225
+            // The connection is open here, which is what ReloadTypes needs
+            // (https://github.com/bagetter/BaGetter/issues/196).
+            if (Database.GetDbConnection() is NpgsqlConnection connection)
+            {
+                connection.ReloadTypes();
+            }
+        }
+        finally
+        {
+            await Database.CloseConnectionAsync();
         }
     }
 
