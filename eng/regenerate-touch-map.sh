@@ -61,11 +61,8 @@ base_commit=$(git commit-tree "$base_full^{tree}" -p "$empty_commit" -m "upstrea
 mkdir "$work/patch" "$work/mapped"
 git format-patch -q -1 --binary --no-renames -o "$work/patch" "$base_commit"
 
-# 2. Map it. Large file sections make the index-line extraction of
-# eng/port-upstream.sh die of SIGPIPE under `set -o pipefail` (exit 141), so a
-# temporary copy tolerates that one pipe; the mapping rules are unchanged.
-sed 's/{p;q}'"'"')$/{p;q}'"'"') || true/' "$repo/eng/port-upstream.sh" >"$work/port-upstream.sh"
-bash "$work/port-upstream.sh" -o "$work/mapped" "$work/patch"/*.patch 2>"$out/port-upstream.log"
+# 2. Map it.
+bash "$repo/eng/port-upstream.sh" -o "$work/mapped" "$work/patch"/*.patch 2>"$out/port-upstream.log"
 
 # 3. Mapped upstream baseline tree.
 export GIT_INDEX_FILE="$work/mapped.index"
