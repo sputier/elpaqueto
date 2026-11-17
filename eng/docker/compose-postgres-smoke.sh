@@ -144,7 +144,9 @@ expect "anonymous /v3/index.json through Caddy" 401 "$(curl -sk -o /dev/null -D 
 expect "plain HTTP through Caddy" 404 "$(curl -s -o /dev/null -D - --max-time 30 "http://localhost:$http_port/v3/index.json" | tr -d '\r' | status_of)"
 
 log "==> accounts"
-printf '%s\n' "$admin_password" | admin_cli bootstrap --username smoke-admin --password-stdin && pass "admin bootstrap" || fail "admin bootstrap"
+if docker compose -f "$sample/compose.yml" -f "$sample/compose.bootstrap.yml" run --rm --no-deps -T elpaqueto admin bootstrap --username smoke-admin --password-file /run/secrets/elpaqueto_admin_password; then pass "admin bootstrap (one-shot, with compose.bootstrap.yml)"; else fail "admin bootstrap"; fi
+if compose exec -T elpaqueto sh -c "ls /run/secrets" | grep -q admin_password; then fail "the running service has the administrator password mounted"; else pass "the running service does not have the administrator password"; fi
+rm -f "$work/secrets/admin_password.txt" 2> /dev/null || sudo rm -f "$work/secrets/admin_password.txt"
 printf '%s\n' "$reader_password" | admin_cli user create smoke-reader --permissions reader --password-stdin || fail "reader"
 printf '%s\n' "$publisher_password" | admin_cli user create smoke-publisher --permissions publisher --password-stdin || fail "publisher"
 publish_key=$(admin_cli key create --user smoke-publisher --name smoke-push --permissions publish --expires 1d < /dev/null) || fail "publish key"

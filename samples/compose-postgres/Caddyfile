@@ -18,6 +18,10 @@ http://{$NUGET_HOST} {
 {$NUGET_HOST} {
 	# TLS is automatic: ACME for a public name, Caddy's own local CA for "localhost" (tests).
 
+	# The feed is only served over HTTPS: tell browsers to remember it. Add includeSubDomains or preload only when
+	# every subdomain of the host name is HTTPS too.
+	header Strict-Transport-Security "max-age=31536000"
+
 	request_body {
 		# At least MaxPackageSizeGiB (8 GiB by default).
 		max_size 8GiB

@@ -116,14 +116,19 @@ Start it:
 ```bash
 cd samples/compose-postgres
 ./init-secrets.sh                       # random passwords, owner-only files in ./secrets (git-ignored)
-export NUGET_HOST=nuget.example.test ELPAQUETO_PUBLIC_URL=https://nuget.example.test PROXY_SUBNET=203.0.113.0/24
+export NUGET_HOST=nuget.example.test ELPAQUETO_PUBLIC_URL=https://nuget.example.test PROXY_SUBNET=<a /24 that is free on this host>
 docker compose up -d --build --wait
-docker compose run --rm elpaqueto admin bootstrap --username admin --password-file /run/secrets/elpaqueto_admin_password
+docker compose -f compose.yml -f compose.bootstrap.yml run --rm --no-deps elpaqueto \
+  admin bootstrap --username admin --password-file /run/secrets/elpaqueto_admin_password
+sudo rm secrets/admin_password.txt      # the password is not needed any more
 ```
 
-Then remove the `elpaqueto_admin_password` secret from the `elpaqueto` service and delete `secrets/admin_password.txt`: the password is only needed once. `init-secrets.sh` gives each file to the user that reads it (UID 70 for the PostgreSQL password, UID 1654 for the others; Compose mounts file secrets as they are on the host, see above), with `sudo` when you are not root. To change the password later, change it in PostgreSQL (`ALTER USER`), in `secrets/postgres_password` and in `secrets/database_connection_string`, then `docker compose up -d --force-recreate elpaqueto`.
+`compose.bootstrap.yml` mounts the administrator password only into that one-shot container: the running service never has it. Read it from `secrets/admin_password.txt` (`sudo cat`) to sign in, then delete the file: the password is only needed once. `PROXY_SUBNET` has no default: Compose refuses to start without it. `POSTGRES_PASSWORD_FILE` is only read when PostgreSQL initializes an empty data volume: regenerating `secrets/postgres_password` later does not change the password of the existing database. `init-secrets.sh` gives each file to the user that reads it (UID 70 for the PostgreSQL password, UID 1654 for the others; Compose mounts file secrets as they are on the host, see above), with `sudo` when you are not root. To change the password later, change it in PostgreSQL (`ALTER USER`), in `secrets/postgres_password` and in `secrets/database_connection_string`, then `docker compose up -d --force-recreate elpaqueto`.
 
 Things to know:
+
+- **Logs** of the three services are rotated by Docker (`json-file`, 10 MB, 5 files); Caddy sends `Strict-Transport-Security: max-age=31536000`. PostgreSQL is pinned to a minor version (`17.12-alpine`): update it deliberately, and read the PostgreSQL release notes for a major upgrade (it needs a dump and restore).
+- **Health check.** PostgreSQL's check uses `-h 127.0.0.1` (TCP): the image's first start runs a temporary server that listens on the Unix socket only, and a check over the socket would report healthy before the real server is up.
 
 - **The first start creates the schema.** The database `elpaqueto` and its user are created by the PostgreSQL image from `POSTGRES_DB`, `POSTGRES_USER` and `POSTGRES_PASSWORD_FILE` on the first start of an empty `pgdata` volume. Changing the password file later does not change the password of an existing database.
 - **`citext`.** The first migration runs `CREATE EXTENSION citext`. It needs a user allowed to create extensions: the owner of the database created by the image is a superuser. With a managed or shared PostgreSQL, create the extension beforehand with a privileged account (`CREATE EXTENSION citext;` in the ElPaqueto database).

@@ -45,7 +45,7 @@ docker compose -f samples/reverse-proxy/traefik/compose.yml config -q
 echo "ok"
 
 echo "==> docker compose config (samples/compose-postgres/compose.yml)"
-docker compose -f samples/compose-postgres/compose.yml config -q
+PROXY_SUBNET=192.0.2.0/24 docker compose -f samples/compose-postgres/compose.yml -f samples/compose-postgres/compose.bootstrap.yml config -q
 echo "ok"
 
 echo "==> caddy validate (samples/compose-postgres/Caddyfile)"

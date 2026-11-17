@@ -87,7 +87,7 @@ public sealed class PostgreSqlCollection : ICollectionFixture<PostgreSqlFixture>
 public sealed class PostgreSqlFixture : IAsyncLifetime
 {
     // The major version the owner deploys with; the minor version is whatever the tag points to.
-    private const string Image = "postgres:17-alpine";
+    private const string Image = "postgres:17.12-alpine";
 
     private PostgreSqlContainer _container;
 

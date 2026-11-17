@@ -1,3 +1,4 @@
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using ElPaqueto.Core;
@@ -18,7 +19,10 @@ public class PostgreSqlContext : AbstractContext<PostgreSqlContext>
     private const int UniqueConstraintViolationErrorCode = 23505;
 
     // Serializes the migrations of several servers that start together on one database (a restart racing another
-    // start, two replicas): without it both apply the same migration and one fails with "column already exists".
+    // start, two replicas): without it both apply the same migration and one fails with "column already exists"
+    // (reproduced in the PostgreSQL integration tests before this lock existed). The wait for the lock is bounded by
+    // the command timeout (30 s by default) and then fails the startup; a lock held by a crashed server is released
+    // with its session, so it cannot stay stuck.
     private const string AcquireMigrationLock = "SELECT pg_advisory_lock(4991760371337265);";
     private const string ReleaseMigrationLock = "SELECT pg_advisory_unlock(4991760371337265);";
 
@@ -48,7 +52,15 @@ public class PostgreSqlContext : AbstractContext<PostgreSqlContext>
             }
             finally
             {
-                await Database.ExecuteSqlRawAsync(ReleaseMigrationLock, CancellationToken.None);
+                try
+                {
+                    await Database.ExecuteSqlRawAsync(ReleaseMigrationLock, CancellationToken.None);
+                }
+                catch (Exception)
+                {
+                    // Never mask the exception of the migration: if the unlock fails the session is broken, and
+                    // closing it below (or the server crashing) releases the lock anyway.
+                }
             }
 
             // Npgsql caches the database's type information on the initial connection.

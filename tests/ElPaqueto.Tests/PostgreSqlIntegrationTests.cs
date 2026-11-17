@@ -160,15 +160,48 @@ public sealed class PostgreSqlIntegrationTests(PostgreSqlFixture postgres, ITest
     }
 
     [PostgreSqlFact]
+    public async Task AServer_WaitsForTheMigrationLock_BeforeMigrating()
+    {
+        // The advisory lock of PostgreSqlContext.RunMigrationsAsync: another session holds it, the server must wait
+        // (and not touch the schema), then come up once it is released.
+        const string key = "4991760371337265";
+        var connectionString = await postgres.CreateDatabaseAsync();
+        await using var holder = await postgres.OpenAsync(connectionString);
+        await new Npgsql.NpgsqlCommand($"SELECT pg_advisory_lock({key})", holder).ExecuteNonQueryAsync();
+        var app = Start(connectionString);
+
+        var starting = Task.Run(async () => { using var c = app.CreateClient(); using var r = await c.GetAsync("v3/index.json"); return r.StatusCode; });
+        await Task.Delay(TimeSpan.FromSeconds(3));
+
+        Assert.False(starting.IsCompleted, "The server came up while another session held the migration lock.");
+        Assert.Equal(0, await postgres.ScalarAsync<long>(connectionString, "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'"));
+
+        await new Npgsql.NpgsqlCommand($"SELECT pg_advisory_unlock({key})", holder).ExecuteNonQueryAsync();
+        Assert.Equal(HttpStatusCode.OK, await starting.WaitAsync(TimeSpan.FromSeconds(60)));
+        Assert.Equal(1, await postgres.ScalarAsync<long>(connectionString, "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'Packages'"));
+    }
+
+    [PostgreSqlFact]
     public async Task ADatabaseWhoseVersionColumnIsCaseSensitive_IsRepairedAtStartup()
     {
         // https://github.com/bagetter/BaGetter/issues/239: databases created by BaGet keep Packages.Version as
         // varchar(64) although FixVersionCaseSensitivity is recorded as applied. Rebuild that state, then start.
         var connectionString = await postgres.CreateDatabaseAsync();
-        await using (var first = Start(connectionString))
+        string storagePath = null;
+        void SameStorage(Dictionary<string, string> dict)
+        {
+            storagePath ??= dict["Storage:Path"];
+            dict["Storage:Path"] = storagePath;
+        }
+
+        await using (var first = Start(connectionString, SameStorage))
         {
             using var client = first.CreateClient();
-            using var _ = await client.GetAsync("v3/index.json");
+            foreach (var (id, version) in new[] { ("Legacy.Pkg", "5.7.22-Hdbfd3d9a85-b6"), ("Legacy.Other", "1.0.0"), ("Legacy.Other", "1.1.0") })
+            {
+                using var seeded = await PushAsync(client, TestPackageBuilder.Create(id, version));
+                Assert.Equal(HttpStatusCode.Created, seeded.StatusCode);
+            }
         }
 
         await postgres.ExecuteAsync(connectionString, "ALTER TABLE \"Packages\" ALTER COLUMN \"Version\" TYPE character varying(64)");
@@ -177,19 +210,42 @@ public sealed class PostgreSqlIntegrationTests(PostgreSqlFixture postgres, ITest
             connectionString,
             "SELECT data_type FROM information_schema.columns WHERE table_name = 'Packages' AND column_name = 'Version'"));
 
-        var app = Start(connectionString, dict => dict["PackageDeletionBehavior"] = "HardDelete");
+        var app = Start(connectionString, dict =>
+        {
+            SameStorage(dict);
+            dict["PackageDeletionBehavior"] = "HardDelete";
+        });
         using var client2 = app.CreateClient();
-        using var pushed = await PushAsync(client2, TestPackageBuilder.Create("Legacy.Pkg", "5.7.22-Hdbfd3d9a85-b6"));
-        Assert.Equal(HttpStatusCode.Created, pushed.StatusCode);
+        using var _ = await client2.GetAsync("v3/index.json");
 
+        // The repair keeps the data and the unique index, and the column is case-insensitive again.
+        Assert.Equal(3, await RowsAsync(connectionString, "Packages"));
+        Assert.Equal(1, await postgres.ScalarAsync<long>(connectionString, "SELECT count(*) FROM pg_indexes WHERE tablename = 'Packages' AND indexname = 'IX_Packages_Id_Version'"));
         Assert.Equal("citext", await postgres.ScalarAsync<string>(
             connectionString,
             "SELECT udt_name FROM information_schema.columns WHERE table_name = 'Packages' AND column_name = 'Version'"));
 
+        // A case variant of an existing version is a duplicate, and the unique index still rejects it directly.
+        using var duplicate = await PushAsync(client2, TestPackageBuilder.Create("LEGACY.PKG", "5.7.22-HDBFD3D9A85-B6"));
+        Assert.Equal(HttpStatusCode.Conflict, duplicate.StatusCode);
+        // (A copy of the row with an upper-case id and version, so that only the unique index can refuse it.)
+        var violation = await Assert.ThrowsAsync<Npgsql.PostgresException>(() => postgres.ExecuteAsync(
+            connectionString,
+            """
+            DO $$
+            DECLARE cols text;
+            BEGIN
+              SELECT string_agg(quote_ident(column_name), ',') INTO cols FROM information_schema.columns
+                WHERE table_name = 'Packages' AND column_name NOT IN ('Key', 'Id', 'Version');
+              EXECUTE format('INSERT INTO "Packages" ("Id", "Version", %1$s) SELECT upper("Id"), upper("Version"), %1$s FROM "Packages" WHERE "Id" = ''Legacy.Pkg''', cols);
+            END $$;
+            """));
+        Assert.Equal("23505", violation.SqlState);
+
         // The version is stored in lower case and requested in the case of the nuspec: it must be found.
         using var deleted = await client2.DeleteAsync("api/v2/package/Legacy.Pkg/5.7.22-Hdbfd3d9a85-b6");
         Assert.Equal(HttpStatusCode.NoContent, deleted.StatusCode);
-        Assert.Equal(0, await RowsAsync(connectionString, "Packages"));
+        Assert.Equal(2, await RowsAsync(connectionString, "Packages"));
     }
 
     // Package life cycle.
@@ -423,7 +479,8 @@ public sealed class PostgreSqlIntegrationTests(PostgreSqlFixture postgres, ITest
             var open = await postgres.ScalarAsync<long>(
                 connectionString,
                 "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND pid <> pg_backend_pid()");
-            Assert.True(open <= pool, $"{open} connections stay open after wave {wave}, the pool allows {pool}.");
+            // The pool bounds this at 5; "more than one" shows that the requests really ran on several connections.
+            Assert.InRange(open, 2, pool);
         }
     }
 
