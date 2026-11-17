@@ -11,7 +11,12 @@ the fork are not listed here.
 
 ## [Unreleased]
 
-No version of ElPaqueto has been released yet. The first release will contain the changes below.
+## [0.1.0] - 2026-11-18
+
+First release of ElPaqueto: a hardened fork of BaGetter, published as a container image on the GitHub
+Container Registry (`ghcr.io/sputier/elpaqueto`) for `linux/amd64` and `linux/arm64`. Compared with
+BaGetter, every request is authenticated and authorized by default, the container is hardened, and the
+security behaviour is covered by automated tests.
 
 ### Added
 
@@ -33,6 +38,7 @@ No version of ElPaqueto has been released yet. The first release will contain th
 - End-to-end tests with the published server and the real `dotnet` CLI on Linux and Windows (#36–#40,
   #101).
 - Client compatibility page listing the NuGet clients that are tested, and how (#52).
+- User and technical documentation, including the known limitations (#98, #109).
 
 ### Changed
 

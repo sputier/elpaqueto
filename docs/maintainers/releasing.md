@@ -147,7 +147,10 @@ commands that verify them.
 4. Open a pull request from `develop` to `main`. In it, move the
    `## [Unreleased]` entries of `CHANGELOG.md` under a new
    `## [X.Y.Z] - YYYY-MM-DD` heading, leave an empty `## [Unreleased]` heading
-   above it, and update the comparison links at the bottom.
+   above it, and update the comparison links at the bottom. (For `0.1.0`
+   this was done in advance; check the date.) An empty `Unreleased` section is
+   fine: a dry run on a branch then reports "no release notes" instead of
+   failing.
 5. Merge it, then tag the merge commit on `main` with a signed, annotated tag
    and push the tag:
 
