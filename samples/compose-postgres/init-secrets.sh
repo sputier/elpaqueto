@@ -21,11 +21,10 @@ random() { head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n'; }
 give() { # <file> <uid> <mode>
   if [ "${CHOWN:-1}" = 0 ]; then
     chmod 0444 "$1"
-  elif ! chown "$2:$2" "$1" 2> /dev/null; then
-    sudo chown "$2:$2" "$1"
-    chmod "$3" "$1"
   else
+    # The mode first, while the file is still ours: after the chown only root can change it.
     chmod "$3" "$1"
+    chown "$2:$2" "$1" 2> /dev/null || sudo chown "$2:$2" "$1"
   fi
 }
 
@@ -41,7 +40,7 @@ if [ ! -e "$dir"/postgres_password ]; then
 fi
 
 if [ ! -e "$dir"/admin_password.txt ]; then
-  (umask 077 && printf '%s' "$(random)" > "$dir"/admin_password.txt)
+  (umask 077 && printf "%s" "${ADMIN_PASSWORD:-$(random)}" > "$dir"/admin_password.txt)
   give "$dir"/admin_password.txt 1654 0400
   echo "created "$dir"/admin_password.txt (the administrator's password: keep it, then delete it after the bootstrap)"
 fi

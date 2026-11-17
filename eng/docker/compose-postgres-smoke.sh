@@ -95,8 +95,8 @@ run_client() { # push-and-restore | restore
 }
 
 log "==> secrets"
-bash "$sample/init-secrets.sh"
-printf '%s' "$admin_password" > "$work/secrets/admin_password.txt"
+ADMIN_PASSWORD=$admin_password bash "$sample/init-secrets.sh"
+
 
 log "==> docker compose up --build --wait"
 compose up -d --build --wait --wait-timeout 600
