@@ -1,0 +1,29 @@
+# Caddyfile of the PostgreSQL Compose sample: the one of samples/reverse-proxy/caddy, with the host name read from
+# the NUGET_HOST environment variable (set by compose.yml). Explained in docs/user/reverse-proxy.md.
+{
+	# A client that follows a redirect sends its credentials again: port 80 only answers the ACME challenge
+	# and redirects a browser's bare "GET /".
+	auto_https disable_redirects
+}
+
+http://{$NUGET_HOST} {
+	@home {
+		method GET
+		path /
+	}
+	redir @home https://{$NUGET_HOST}/ 301
+	respond 404
+}
+
+{$NUGET_HOST} {
+	# TLS is automatic: ACME for a public name, Caddy's own local CA for "localhost" (tests).
+
+	request_body {
+		# At least MaxPackageSizeGiB (8 GiB by default).
+		max_size 8GiB
+	}
+
+	# Caddy sets X-Forwarded-For, X-Forwarded-Proto and X-Forwarded-Host itself and ignores the client's values.
+	# Do not override X-Forwarded-Proto and do not add basic_auth: ElPaqueto authenticates the requests.
+	reverse_proxy elpaqueto:8080
+}

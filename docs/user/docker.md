@@ -93,6 +93,45 @@ The server writes its logs, the security audit trail included, to the console: `
 
 ASP.NET Core data protection (antiforgery tokens of the web pages) keeps its keys in memory in the container: the log shows `Using an in-memory repository. Keys will not be persisted to storage.` at startup. After a restart, a web form opened before the restart must be reloaded. NuGet clients are not affected.
 
+## With PostgreSQL
+
+[`samples/compose-postgres/`](../../samples/compose-postgres/) is a production-like Compose project: ElPaqueto built from the repository, PostgreSQL 17 on its own named volume with a health check, and Caddy as the TLS-terminating reverse proxy. It is checked end to end in CI (`eng/docker/compose-postgres-smoke.sh`: users and keys, `dotnet nuget push` and `dotnet restore`, restart, `down` and `up`), and its settings are documented in [configuration](configuration.md#postgresql).
+
+```text
+caddy (80, 443)  --proxy network-->  elpaqueto (8080)  --db network (internal)-->  postgres (5432)
+```
+
+| Choice | Why |
+| --- | --- |
+| Only Caddy publishes ports; PostgreSQL is on an `internal` network that ElPaqueto alone joins. | PostgreSQL is reachable by nobody else, with no route to the outside. |
+| The connection string is a secret file mounted as `/run/secrets/Database__ConnectionString`. | A file in `/run/secrets` is read as the setting `Database:ConnectionString` and overrides an environment variable ([sources and precedence](configuration.md#sources-and-precedence)). The password is in no environment variable, no `docker inspect` output and no log. |
+| `Database__Type=PostgreSql` is an ordinary environment variable. | It is not a secret. |
+| `Security__ReverseProxy__KnownNetworks__0` is the subnet of the `proxy` network. | Forwarded headers (`X-Forwarded-Proto`, `X-Forwarded-For`) are trusted only from Caddy. Without them the server would refuse every request over plain HTTP. Never trust a subnet that clients can reach. |
+| `Security__PublicBaseUrl` is the public URL. | Every URL of the service index is built from it. |
+| All three services run with `read_only`, `cap_drop: ALL` and `no-new-privileges` (Caddy adds back `NET_BIND_SERVICE`). | The same hardening as the quick start above. PostgreSQL runs as its own user (UID 70) from the start, so it needs no capability. |
+| ElPaqueto waits for PostgreSQL's health check (`depends_on: condition: service_healthy`). | The server migrates the package database at startup and stops with exit code 1 if it cannot connect. `restart: unless-stopped` covers a slow database anyway. |
+
+Start it:
+
+```bash
+cd samples/compose-postgres
+./init-secrets.sh                       # random passwords, owner-only files in ./secrets (git-ignored)
+export NUGET_HOST=nuget.example.test ELPAQUETO_PUBLIC_URL=https://nuget.example.test PROXY_SUBNET=172.28.64.0/24
+docker compose up -d --build --wait
+docker compose run --rm elpaqueto admin bootstrap --username admin --password-file /run/secrets/elpaqueto_admin_password
+```
+
+Then remove the `elpaqueto_admin_password` secret from the `elpaqueto` service and delete `secrets/admin_password.txt`: the password is only needed once. `init-secrets.sh` gives each file to the user that reads it (UID 70 for the PostgreSQL password, UID 1654 for the others; Compose mounts file secrets as they are on the host, see above), with `sudo` when you are not root. To change the password later, change it in PostgreSQL (`ALTER USER`), in `secrets/postgres_password` and in `secrets/database_connection_string`, then `docker compose up -d --force-recreate elpaqueto`.
+
+Things to know:
+
+- **The first start creates the schema.** The database `elpaqueto` and its user are created by the PostgreSQL image from `POSTGRES_DB`, `POSTGRES_USER` and `POSTGRES_PASSWORD_FILE` on the first start of an empty `pgdata` volume. Changing the password file later does not change the password of an existing database.
+- **`citext`.** The first migration runs `CREATE EXTENSION citext`. It needs a user allowed to create extensions: the owner of the database created by the image is a superuser. With a managed or shared PostgreSQL, create the extension beforehand with a privileged account (`CREATE EXTENSION citext;` in the ElPaqueto database).
+- **Connections.** Npgsql pools connections per process; `Maximum Pool Size=20` in the connection string bounds what ElPaqueto opens (the default is 100). PostgreSQL's default `max_connections` is 100.
+- **TLS to PostgreSQL** is not used in the sample: the database is on an internal network that only ElPaqueto joins. Add `SSL Mode=Require` to the connection string and configure the server if PostgreSQL is on another host.
+- **Local test without a public name.** `NUGET_HOST=localhost` makes Caddy use its own local certificate authority, and `HTTPS_PORT=8443` moves the published port. NuGet clients do not trust that certificate; the end-to-end script runs the `dotnet` CLI in a container that reaches ElPaqueto over loopback (plain HTTP is accepted there only).
+- **Backups** need both volumes: see [backup](backup.md#postgresql).
+
 ## Volumes and file ownership
 
 `/data` contains:
