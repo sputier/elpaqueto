@@ -138,7 +138,7 @@ public class ElPaquetoApplication : WebApplicationFactory<Startup>
                 var time = new Mock<SystemTime>();
                 time
                     .Setup(t => t.UtcNow)
-                    .Returns(DateTime.Parse("2020-01-01T00:00:00.000Z"));
+                    .Returns(new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc));
 
                 services.AddSingleton(time.Object);
                 if (_upstreamClient != null)
