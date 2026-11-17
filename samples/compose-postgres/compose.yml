@@ -103,7 +103,7 @@ services:
       # Database__ConnectionString comes from the secret file below, not from here.
       Security__PublicBaseUrl: ${ELPAQUETO_PUBLIC_URL:-https://nuget.example.test}
       # Trust forwarded headers (scheme, client address) only from the proxy network.
-      Security__ReverseProxy__KnownNetworks__0: ${PROXY_SUBNET:?set PROXY_SUBNET to the subnet of the proxy network: a /24 that is free on this Docker host}
+      Security__ReverseProxy__KnownNetworks__0: ${PROXY_SUBNET:?set PROXY_SUBNET to the subnet of the proxy network, a /24 that is free on this Docker host}
       # The security database (users, API keys) stays SQLite, on the volume. Image defaults, repeated on purpose:
       # Security__Database__ConnectionString: "Data Source=/data/db/auth.db"
       # Storage__Type: FileSystem
@@ -170,7 +170,7 @@ networks:
   proxy:
     ipam:
       config:
-        - subnet: ${PROXY_SUBNET:?set PROXY_SUBNET to the subnet of the proxy network: a /24 that is free on this Docker host}
+        - subnet: ${PROXY_SUBNET:?set PROXY_SUBNET to the subnet of the proxy network, a /24 that is free on this Docker host}
 
 secrets:
   postgres_password:
