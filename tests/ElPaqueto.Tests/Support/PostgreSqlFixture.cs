@@ -32,7 +32,7 @@ internal static class DockerAvailability
     {
         try
         {
-            var info = new ProcessStartInfo("docker", ["info", "--format", "{{.ServerVersion}}"])
+            var info = new ProcessStartInfo("docker", ["info", "--format", "{{.ServerVersion}} {{.OSType}}"])
             {
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
@@ -49,9 +49,9 @@ internal static class DockerAvailability
                 return "`docker info` did not answer within 30 seconds";
             }
 
-            return process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output.Result)
+            return process.ExitCode == 0 && output.Result.Trim().EndsWith(" linux", StringComparison.Ordinal)
                 ? null
-                : "`docker info` failed: " + error.Result.Trim();
+                : $"the Docker daemon does not run Linux containers (`docker info`: {output.Result.Trim()} {error.Result.Trim()})";
         }
         catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException)
         {
