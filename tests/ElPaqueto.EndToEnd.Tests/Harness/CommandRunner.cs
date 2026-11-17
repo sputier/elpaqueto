@@ -234,7 +234,7 @@ internal static class CommandRunner
 
     /// <summary>The command line of a spec, for logs (redact before writing it anywhere).</summary>
     public static string Describe(CommandSpec spec)
-        => Quote(spec.FileName == DotnetPath ? "dotnet" : spec.FileName) + " " + string.Join(' ', spec.Arguments.Select(Quote));
+        => Quote(spec.FileName == DotnetPath ? "dotnet" : Path.GetFileName(spec.FileName)) + " " + string.Join(' ', spec.Arguments.Select(Quote));
 
     /// <summary>Kills a process and all its descendants, ignoring a process that is already gone.</summary>
     public static void KillTree(Process process)

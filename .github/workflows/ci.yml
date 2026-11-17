@@ -186,6 +186,24 @@ jobs:
           --filter "Category=EndToEnd" --logger trx --results-directory TestResults
           --blame-hang --blame-hang-timeout 20m --blame-hang-dump-type none
 
+      # nuget.exe and MSBuild scenarios (docs/technical/e2e-tests.md, #43) run in the step above on Windows and
+      # are reported as skipped elsewhere. A skip on Windows would hide a missing client: count the passes.
+      - name: Check that the nuget.exe and MSBuild scenarios passed
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          shopt -s nullglob
+          nugetexe=0; msbuild=0
+          for f in TestResults/*.trx; do
+            nugetexe=$((nugetexe + $(grep -c 'testName="[^"]*Clients\.NuGetExe[A-Za-z]*\.[^"]*" [^>]*outcome="Passed"' "$f" || true)))
+            msbuild=$((msbuild + $(grep -c 'testName="[^"]*Clients\.MSBuildRestoreTests\.[^"]*" [^>]*outcome="Passed"' "$f" || true)))
+          done
+          echo "### Windows clients: $nugetexe nuget.exe scenarios and $msbuild MSBuild restore scenarios passed" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$nugetexe" -lt 17 ] || [ "$msbuild" -lt 3 ]; then
+            echo "Expected at least 17 nuget.exe and 3 MSBuild scenarios to pass, got $nugetexe and $msbuild." >&2
+            exit 1
+          fi
+
       - name: Fail when no test was executed
         if: always()
         shell: bash
