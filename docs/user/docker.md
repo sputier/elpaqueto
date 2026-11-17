@@ -116,7 +116,7 @@ Start it:
 ```bash
 cd samples/compose-postgres
 ./init-secrets.sh                       # random passwords, owner-only files in ./secrets (git-ignored)
-export NUGET_HOST=nuget.example.test ELPAQUETO_PUBLIC_URL=https://nuget.example.test PROXY_SUBNET=172.28.64.0/24
+export NUGET_HOST=nuget.example.test ELPAQUETO_PUBLIC_URL=https://nuget.example.test PROXY_SUBNET=203.0.113.0/24
 docker compose up -d --build --wait
 docker compose run --rm elpaqueto admin bootstrap --username admin --password-file /run/secrets/elpaqueto_admin_password
 ```

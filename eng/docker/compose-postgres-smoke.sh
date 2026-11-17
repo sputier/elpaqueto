@@ -31,7 +31,7 @@ export NUGET_HOST=localhost
 export HTTPS_PORT=$https_port
 export HTTP_PORT=$http_port
 export ELPAQUETO_PUBLIC_URL="https://localhost:$https_port"
-export PROXY_SUBNET=172.31.77.0/24
+export PROXY_SUBNET=192.0.2.0/24
 export ELPAQUETO_IMAGE=elpaqueto:compose-smoke
 compose() { docker compose -f "$sample/compose.yml" "$@"; }
 
