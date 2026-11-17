@@ -78,19 +78,29 @@ public class ElPaquetoApplication : WebApplicationFactory<Startup>
     protected override void Dispose(bool disposing)
     {
         // Stop the hosts first: they hold the databases open.
-        base.Dispose(disposing);
-
-        if (disposing)
+        try
         {
-            DeleteTempDirectories();
+            base.Dispose(disposing);
+        }
+        finally
+        {
+            if (disposing)
+            {
+                DeleteTempDirectories();
+            }
         }
     }
 
     public override async ValueTask DisposeAsync()
     {
-        await base.DisposeAsync();
-        DeleteTempDirectories();
-        GC.SuppressFinalize(this);
+        try
+        {
+            await base.DisposeAsync();
+        }
+        finally
+        {
+            DeleteTempDirectories();
+        }
     }
 
     private void DeleteTempDirectories()

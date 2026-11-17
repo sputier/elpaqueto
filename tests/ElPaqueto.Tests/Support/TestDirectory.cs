@@ -13,17 +13,19 @@ internal static class TestDirectory
     /// <summary>
     /// Deletes <paramref name="path"/> with everything in it. Never throws: a leftover temporary directory must
     /// not fail a test. Pooled SQLite connections are closed first and a locked file is retried briefly, because
-    /// Windows refuses to delete a file that is still open.
+    /// Windows refuses to delete a file that is still open. A directory that could not be deleted is reported
+    /// on the standard error.
     /// </summary>
     public static void DeleteQuietly(string path)
     {
+        // Pooled connections keep the database files open.
+        SqliteConnection.ClearAllPools();
+
+        Exception last = null;
         for (var attempt = 1; attempt <= Attempts; attempt++)
         {
             try
             {
-                // Pooled connections keep the database files open.
-                SqliteConnection.ClearAllPools();
-
                 if (Directory.Exists(path))
                 {
                     Directory.Delete(path, recursive: true);
@@ -33,11 +35,14 @@ internal static class TestDirectory
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)
             {
+                last = e;
                 if (attempt < Attempts)
                 {
                     Thread.Sleep(50 * attempt);
                 }
             }
         }
+
+        Console.Error.WriteLine($"Warning: could not delete the test directory '{path}': {last}");
     }
 }
