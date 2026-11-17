@@ -32,9 +32,11 @@ public class ElPaquetoApplication : WebApplicationFactory<Startup>
     private readonly HttpClient _upstreamClient;
     private readonly Action<Dictionary<string, string>> _inMemoryConfiguration;
     private readonly bool _seedTestUser;
+    private readonly bool _keepHealthChecks;
 
-    public ElPaquetoApplication(ITestOutputHelper output, HttpClient upstreamClient = null, Action<Dictionary<string, string>> inMemoryConfiguration = null, bool seedTestUser = true)
+    public ElPaquetoApplication(ITestOutputHelper output, HttpClient upstreamClient = null, Action<Dictionary<string, string>> inMemoryConfiguration = null, bool seedTestUser = true, bool keepHealthChecks = false)
     {
+        _keepHealthChecks = keepHealthChecks;
         _output = output ?? throw new ArgumentNullException(nameof(output));
         _upstreamClient = upstreamClient;
         this._inMemoryConfiguration = inMemoryConfiguration;
@@ -144,7 +146,12 @@ public class ElPaquetoApplication : WebApplicationFactory<Startup>
                     services.AddSingleton(_upstreamClient);
                 }
 
-                services.Configure<HealthCheckServiceOptions>(opts => opts.Registrations.Clear());
+                // The default tests do without the health checks (they touch the database and the storage);
+                // the PostgreSQL tests keep them to exercise the real database check.
+                if (!_keepHealthChecks)
+                {
+                    services.Configure<HealthCheckServiceOptions>(opts => opts.Registrations.Clear());
+                }
 
                 if (_seedTestUser)
                 {
@@ -169,6 +176,14 @@ public class ElPaquetoApplication : WebApplicationFactory<Startup>
                 // See: https://github.com/dotnet/efcore/blob/644d3c8c3a604fd0121d90eaf34f14870e19bcff/src/EFCore.Sqlite.Core/Storage/Internal/SqliteDatabaseCreator.cs#L88-L98
                 using var scope = scopeFactory.CreateScope();
                 var ctx = scope.ServiceProvider.GetRequiredService<IContext>();
+                if (ctx.Database.ProviderName?.Contains("Npgsql", StringComparison.Ordinal) == true)
+                {
+                    // PostgreSQL: the test creates an empty database in its container, and the project's own
+                    // migration entry point (the one the server calls at startup) fills it.
+                    ctx.RunMigrationsAsync(CancellationToken.None).GetAwaiter().GetResult();
+                    return;
+                }
+
                 var dbCreator = ctx.Database.GetService<IRelationalDatabaseCreator>();
 
                 dbCreator.Create();

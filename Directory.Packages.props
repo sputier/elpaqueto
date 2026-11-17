@@ -35,6 +35,8 @@
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.15" />
     <!-- Test projects only: a controllable clock for time-based security tests. -->
     <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.11.0" />
+    <!-- Test projects only: a real PostgreSQL in a container for the package database tests. -->
+    <PackageVersion Include="Testcontainers.PostgreSql" Version="4.11.0" />
     <PackageVersion Include="coverlet.collector" Version="10.1.0" />
     <PackageVersion Include="Humanizer" Version="3.0.10" />
     <PackageVersion Include="Markdig" Version="1.6.0" />
