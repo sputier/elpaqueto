@@ -11,9 +11,9 @@
 #   CHOWN                               0 skips the chown of the secret files (see init-secrets.sh)
 #   SMOKE_SDK_IMAGE                     .NET SDK image of the NuGet client (default: the Dockerfile's build image)
 #
-# TLS is real: Caddy serves "localhost" with its own local CA (the checks use curl -k). The dotnet CLI runs in an SDK
-# container that shares the network namespace of the ElPaqueto container and reaches it over loopback, the way
-# eng/docker/smoke-test.sh does, because the local CA is not trusted by the client.
+# TLS is real: Caddy serves "localhost" with its own local CA (the curl checks use -k). The dotnet CLI runs in an SDK
+# container that shares the network namespace of the Caddy container, reaches https://localhost over loopback and
+# trusts Caddy's local CA through SSL_CERT_FILE; the host port is only used by curl.
 set -euo pipefail
 repo=$(cd "$(dirname "$0")/../.." && pwd)
 sample="$repo/samples/compose-postgres"
@@ -30,7 +30,7 @@ export SECRETS_DIR="$work/secrets"
 export NUGET_HOST=localhost
 export HTTPS_PORT=$https_port
 export HTTP_PORT=$http_port
-export ELPAQUETO_PUBLIC_URL="https://localhost:$https_port"
+export ELPAQUETO_PUBLIC_URL=https://localhost
 export PROXY_SUBNET=192.0.2.0/24
 export ELPAQUETO_IMAGE=elpaqueto:compose-smoke
 compose() { docker compose -f "$sample/compose.yml" "$@"; }
@@ -87,10 +87,15 @@ wait_for_health() { # until the elpaqueto container reports healthy
 
 sdk_image=${SMOKE_SDK_IMAGE:-$(sed -n 's/^FROM --platform=\$BUILDPLATFORM \([^ ]*\) AS build$/\1/p' "$repo/Dockerfile")}
 run_client() { # push-and-restore | restore
+  # In Caddy's network namespace, https://localhost (the public URL) is Caddy over loopback, with TLS. The client
+  # trusts Caddy's local CA through SSL_CERT_FILE.
+  docker cp "$(compose ps -q caddy):/data/caddy/pki/authorities/local/root.crt" "$work/caddy-root.crt"
   READER_USER=smoke-reader READER_PASSWORD=$reader_password SOURCE_KEY=${read_key:-} PUBLISH_KEY=${publish_key:-} \
-    docker run --rm --network "container:$(compose ps -q elpaqueto)" \
-    -e READER_USER -e READER_PASSWORD -e SOURCE_KEY -e PUBLISH_KEY \
+    SOURCE_URL=https://localhost/v3/index.json SSL_CERT_FILE=/caddy-root.crt \
+    docker run --rm --network "container:$(compose ps -q caddy)" \
+    -e READER_USER -e READER_PASSWORD -e SOURCE_KEY -e PUBLISH_KEY -e SOURCE_URL -e SSL_CERT_FILE \
     -v "$(host_path "$repo/eng/docker/smoke-client.sh"):/smoke-client.sh:ro" \
+    -v "$(host_path "$work/caddy-root.crt"):/caddy-root.crt:ro" \
     "$sdk_image" sh /smoke-client.sh "$1"
 }
 

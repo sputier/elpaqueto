@@ -129,7 +129,7 @@ Things to know:
 - **`citext`.** The first migration runs `CREATE EXTENSION citext`. It needs a user allowed to create extensions: the owner of the database created by the image is a superuser. With a managed or shared PostgreSQL, create the extension beforehand with a privileged account (`CREATE EXTENSION citext;` in the ElPaqueto database).
 - **Connections.** Npgsql pools connections per process; `Maximum Pool Size=20` in the connection string bounds what ElPaqueto opens (the default is 100). PostgreSQL's default `max_connections` is 100.
 - **TLS to PostgreSQL** is not used in the sample: the database is on an internal network that only ElPaqueto joins. Add `SSL Mode=Require` to the connection string and configure the server if PostgreSQL is on another host.
-- **Local test without a public name.** `NUGET_HOST=localhost` makes Caddy use its own local certificate authority, and `HTTPS_PORT=8443` moves the published port. NuGet clients do not trust that certificate; the end-to-end script runs the `dotnet` CLI in a container that reaches ElPaqueto over loopback (plain HTTP is accepted there only).
+- **Local test without a public name.** `NUGET_HOST=localhost` makes Caddy use its own local certificate authority, and `HTTPS_PORT=8443` moves the published port. NuGet clients do not trust that certificate; the end-to-end script runs the `dotnet` CLI in a container that shares the network of the Caddy container and trusts its local CA through `SSL_CERT_FILE`.
 - **Backups** need both volumes: see [backup](backup.md#postgresql).
 
 ## Volumes and file ownership
