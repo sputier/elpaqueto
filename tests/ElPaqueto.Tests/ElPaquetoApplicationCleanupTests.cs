@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Data.Sqlite;
 using Xunit;
@@ -72,18 +73,21 @@ public class ElPaquetoApplicationCleanupTests(ITestOutputHelper output)
     }
 
     [WindowsFact]
-    public async Task DeleteQuietlyRetriesWhileAFileIsLocked()
+    public void DeleteQuietlyRetriesWhileAFileIsLocked()
     {
         var directory = NewDirectory();
         var locked = new FileStream(Path.Combine(directory, "locked.txt"), FileMode.Create, FileAccess.ReadWrite, FileShare.None);
-        var release = Task.Run(async () =>
+
+        // A dedicated thread: a busy thread pool must not delay the release past the retries.
+        var release = new Thread(() =>
         {
-            await Task.Delay(120);
-            await locked.DisposeAsync();
+            Thread.Sleep(120);
+            locked.Dispose();
         });
+        release.Start();
 
         TestDirectory.DeleteQuietly(directory);
-        await release;
+        release.Join();
 
         Assert.False(Directory.Exists(directory));
     }

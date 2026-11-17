@@ -8,7 +8,7 @@ namespace ElPaqueto.Tests;
 /// <summary>Cleanup of the temporary directories of the tests.</summary>
 internal static class TestDirectory
 {
-    private const int Attempts = 5;
+    private const int Attempts = 8;
 
     /// <summary>
     /// Deletes <paramref name="path"/> with everything in it. Never throws: a leftover temporary directory must
