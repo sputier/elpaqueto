@@ -238,6 +238,7 @@ jobs:
     # container (Testcontainers, tests/ElPaqueto.Tests, Category=PostgreSql), then the production-like Compose
     # sample (samples/compose-postgres) is brought up and exercised end to end. Docker is available on
     # ubuntu-latest; ELPAQUETO_REQUIRE_DOCKER makes a missing Docker daemon a failure instead of a skip.
+    # The same step runs the Google Cloud Storage provider tests (Category=Gcs, a fake-gcs-server container).
     # Needs no secret. See docs/technical/testing.md.
     name: postgresql
     runs-on: ubuntu-latest
@@ -263,12 +264,12 @@ jobs:
       - name: Build
         run: dotnet build --configuration Release --no-restore
 
-      - name: PostgreSQL integration tests
+      - name: PostgreSQL and Google Cloud Storage integration tests
         run: >-
           dotnet test tests/ElPaqueto.Tests --configuration Release --no-build
-          --filter "Category=PostgreSql" --logger trx --results-directory TestResults
+          --filter "Category=PostgreSql|Category=Gcs" --logger trx --results-directory TestResults
 
-      - name: Fail when no PostgreSQL test was executed
+      - name: Fail when no container test was executed
         if: always()
         shell: bash
         run: |
@@ -278,9 +279,9 @@ jobs:
             n=$(grep -o '<Counters [^>]*>' "$f" | head -n 1 | sed -n 's/.* executed="\([0-9]*\)".*/\1/p')
             executed=$((executed + ${n:-0}))
           done
-          echo "### PostgreSQL tests: $executed executed" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Container tests (PostgreSQL, Google Cloud Storage): $executed executed" >> "$GITHUB_STEP_SUMMARY"
           if [ "$executed" -eq 0 ]; then
-            echo "No PostgreSQL test was executed." >&2
+            echo "No container test was executed." >&2
             exit 1
           fi
 
