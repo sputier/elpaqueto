@@ -6,10 +6,15 @@ name: Docker
 # scan report to code scanning, which needs a write scope, lives in docker-scan-report.yml.
 
 on:
+  # A change to the documentation only cannot change the image (the Dockerfile copies src/ and the
+  # build files, never docs/ or the Markdown files at the root), so it does not rebuild it. The paths
+  # are not ignored when this workflow is called by the release and development image workflows.
   push:
     branches: [develop, main]
+    paths-ignore: ['docs/**', '*.md']
   pull_request:
     branches: [develop, main]
+    paths-ignore: ['docs/**', '*.md']
   workflow_dispatch:
   # Called by the release and development image workflows, which validate the commit before publishing.
   workflow_call:
@@ -178,3 +183,6 @@ jobs:
 
       - name: Validate the Compose example and the reverse-proxy samples
         run: bash eng/docker/validate-proxy-samples.sh
+
+      - name: Check that the ignored paths cannot change the image
+        run: bash eng/docker/check-ignored-paths.sh
