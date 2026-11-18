@@ -47,4 +47,25 @@ public sealed class S3StorageServiceTests
         var expires = int.Parse(query["X-Amz-Expires"], CultureInfo.InvariantCulture);
         Assert.InRange(expires, 1, 7 * 24 * 3600);
     }
+
+    [Fact]
+    public void CreateConfig_ForACustomEndpoint_KeepsTheV3ChecksumBehaviour()
+    {
+        var config = ElPaqueto.AwsApplicationExtensions.CreateConfig(new S3StorageOptions { Endpoint = new Uri("http://127.0.0.1:9000") });
+
+        Assert.Equal("http://127.0.0.1:9000/", config.ServiceURL);
+        Assert.Equal(RequestChecksumCalculation.WHEN_REQUIRED, config.RequestChecksumCalculation);
+        Assert.Equal(ResponseChecksumValidation.WHEN_REQUIRED, config.ResponseChecksumValidation);
+    }
+
+    [Fact]
+    public void CreateConfig_ForARegion_KeepsTheV4Defaults()
+    {
+        var config = ElPaqueto.AwsApplicationExtensions.CreateConfig(new S3StorageOptions { Region = "eu-west-1" });
+
+        Assert.Null(config.ServiceURL);
+        Assert.Equal("eu-west-1", config.RegionEndpoint.SystemName);
+        Assert.Equal(RequestChecksumCalculation.WHEN_SUPPORTED, config.RequestChecksumCalculation);
+        Assert.Equal(ResponseChecksumValidation.WHEN_SUPPORTED, config.ResponseChecksumValidation);
+    }
 }
