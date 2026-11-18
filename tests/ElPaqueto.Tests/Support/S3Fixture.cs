@@ -89,7 +89,7 @@ public sealed class S3Fixture : IAsyncLifetime
                 await Client.ListBucketsAsync();
                 return;
             }
-            catch (Exception e) when (e is AmazonServiceException or AmazonClientException or System.Net.Http.HttpRequestException)
+            catch (Exception e) when (e is AmazonServiceException or AmazonClientException or System.Net.Http.HttpRequestException or System.IO.IOException)
             {
                 last = e;
                 await Task.Delay(TimeSpan.FromSeconds(1));
