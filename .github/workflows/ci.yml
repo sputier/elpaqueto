@@ -235,7 +235,8 @@ jobs:
 
   postgresql:
     # The PostgreSQL package database, for real: the integration tests run the real host against a PostgreSQL 17
-    # container (Testcontainers, tests/ElPaqueto.Tests, Category=PostgreSql), then the production-like Compose
+    # container (Testcontainers, tests/ElPaqueto.Tests, Category=PostgreSql) and the S3 storage provider against an
+    # S3-compatible server container (Category=S3), then the production-like Compose
     # sample (samples/compose-postgres) is brought up and exercised end to end. Docker is available on
     # ubuntu-latest; ELPAQUETO_REQUIRE_DOCKER makes a missing Docker daemon a failure instead of a skip.
     # Needs no secret. See docs/technical/testing.md.
@@ -263,10 +264,10 @@ jobs:
       - name: Build
         run: dotnet build --configuration Release --no-restore
 
-      - name: PostgreSQL integration tests
+      - name: Container integration tests (PostgreSQL, S3)
         run: >-
           dotnet test tests/ElPaqueto.Tests --configuration Release --no-build
-          --filter "Category=PostgreSql" --logger trx --results-directory TestResults
+          --filter "Category=PostgreSql|Category=S3" --logger trx --results-directory TestResults
 
       - name: Fail when no PostgreSQL test was executed
         if: always()
@@ -281,6 +282,21 @@ jobs:
           echo "### PostgreSQL tests: $executed executed" >> "$GITHUB_STEP_SUMMARY"
           if [ "$executed" -eq 0 ]; then
             echo "No PostgreSQL test was executed." >&2
+            exit 1
+          fi
+
+      - name: Fail when no S3 test passed
+        if: always()
+        shell: bash
+        run: |
+          shopt -s nullglob
+          passed=0
+          for f in TestResults/*.trx; do
+            passed=$((passed + $(grep -c 'testName="[^"]*S3IntegrationTests\.[^"]*" [^>]*outcome="Passed"' "$f" || true)))
+          done
+          echo "### S3 tests: $passed passed" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$passed" -eq 0 ]; then
+            echo "No S3 integration test passed." >&2
             exit 1
           fi
 
