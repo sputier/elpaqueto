@@ -2,8 +2,8 @@ name: Docker
 
 # Builds the container image, checks its runtime contract with a smoke test, scans it for known
 # vulnerabilities and validates the Compose and reverse-proxy samples. Nothing is pushed to any registry.
-# Every job is read-only: the release workflow calls this workflow, and the scan report to code
-# scanning, which needs a write scope, lives in docker-scan-report.yml.
+# Every job is read-only: the release and development image workflows call this workflow, and the
+# scan report to code scanning, which needs a write scope, lives in docker-scan-report.yml.
 
 on:
   push:
@@ -11,7 +11,7 @@ on:
   pull_request:
     branches: [develop, main]
   workflow_dispatch:
-  # Called by the release workflow, which validates the tagged commit before publishing.
+  # Called by the release and development image workflows, which validate the commit before publishing.
   workflow_call:
 
 permissions:

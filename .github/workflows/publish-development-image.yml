@@ -1,48 +1,214 @@
 name: Publish development image
 
+# Publishes a development image of develop or main to the GitHub Container Registry, on demand, so that
+# a server can run the latest validated code before a release. It is not a release: the version is
+# 0.0.0-dev.<run number>, there is no GitHub Release, and the image is tagged "<branch>" and
+# "sha-<commit>", never "latest" or a version.
+#
+# Started manually only ("Run workflow" on develop or main): like the release, a publishing workflow is
+# never run by a push or a pull request (hygiene check "publish-trigger"). The commit goes through the
+# same validation as a release (ci.yml and docker.yml), then the published build is smoke-tested and
+# scanned before it is pushed, for linux/amd64 and linux/arm64, with its provenance and SBOM
+# attestations. Procedure: docs/maintainers/releasing.md.
+
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
-permissions:
-  contents: read
+permissions: {}
 
 concurrency:
-  group: publish-development-image
+  group: development-image-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  validate:
-    if: github.ref == 'refs/heads/main'
+  verify:
+    name: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      image: ${{ steps.resolve.outputs.image }}
+      tags: ${{ steps.resolve.outputs.tags }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Test the development image scripts
+        run: bash eng/tests/development-image.test.sh
+
+      - name: Resolve the development image
+        id: resolve
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          RUN_NUMBER: ${{ github.run_number }}
+          REPOSITORY_OWNER: ${{ github.repository_owner }}
+          SHA: ${{ github.sha }}
+        run: bash eng/release/resolve-development-image.sh
+
+      - name: Check that this repository publishes images
+        # A fork, or a repository where the maintainer has not opted in, never publishes.
+        env:
+          RELEASE_REPOSITORY: ${{ vars.RELEASE_REPOSITORY }}
+        run: |
+          if [ "$RELEASE_REPOSITORY" != "$GITHUB_REPOSITORY" ]; then
+            echo "::error::The repository variable RELEASE_REPOSITORY must be '$GITHUB_REPOSITORY' to publish an image (see docs/maintainers/releasing.md)."
+            exit 1
+          fi
+
+      - name: Summarize
+        env:
+          VERSION: ${{ steps.resolve.outputs.version }}
+          IMAGE: ${{ steps.resolve.outputs.image }}
+          TAGS: ${{ steps.resolve.outputs.tags }}
+        run: |
+          {
+            echo "### Development image $VERSION"
+            echo
+            echo "- Image: \`$IMAGE\`"
+            echo "- Tags: \`$TAGS\`"
+            echo "- Commit: \`$GITHUB_SHA\` on \`$GITHUB_REF_NAME\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # The full validation of the commit, by the same workflows as pull requests, pushes and releases.
+  ci:
+    name: ci
+    needs: verify
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci.yml
+
+  docker:
+    name: docker
+    needs: verify
+    permissions:
+      contents: read
     uses: ./.github/workflows/docker.yml
 
   publish:
-    needs: validate
+    name: publish
+    needs: [verify, ci, docker]
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 60
     permissions:
       contents: read
+      # Push the image to the GitHub Container Registry.
       packages: write
+      # Sign and store the attestations.
+      id-token: write
+      attestations: write
+    env:
+      VERSION: ${{ needs.verify.outputs.version }}
+      IMAGE: ${{ needs.verify.outputs.image }}
+      TAGS: ${{ needs.verify.outputs.tags }}
+      REVISION: ${{ github.sha }}
+      SOURCE_URL: ${{ github.server_url }}/${{ github.repository }}
     steps:
-      - name: Download validated image
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          name: image-amd64
-          path: ${{ runner.temp }}/image
+          persist-credentials: false
 
-      - name: Publish validated image
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Check the inputs
         run: |
-          set -euo pipefail
-          docker load -i "$RUNNER_TEMP/image/elpaqueto-image.tar"
-          test "$(docker image inspect elpaqueto:ci --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" = "$GITHUB_SHA"
-          image="ghcr.io/${GITHUB_REPOSITORY,,}"
-          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-          trap 'docker logout ghcr.io' EXIT
-          docker tag elpaqueto:ci "$image:sha-$GITHUB_SHA"
-          docker push "$image:sha-$GITHUB_SHA"
-          docker tag elpaqueto:ci "$image:main"
-          docker push "$image:main"
-          docker buildx imagetools inspect "$image:sha-$GITHUB_SHA"
+          # Defence in depth: the verify job already enforces these rules.
+          test "$GITHUB_EVENT_NAME" = workflow_dispatch
+          test "$GITHUB_REF_TYPE" = branch
+          case "$GITHUB_REF_NAME" in develop | main) ;; *) exit 1 ;; esac
+          case " $TAGS " in *" latest "*) exit 1 ;; esac
+
+      - name: Install QEMU from the Ubuntu archive
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q qemu-user-static
+          grep -E '^flags: .*F' /proc/sys/fs/binfmt_misc/qemu-aarch64
+
+      - name: Create the builder
+        run: echo "BUILDER=$(bash eng/release/create-builder.sh)" >> "$GITHUB_ENV"
+
+      # The image is built again on this runner, with the development version: validate the build that
+      # is pushed, before the push.
+      - name: Build the linux/amd64 image
+        run: bash eng/release/build-image.sh load elpaqueto:development
+
+      - name: Validate the image (version, smoke test, scan)
+        env:
+          SMOKE_LOG_DIR: ${{ runner.temp }}/smoke-logs
+        run: bash eng/release/validate-image.sh elpaqueto:development "$VERSION" "$REVISION" "$SOURCE_URL"
+
+      - name: Upload container logs
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: development-container-logs
+          path: ${{ runner.temp }}/smoke-logs/
+          retention-days: 3
+          if-no-files-found: ignore
+
+      - name: Log in to the GitHub Container Registry
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
+      - name: Push every platform with its attestations
+        id: push
+        run: bash eng/release/build-image.sh push "$RUNNER_TEMP/metadata.json"
+
+      - name: Inspect the pushed image
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          bash eng/release/inspect-image.sh "$IMAGE" "$DIGEST" "$RUNNER_TEMP/image"
+          {
+            echo "AMD64_DIGEST=$(awk '$1 == "linux/amd64" { print $2 }' "$RUNNER_TEMP/image/platforms.txt")"
+            echo "ARM64_DIGEST=$(awk '$1 == "linux/arm64" { print $2 }' "$RUNNER_TEMP/image/platforms.txt")"
+          } >> "$GITHUB_ENV"
+
+      - name: Attest the build provenance of the image
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+          create-storage-record: false
+
+      - name: Attest the SBOM of the linux/amd64 image
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ env.AMD64_DIGEST }}
+          sbom-path: ${{ runner.temp }}/image/sbom-linux-amd64.spdx.json
+          push-to-registry: true
+          create-storage-record: false
+
+      - name: Attest the SBOM of the linux/arm64 image
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ env.ARM64_DIGEST }}
+          sbom-path: ${{ runner.temp }}/image/sbom-linux-arm64.spdx.json
+          push-to-registry: true
+          create-storage-record: false
+
+      # The attestations are pushed to the registry with the login above.
+      - name: Log out of the GitHub Container Registry
+        if: always()
+        run: docker logout ghcr.io
+
+      - name: Summarize
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          {
+            echo "### Published"
+            echo
+            echo "\`\`\`"
+            echo "docker pull $IMAGE@$DIGEST"
+            echo "\`\`\`"
+            for tag in $TAGS; do echo "- \`$IMAGE:$tag\`"; done
+          } >> "$GITHUB_STEP_SUMMARY"
