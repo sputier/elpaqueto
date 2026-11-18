@@ -99,7 +99,24 @@ public class PackageDatabase : IPackageDatabase
 
     public async Task AddDownloadAsync(string id, NuGetVersion version, CancellationToken cancellationToken)
     {
-        await TryUpdatePackageAsync(id, version, p => p.Downloads += 1, cancellationToken);
+        // On a database with a row version (SQL Server) concurrent downloads of one package conflict on the counter
+        // update. The counter is best-effort: retry with fresh data a few times, and never fail the download for it.
+        const int attempts = 5;
+        for (var attempt = 1; attempt <= attempts; attempt++)
+        {
+            try
+            {
+                await TryUpdatePackageAsync(id, version, p => p.Downloads += 1, cancellationToken);
+                return;
+            }
+            catch (DbUpdateConcurrencyException e)
+            {
+                foreach (var entry in e.Entries)
+                {
+                    entry.State = EntityState.Detached;
+                }
+            }
+        }
     }
 
     public async Task<bool> HardDeletePackageAsync(string id, NuGetVersion version, CancellationToken cancellationToken)

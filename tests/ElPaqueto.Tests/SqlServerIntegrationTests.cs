@@ -330,5 +330,9 @@ public sealed class SqlServerIntegrationTests(SqlServerFixture sql, ITestOutputH
 
             Assert.All(results, r => Assert.True(r.StatusCode == HttpStatusCode.OK, $"{r.Url} answered {(int)r.StatusCode}."));
         }
+
+        // 24 downloads of 1.0.1 ran at once on a row-versioned table: the counter is best-effort, but it moved.
+        var counted = await sql.ScalarAsync<long>(connectionString, "SELECT [Downloads] FROM [Packages] WHERE [Version] = '1.0.1'");
+        Assert.InRange(counted, 1, 24);
     }
 }
