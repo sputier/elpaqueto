@@ -6,7 +6,7 @@ on:
   pull_request:
     branches: [develop, main]
   workflow_dispatch:
-  # Called by the release workflow, which validates the tagged commit before publishing.
+  # Called by the release and development image workflows, which validate the commit before publishing.
   workflow_call:
 
 permissions:
@@ -86,6 +86,10 @@ jobs:
       - name: Test release scripts
         shell: bash
         run: bash eng/tests/release.test.sh
+
+      - name: Test development image scripts
+        shell: bash
+        run: bash eng/tests/development-image.test.sh
 
       - name: Set up .NET
         uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0

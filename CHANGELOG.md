@@ -11,6 +11,11 @@ the fork are not listed here.
 
 ## [Unreleased]
 
+### Added
+
+- On-demand development images of `develop` or `main` on the GitHub Container Registry, tagged with the
+  branch and the commit, validated like a release and never tagged `latest` (#135).
+
 ## [0.1.0] - 2026-11-18
 
 First release of ElPaqueto: a hardened fork of BaGetter, published as a container image on the GitHub

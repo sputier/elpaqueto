@@ -9,9 +9,10 @@ maintainer's approval and then publishes:
 - its attestations: build provenance and one SPDX SBOM per platform;
 - a GitHub Release whose notes come from `CHANGELOG.md`.
 
-Nothing else is published: no NuGet package, no image on Docker Hub or on any
-other registry, no Helm chart. The only credential is the workflow's
-`GITHUB_TOKEN`.
+Besides releases, a maintainer can publish a [development image](#development-images)
+of `develop` or `main` on demand. Nothing else is published: no NuGet package,
+no image on Docker Hub or on any other registry, no Helm chart. The only
+credential is the workflows' `GITHUB_TOKEN`.
 
 ## Versioning
 
@@ -114,6 +115,35 @@ gh workflow run release.yml --ref v1.2.0
 
 A dry run is worth doing after a change to the release workflow, the
 `Dockerfile` or the scripts in `eng/release/`, and before tagging a release.
+
+## Development images
+
+`.github/workflows/publish-development-image.yml` publishes the current
+`develop` or `main` to the same GHCR repository, to run the latest validated
+code on a server before a release. It is started by hand only: like the
+release, a workflow that can publish is never started by a push or a pull
+request (hygiene check `publish-trigger`).
+
+```sh
+gh workflow run publish-development-image.yml --ref develop
+```
+
+- **Validation:** the same as a release. `ci.yml` and `docker.yml` run on the
+  commit, then the build that is pushed is smoke-tested and scanned first.
+- **Image:** `linux/amd64` and `linux/arm64`, with the provenance and SBOM
+  attestations, and the version `0.0.0-dev.<run number>`, which sorts below
+  every release.
+- **Tags:** `develop` or `main`, which moves to each new development image of
+  that branch, and `sha-<full commit SHA>`, which never moves. Never `latest`
+  and never a version: `eng/release/resolve-development-image.sh` decides the
+  tags and refuses any other event or branch, and
+  `eng/tests/development-image.test.sh` tests it.
+- **No approval and no GitHub Release:** starting the workflow is the
+  maintainer's decision. It needs the `RELEASE_REPOSITORY` variable, like a
+  release, so a fork never publishes.
+
+On a server, pin a development image by digest (printed in the run summary),
+not by the branch tag.
 
 ## One-time repository setup
 

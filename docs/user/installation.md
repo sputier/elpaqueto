@@ -10,7 +10,7 @@ Releases (from `0.1.0`) are published as a container image on the GitHub Contain
 docker pull ghcr.io/sputier/elpaqueto:0.1.0
 ```
 
-The `latest` tag follows the newest stable release only; a prerelease (`X.Y.Z-rc.1`) is never tagged `latest`. On a server, use an exact version, and preferably its digest, which cannot change under you:
+The `latest` tag follows the newest stable release only; a prerelease (`X.Y.Z-rc.1`) is never tagged `latest`. The `develop`, `main` and `sha-<commit>` tags are development images, published on demand by the maintainers between releases ([development images](../maintainers/releasing.md#development-images)): use them only to try unreleased changes. On a server, use an exact version, and preferably its digest, which cannot change under you:
 
 ```bash
 docker buildx imagetools inspect ghcr.io/sputier/elpaqueto:0.1.0   # prints the Digest of the multi-platform image
