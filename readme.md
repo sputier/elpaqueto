@@ -20,7 +20,7 @@ ElPaqueto is a private, self-hosted [NuGet] server with built-in authentication.
 
 ## Status
 
-ElPaqueto has **no release yet** (version `0.1.0-prerelease`) and no published container image: build it from this repository. The authentication, authorization, API key, transport and throttling features are implemented and tested. The `dotnet` CLI is validated end to end on Linux and Windows; `nuget.exe` and Visual Studio are not validated yet. See [client compatibility](docs/user/client-compatibility.md), and read the [known limitations](docs/user/known-limitations.md) before you deploy it.
+ElPaqueto's first release is `0.1.0`: the container image is published on `ghcr.io/sputier/elpaqueto` (see [installation](docs/user/installation.md#pulling-the-published-image)), or you can build it from this repository. The authentication, authorization, API key, transport and throttling features are implemented and tested. The `dotnet` CLI is validated end to end on Linux and Windows; `nuget.exe` and Visual Studio are not validated yet. See [client compatibility](docs/user/client-compatibility.md), and read the [known limitations](docs/user/known-limitations.md) before you deploy it.
 
 ## Quick start (Docker, local evaluation)
 

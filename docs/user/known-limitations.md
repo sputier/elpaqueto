@@ -4,7 +4,7 @@ What ElPaqueto does not do, or has not validated yet. Read this page before you 
 
 ## Not released yet
 
-- No release, no version tag and no published container image: build the image from this repository ([installation](installation.md)). The release workflow has never published anything.
+- Version `0.1.0` is the first release and is a `0.x` version: settings and behaviour may still change between minor versions; read the [changelog](../../CHANGELOG.md) before upgrading. Releases are published as a container image on `ghcr.io/sputier/elpaqueto` ([installation](installation.md)).
 - The upgrade of a running installation from one ElPaqueto image to the next cannot be tested before a first release.
 
 ## Clients and platforms
