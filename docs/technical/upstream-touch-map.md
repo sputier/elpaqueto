@@ -93,12 +93,6 @@ git diff --no-renames --ignore-cr-at-eol --numstat --diff-filter=M "$mapped_tree
 git -C "$repo" log --oneline --follow 02b6706..HEAD -- <path>   # for each modified file
 ```
 
-`eng/port-upstream.sh` currently stops with exit code 141 (SIGPIPE) on a file
-section larger than the pipe buffer, which the whole-tree patch contains (for
-example the vendored `alpine-ie11.js`). `eng/regenerate-touch-map.sh` runs a
-temporary copy of the script that tolerates that one pipe; the mapping rules
-are unchanged.
-
 ## Modified inherited files
 
 48 inherited files differ from the mapped upstream baseline (outside `docs/`
