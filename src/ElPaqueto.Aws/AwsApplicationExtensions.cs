@@ -2,6 +2,7 @@ using System;
 using System.Threading.Tasks;
 using Amazon;
 using Amazon.Runtime;
+using Amazon.Runtime.Credentials;
 using Amazon.S3;
 using ElPaqueto.Aws;
 using ElPaqueto.Core;
@@ -31,19 +32,17 @@ public static class AwsApplicationExtensions
         {
             var options = provider.GetRequiredService<IOptions<S3StorageOptions>>().Value;
 
-            var config = options.Endpoint != null
-                ? new AmazonS3Config { ServiceURL = options.Endpoint.AbsoluteUri }
-                : new AmazonS3Config { RegionEndpoint = RegionEndpoint.GetBySystemName(options.Region) };
+            var config = CreateConfig(options);
 
             if (options.UseInstanceProfile)
             {
-                var credentials = FallbackCredentialsFactory.GetCredentials();
+                var credentials = DefaultAWSCredentialsIdentityResolver.GetCredentials(config);
                 return new AmazonS3Client(credentials, config);
             }
 
             if (!string.IsNullOrEmpty(options.AssumeRoleArn))
             {
-                var credentials = FallbackCredentialsFactory.GetCredentials();
+                var credentials = DefaultAWSCredentialsIdentityResolver.GetCredentials(config);
                 var assumedCredentials = AssumeRoleAsync(
                         credentials,
                         options.AssumeRoleArn,
@@ -76,6 +75,27 @@ public static class AwsApplicationExtensions
         app.AddAwsS3Storage();
         app.Services.Configure(configure);
         return app;
+    }
+
+    /// <summary>
+    /// The client configuration. AWS SDK v4 sends CRC32 trailing checksums on uploads and validates them on
+    /// downloads by default, which older MinIO, Ceph and other S3-compatible servers reject. For a custom endpoint
+    /// the checksums are used only when the operation requires them (the behaviour of SDK v3); real AWS (a region,
+    /// no service URL) keeps the v4 defaults.
+    /// </summary>
+    internal static AmazonS3Config CreateConfig(S3StorageOptions options)
+    {
+        if (options.Endpoint != null)
+        {
+            return new AmazonS3Config
+            {
+                ServiceURL = options.Endpoint.AbsoluteUri,
+                RequestChecksumCalculation = RequestChecksumCalculation.WHEN_REQUIRED,
+                ResponseChecksumValidation = ResponseChecksumValidation.WHEN_REQUIRED,
+            };
+        }
+
+        return new AmazonS3Config { RegionEndpoint = RegionEndpoint.GetBySystemName(options.Region) };
     }
 
     private static async Task<AWSCredentials> AssumeRoleAsync(

@@ -84,10 +84,7 @@ internal sealed partial class ServerProcess : IServerUnderTest
             ["Logging__Console__LogLevel__Microsoft.AspNetCore.Hosting.Diagnostics"] = "Information",
         };
 
-        foreach (var (name, value) in settings ?? new Dictionary<string, string?>())
-        {
-            _environment[name] = value;
-        }
+        ChangeSettings(settings ?? new Dictionary<string, string?>());
     }
 
     public Uri BaseAddress => _port == 0
@@ -253,6 +250,14 @@ internal sealed partial class ServerProcess : IServerUnderTest
         }
 
         return Task.CompletedTask;
+    }
+
+    public void ChangeSettings(IReadOnlyDictionary<string, string?> settings)
+    {
+        foreach (var (name, value) in settings)
+        {
+            _environment[name] = value;
+        }
     }
 
     public Task<CommandResult> RunAdminAsync(IReadOnlyList<string> arguments, string? standardInput = null)

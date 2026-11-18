@@ -32,6 +32,7 @@ These pages are for the people who install, configure and use an ElPaqueto serve
 | [Troubleshooting](troubleshooting.md) | `401`, `403`, `429`, `503`, `409`, wrong URLs, `NU1301`, `NU1302`. |
 | [Known limitations](known-limitations.md) | What ElPaqueto does not do, or has not validated yet. |
 | [Client compatibility](client-compatibility.md) | Which NuGet clients are tested, what is verified for each, and how. |
+| [Manual checklist: Visual Studio and Rider](client-checklist.md) | What to check by hand in the IDEs, against your HTTPS server. |
 
 Users, permissions and API keys are all managed with the `admin` commands, so the three topics share one page, [Administration](administration.md).
 

@@ -14,6 +14,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="ElPaqueto.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\ElPaqueto.Core\ElPaqueto.Core.csproj" />
   </ItemGroup>
 

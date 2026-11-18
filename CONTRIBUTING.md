@@ -209,7 +209,7 @@ The background for these rules is tracked in the project identity and rebranding
 
 ## Logo and branding
 
-The ElPaqueto name and logo identify this project. The logo files are in [`assets/branding`](assets/branding/README.md); their licence is not decided yet and is **not** the MIT License of the code. A fork or a derived work must not use the logo or present itself as the official ElPaqueto project. Regenerate the logo derivatives with `eng/branding/make_derivatives.py` rather than editing them by hand.
+The ElPaqueto name and logo identify this project. The logo files are in [`assets/branding`](assets/branding/README.md); they are **not** under the MIT License of the code, and their usage terms are set out there. A fork or a derived work must not use the logo or present itself as the official ElPaqueto project. Regenerate the logo derivatives with `eng/branding/make_derivatives.py` rather than editing them by hand.
 
 ## Code of conduct
 

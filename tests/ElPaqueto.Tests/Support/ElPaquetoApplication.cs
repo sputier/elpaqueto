@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
@@ -32,14 +34,20 @@ public class ElPaquetoApplication : WebApplicationFactory<Startup>
     private readonly HttpClient _upstreamClient;
     private readonly Action<Dictionary<string, string>> _inMemoryConfiguration;
     private readonly bool _seedTestUser;
+    private readonly bool _keepHealthChecks;
+    private readonly ConcurrentBag<string> _tempDirectories = new();
 
-    public ElPaquetoApplication(ITestOutputHelper output, HttpClient upstreamClient = null, Action<Dictionary<string, string>> inMemoryConfiguration = null, bool seedTestUser = true)
+    public ElPaquetoApplication(ITestOutputHelper output, HttpClient upstreamClient = null, Action<Dictionary<string, string>> inMemoryConfiguration = null, bool seedTestUser = true, bool keepHealthChecks = false)
     {
+        _keepHealthChecks = keepHealthChecks;
         _output = output ?? throw new ArgumentNullException(nameof(output));
         _upstreamClient = upstreamClient;
         this._inMemoryConfiguration = inMemoryConfiguration;
         _seedTestUser = seedTestUser;
     }
+
+    /// <summary>The temporary directories created for the hosts of this factory, deleted when it is disposed.</summary>
+    internal IReadOnlyCollection<string> TempDirectories => _tempDirectories.ToArray();
 
     /// <summary>The user name of the test user seeded in the security database.</summary>
     public string TestUserName { get; } = "test-user";
@@ -69,6 +77,42 @@ public class ElPaquetoApplication : WebApplicationFactory<Startup>
     /// </summary>
     public HttpClient CreateAnonymousClient() => TestUserExtensions.CreateAnonymousClient(this);
 
+    protected override void Dispose(bool disposing)
+    {
+        // Stop the hosts first: they hold the databases open.
+        try
+        {
+            base.Dispose(disposing);
+        }
+        finally
+        {
+            if (disposing)
+            {
+                DeleteTempDirectories();
+            }
+        }
+    }
+
+    public override async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await base.DisposeAsync();
+        }
+        finally
+        {
+            DeleteTempDirectories();
+        }
+    }
+
+    private void DeleteTempDirectories()
+    {
+        while (_tempDirectories.TryTake(out var directory))
+        {
+            TestDirectory.DeleteQuietly(directory);
+        }
+    }
+
     protected override void ConfigureClient(HttpClient client)
     {
         base.ConfigureClient(client);
@@ -94,6 +138,7 @@ public class ElPaquetoApplication : WebApplicationFactory<Startup>
         var storagePath = Path.Combine(tempPath, "Packages");
 
         Directory.CreateDirectory(tempPath);
+        _tempDirectories.Add(tempPath);
 
         builder
             .UseStartup<Startup>()
@@ -136,7 +181,7 @@ public class ElPaquetoApplication : WebApplicationFactory<Startup>
                 var time = new Mock<SystemTime>();
                 time
                     .Setup(t => t.UtcNow)
-                    .Returns(DateTime.Parse("2020-01-01T00:00:00.000Z"));
+                    .Returns(new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc));
 
                 services.AddSingleton(time.Object);
                 if (_upstreamClient != null)
@@ -144,7 +189,12 @@ public class ElPaquetoApplication : WebApplicationFactory<Startup>
                     services.AddSingleton(_upstreamClient);
                 }
 
-                services.Configure<HealthCheckServiceOptions>(opts => opts.Registrations.Clear());
+                // The default tests do without the health checks (they touch the database and the storage);
+                // the PostgreSQL tests keep them to exercise the real database check.
+                if (!_keepHealthChecks)
+                {
+                    services.Configure<HealthCheckServiceOptions>(opts => opts.Registrations.Clear());
+                }
 
                 if (_seedTestUser)
                 {
@@ -169,6 +219,15 @@ public class ElPaquetoApplication : WebApplicationFactory<Startup>
                 // See: https://github.com/dotnet/efcore/blob/644d3c8c3a604fd0121d90eaf34f14870e19bcff/src/EFCore.Sqlite.Core/Storage/Internal/SqliteDatabaseCreator.cs#L88-L98
                 using var scope = scopeFactory.CreateScope();
                 var ctx = scope.ServiceProvider.GetRequiredService<IContext>();
+                if (ctx.Database.ProviderName?.Contains("Npgsql", StringComparison.Ordinal) == true
+                    || ctx.Database.ProviderName?.Contains("SqlServer", StringComparison.Ordinal) == true)
+                {
+                    // PostgreSQL and SQL Server: the test creates an empty database in its container, and the project's own
+                    // migration entry point (the one the server calls at startup) fills it.
+                    ctx.RunMigrationsAsync(CancellationToken.None).GetAwaiter().GetResult();
+                    return;
+                }
+
                 var dbCreator = ctx.Database.GetService<IRelationalDatabaseCreator>();
 
                 dbCreator.Create();

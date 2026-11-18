@@ -25,7 +25,7 @@ public class GoogleCloudStorageService : IStorageService
 
     public async Task<Stream> GetAsync(string path, CancellationToken cancellationToken = default)
     {
-        using var storage = await StorageClient.CreateAsync();
+        using var storage = await CreateClientAsync();
         var stream = new MemoryStream();
         await storage.DownloadObjectAsync(_bucketName, CoercePath(path), stream, cancellationToken: cancellationToken);
         stream.Position = 0;
@@ -40,7 +40,7 @@ public class GoogleCloudStorageService : IStorageService
 
     public async Task<StoragePutResult> PutAsync(string path, Stream content, string contentType, CancellationToken cancellationToken = default)
     {
-        using var storage = await StorageClient.CreateAsync();
+        using var storage = await CreateClientAsync();
         using var seekableContent = new MemoryStream();
         await content.CopyToAsync(seekableContent, 65536, cancellationToken);
         seekableContent.Position = 0;
@@ -72,7 +72,7 @@ public class GoogleCloudStorageService : IStorageService
 
     public async Task DeleteAsync(string path, CancellationToken cancellationToken = default)
     {
-        using var storage = await StorageClient.CreateAsync();
+        using var storage = await CreateClientAsync();
         try
         {
             var obj = await storage.GetObjectAsync(_bucketName, CoercePath(path), cancellationToken: cancellationToken);
@@ -82,6 +82,9 @@ public class GoogleCloudStorageService : IStorageService
         {
         }
     }
+
+    /// <summary>The client used for every operation: Application Default Credentials. Overridden by the tests to reach a fake server.</summary>
+    protected virtual Task<StorageClient> CreateClientAsync() => StorageClient.CreateAsync();
 
     private static string CoercePath(string path)
     {

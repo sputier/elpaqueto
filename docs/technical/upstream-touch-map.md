@@ -39,10 +39,10 @@ Steps:
 
 Limits of the comparison:
 
-- `docs/` and `deployment templates/` are not mapped by the script (section 4
-  of the porting guide). They are left out of the modified-files tables below;
-  upstream patches on them apply to unrenamed content. The deleted
-  documentation site is listed under [deleted inherited files](#deleted-inherited-files).
+- `docs/` is not mapped by the script (section 4 of the porting guide). It is
+  left out of the modified-files tables below; upstream patches on it apply to
+  unrenamed content. The deleted documentation site and the deleted
+  `deployment templates/` directory (Helm chart) are listed under [deleted inherited files](#deleted-inherited-files).
   The only other inherited file left in `docs/` is `docs/readme.md`, rewritten
   as the ElPaqueto documentation index.
 - Markdown files keep their upstream content (only their path is mapped), as
@@ -92,12 +92,6 @@ git diff --no-renames --ignore-cr-at-eol --numstat --diff-filter=M "$mapped_tree
   -- . ':(exclude)docs/' ':(exclude)deployment templates/'
 git -C "$repo" log --oneline --follow 02b6706..HEAD -- <path>   # for each modified file
 ```
-
-`eng/port-upstream.sh` currently stops with exit code 141 (SIGPIPE) on a file
-section larger than the pipe buffer, which the whole-tree patch contains (for
-example the vendored `alpine-ie11.js`). `eng/regenerate-touch-map.sh` runs a
-temporary copy of the script that tolerates that one pipe; the mapping rules
-are unchanged.
 
 ## Modified inherited files
 
@@ -194,6 +188,7 @@ Paths are shown as upstream names them.
 |---|---|---|
 | `.github/workflows/main.yml` | #3 | `.github/workflows/ci.yml` |
 | `.github/workflows/release.yml`, `release-helm.yml`, `deploy_docs.yml` | #2 | none |
+| `deployment templates/chart/bagetter/` (Helm chart) | #51 | none |
 | `.github/ISSUE_TEMPLATE/Bug_report.md`, `Feature_request.md` | #8 | issue forms in `.github/ISSUE_TEMPLATE/` |
 | `CODE_OF_CONDUCT.md` | #7 | none (it routed reports to an upstream maintainer) |
 | `tests/BaGetter.Tests/BaGetter - Backup.Tests.csproj` | #4 | none (stale, not in the solution) |

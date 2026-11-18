@@ -94,7 +94,7 @@ map_blob() {
 # Maps one file section (from its `diff --git` line to the next one) read from
 # stdin, according to its path. Reports the decision on stderr.
 map_section() {
-  local section first index old new old_mapped new_mapped
+  local section first header index old new old_mapped new_mapped
   section=$(cat; printf x)
   section="${section%x}"
   first="${section%%$'\n'*}"
@@ -112,10 +112,20 @@ map_section() {
   fi
 
   echo "  mapped       ${first#diff --git }" >&2
-  index=$(printf '%s' "$section" | sed -b -n -E '/^(@@ |GIT binary patch|Binary files )/q; /^index [0-9a-f]+\.\.[0-9a-f]+/{p;q}')
+  # The diff header is everything before the first hunk or binary patch. It is
+  # cut with parameter expansion, not with `printf | sed ...q`: a reader that
+  # quits early makes the writer die of SIGPIPE (exit 141 under pipefail) as
+  # soon as the section is larger than the pipe buffer.
+  header="${section%%$'\n'@@ *}"
+  header="${header%%$'\n'GIT binary patch*}"
+  header="${header%%$'\n'Binary files *}"
+  index=""
+  if [[ "$header" =~ (^|$'\n')index\ ([0-9a-f]+)\.\.([0-9a-f]+) ]]; then
+    index=1
+    old="${BASH_REMATCH[2]}"
+    new="${BASH_REMATCH[3]}"
+  fi
   if [ -n "$index" ]; then
-    old="${index#index }"; old="${old%%..*}"
-    new="${index#*..}"; new="${new%% *}"
     old_mapped=$(map_blob "$old")
     new_mapped=$(map_blob "$new")
     printf '%s' "$section" | sed -b -E "$MAP_SED" \

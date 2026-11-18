@@ -10,7 +10,7 @@ set -eu
 mode=${1:?usage: smoke-client.sh push-and-restore | restore}
 export DOTNET_NOLOGO=1 DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1
 export NUGET_PACKAGES=/work/packages HOME=/work/home
-source_url=http://127.0.0.1:8080/v3/index.json
+source_url=${SOURCE_URL:-http://127.0.0.1:8080/v3/index.json}
 mkdir -p /work/home && cd /work
 
 # A NuGet.Config per user. Plain HTTP is acceptable here only because the connection never leaves the

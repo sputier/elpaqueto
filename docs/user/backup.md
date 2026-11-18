@@ -41,6 +41,36 @@ Then start the server on `elpaqueto-data-restored` with the same settings, check
 
 This procedure is not covered by an automated test yet ([#42](https://github.com/sputier/ElPaqueto/issues/42)): check each restore as described above before you rely on it.
 
+## PostgreSQL
+
+With `Database:Type=PostgreSql`, the package metadata is in PostgreSQL, not in `elpaqueto.db`. A consistent backup has **three** parts, taken at the same moment: the PostgreSQL database, the package files (`/data/packages`, `/data/symbols`) and `auth.db`. The last two are on the `/data` volume, which a stopped container leaves consistent (see above); `pg_dump` takes a consistent snapshot of the database while it runs, but the files and the database are only consistent with each other when nothing is pushed in between, so stop ElPaqueto (or put it in read-only mode) while you back up.
+
+With the [Compose sample](docker.md#with-postgresql):
+
+```bash
+cd samples/compose-postgres
+docker compose stop elpaqueto                      # PostgreSQL and Caddy keep running
+docker compose exec -T postgres pg_dump -U elpaqueto -d elpaqueto --format=custom > elpaqueto.pgdump
+docker run --rm -v elpaqueto-postgres_elpaqueto-data:/data:ro -v "$PWD":/backup alpine:3 \
+  sh -c 'umask 077 && tar czf /backup/elpaqueto-data.tar.gz -C /data .'
+docker compose start elpaqueto
+chmod 0600 elpaqueto.pgdump
+```
+
+The volume is named `<project>_elpaqueto-data` (`docker volume ls`; the sample's project name is `elpaqueto-postgres`). The dump is in PostgreSQL's custom format, which `pg_restore` reads; it holds package metadata only (no password), the archive holds `auth.db` (hashes of passwords and API keys): protect both.
+
+Restore into a new, empty database and a new volume, then start the server on them:
+
+```bash
+docker compose stop elpaqueto
+docker compose exec -T postgres psql -U elpaqueto -d postgres -c 'DROP DATABASE elpaqueto WITH (FORCE)' -c 'CREATE DATABASE elpaqueto OWNER elpaqueto'
+docker compose exec -T postgres pg_restore -U elpaqueto -d elpaqueto --no-owner < elpaqueto.pgdump
+# restore the /data archive into the elpaqueto-data volume as described above, then:
+docker compose start elpaqueto
+```
+
+`pg_restore` brings back the `__EFMigrationsHistory` table with the data, so the server's migrations at startup apply only what is missing. The `citext` extension is part of the dump. As for the SQLite databases, restoring brings back users and keys as they were: see [restoring an older backup](#restoring-an-older-backup). This procedure has not been tested by this project: check each restore (users sign in, a package restores) before relying on it.
+
 ## Online backup
 
 To back up without stopping the server, copy each SQLite database with SQLite's online backup (for example `sqlite3 auth.db ".backup '/backup/auth.db'"` or `VACUUM INTO`), then copy the package files. The image does not ship the `sqlite3` tool, and this variant has not been tested by this project: prefer the stopped-container procedure above.

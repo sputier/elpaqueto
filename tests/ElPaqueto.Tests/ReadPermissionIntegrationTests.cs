@@ -293,6 +293,11 @@ public class ReadPermissionIntegrationTests : IDisposable
                 {
                     id += "testdata/index.json";
                 }
+                else if (type.StartsWith("ReadmeUriTemplate/", StringComparison.Ordinal))
+                {
+                    // A URI template: the client replaces the tokens.
+                    id = id.Replace("{lower_id}", "testdata", StringComparison.Ordinal).Replace("{lower_version}", "1.2.3", StringComparison.Ordinal);
+                }
 
                 advertised.Add((id, isPublish ? "PUT" : "GET", isPublish ? Permission.Publish : Permission.Read));
             }

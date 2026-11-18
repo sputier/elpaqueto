@@ -99,6 +99,9 @@ internal sealed class NuGetClient : IDisposable
     /// <summary>The isolated <c>NuGet.Config</c>, at the client root so that commands without <c>--configfile</c> find it too.</summary>
     public string ConfigPath { get; }
 
+    /// <summary>The isolated <c>%APPDATA%</c>, where nuget.exe and Visual Studio look for the user-level <c>NuGet.Config</c>.</summary>
+    public string AppDataDirectory => _environment["APPDATA"]!;
+
     /// <summary>Every NuGet folder the client must keep below its root.</summary>
     public IReadOnlyList<string> NuGetFolders => [GlobalPackagesFolder, HttpCacheFolder, ScratchFolder, PluginsCacheFolder];
 
@@ -118,7 +121,16 @@ internal sealed class NuGetClient : IDisposable
     }
 
     /// <summary>Runs <c>dotnet</c> with the isolated environment, plus optional extra variables.</summary>
-    public async Task<CommandResult> DotnetAsync(
+    public Task<CommandResult> DotnetAsync(
+        string workingDirectory,
+        IReadOnlyList<string> arguments,
+        TimeSpan? timeout = null,
+        IReadOnlyDictionary<string, string?>? extraEnvironment = null)
+        => RunAsync(CommandRunner.DotnetPath, workingDirectory, arguments, timeout, extraEnvironment);
+
+    /// <summary>Runs any program (the real <c>nuget.exe</c>, MSBuild) with the same isolated environment.</summary>
+    public async Task<CommandResult> RunAsync(
+        string fileName,
         string workingDirectory,
         IReadOnlyList<string> arguments,
         TimeSpan? timeout = null,
@@ -131,7 +143,7 @@ internal sealed class NuGetClient : IDisposable
         }
 
         var result = await CommandRunner.RunAsync(new CommandSpec(
-            CommandRunner.DotnetPath,
+            fileName,
             arguments,
             workingDirectory,
             environment,

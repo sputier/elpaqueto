@@ -261,6 +261,38 @@ These settings come from BaGetter and keep their names and behaviour. The table 
 
 Environment variables use the same names with `__`: `Database__ConnectionString`, `Storage__Path`, `PackageDeletionBehavior`.
 
+### PostgreSQL
+
+The PostgreSQL package database is tested by this project (PostgreSQL 17, see [known limitations](known-limitations.md#storage-and-data)). Two settings select it:
+
+| Setting | Value |
+| --- | --- |
+| `Database:Type` | `PostgreSql`. |
+| `Database:ConnectionString` | An [Npgsql connection string](https://www.npgsql.org/doc/connection-string-parameters.html), for example `Host=postgres;Port=5432;Database=elpaqueto;Username=elpaqueto;Password=...;Maximum Pool Size=20`. It holds the password: put it in a secret file or an environment variable, never in `appsettings.json`. |
+
+```bash
+# Environment (the type is not a secret)
+export Database__Type=PostgreSql
+# Docker secret file: the file name is the setting name, with __ as separator, and the content is the value
+printf '%s' 'Host=postgres;Port=5432;Database=elpaqueto;Username=elpaqueto;Password=<password>;Maximum Pool Size=20' \
+  > /run/secrets/Database__ConnectionString
+```
+
+- **Migrations.** With `RunMigrationsAtStartup` (the default), the server creates and updates the tables at startup, and creates the `citext` extension, so the database user needs the right to create tables and extensions (or create the extension beforehand). The database itself must exist. Several servers starting at once on an empty database are safe. If the database cannot be reached the server stops with exit code 1.
+- **Case-insensitive columns.** Package ids and versions are stored in `citext` columns, so that `Acme.Core` and `acme.core`, `1.0.0-Beta.1` and `1.0.0-beta.1` are the same package. A migration repairs a `Version` column that is still `character varying(64)` in a database created by BaGet or BaGetter ([bagetter/BaGetter#239](https://github.com/bagetter/BaGetter/issues/239)): with it, a package whose version has an uppercase letter could not be found, downloaded or deleted.
+- **Connections.** Each server process keeps at most `Maximum Pool Size` connections (100 by default); set it well below PostgreSQL's `max_connections`, and below it by the number of other clients. A request waits up to `Timeout` (15 s by default) for a free connection.
+- **Health.** `/health` includes a database check: it answers `503` when PostgreSQL cannot be reached, and `/health/details` (`Admin`) lists the `PostgreSql` check.
+- **The security database is not in PostgreSQL.** `Security:Database:ConnectionString` stays a SQLite connection string. Back it up as well ([backup](backup.md#postgresql)).
+- A complete deployment: [Docker with PostgreSQL](docker.md#with-postgresql).
+
+### SQL Server
+
+The SQL Server package database is tested by this project (SQL Server 2022 on Linux, see [known limitations](known-limitations.md#storage-and-data)). Set `Database:Type` to `SqlServer` and `Database:ConnectionString` to a [Microsoft.Data.SqlClient connection string](https://learn.microsoft.com/sql/connect/ado-net/connection-string-syntax), for example `Server=sql;Database=elpaqueto;User Id=elpaqueto;Password=...;Encrypt=True;Max Pool Size=20`. It holds the password: keep it in a secret file or an environment variable, as for PostgreSQL. The database must exist; the server creates and updates the tables at startup (`RunMigrationsAtStartup`).
+
+- **Driver.** The server ships Microsoft.Data.SqlClient 7.1. `Encrypt` defaults to `True` since SqlClient 4, so a server with a self-signed certificate needs a trusted certificate or `TrustServerCertificate=True`. This did not change with version 7.
+- **Microsoft Entra ID authentication.** SqlClient 7 moved it out of its core package. ElPaqueto references the extension package `Microsoft.Data.SqlClient.Extensions.Azure`, so connection strings with `Authentication=Active Directory Default`, `Active Directory Managed Identity`, `Active Directory Service Principal`, `Active Directory Interactive` or `Active Directory Workload Identity` keep working. `Active Directory Password` is deprecated by SqlClient 7: move to one of the others. Only the presence of the provider is tested; a real Entra ID sign-in is not.
+- **The security database is not in SQL Server.** `Security:Database:ConnectionString` stays a SQLite connection string ([backup](backup.md)).
+
 ### Mirror authentication
 
 With `Mirror:Enabled`, ElPaqueto fetches a package it does not have from `Mirror:PackageSource`, the [service index](https://learn.microsoft.com/nuget/api/service-index) of the upstream feed, and stores it ([restoring](restoring.md#mirror)). `Mirror:Authentication` holds the credentials ElPaqueto sends to that upstream feed. It has nothing to do with the users and keys of ElPaqueto itself. Keep the secret values in environment variables or `/run/secrets` files, as for any other secret ([sources and precedence](#sources-and-precedence)).

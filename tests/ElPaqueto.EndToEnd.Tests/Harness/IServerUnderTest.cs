@@ -43,6 +43,12 @@ internal interface IServerUnderTest : IAsyncDisposable
     /// <summary>Kills the server's process tree, as a crash or a power loss would.</summary>
     public Task KillAsync();
 
+    /// <summary>
+    /// Changes settings (environment variable names, <c>Section__Key</c>; null removes one) for the admin commands
+    /// run from now on and for the next <see cref="StartAsync"/>: a running server keeps its settings until restarted.
+    /// </summary>
+    public void ChangeSettings(IReadOnlyDictionary<string, string?> settings);
+
     /// <summary>Runs <c>admin ...</c> with the server's configuration and data.</summary>
     public Task<CommandResult> RunAdminAsync(IReadOnlyList<string> arguments, string? standardInput = null);
 }
