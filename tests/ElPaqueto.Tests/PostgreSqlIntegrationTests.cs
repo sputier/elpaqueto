@@ -35,6 +35,20 @@ public sealed class PostgreSqlIntegrationTests(PostgreSqlFixture postgres, ITest
         }
     }
 
+    /// <summary>
+    /// A package storage directory shared by several hosts of one test. It belongs to the test, not to a host,
+    /// because <see cref="ElPaquetoApplication"/> deletes the directories it created when it is disposed.
+    /// </summary>
+    private sealed class SharedStorage : IDisposable
+    {
+        public string Path { get; } = System.IO.Directory.CreateDirectory(
+            System.IO.Path.Combine(System.IO.Path.GetTempPath(), "ElPaquetoTests", Guid.NewGuid().ToString("N"), "Packages")).FullName;
+
+        public void Configure(Dictionary<string, string> dict) => dict["Storage:Path"] = Path;
+
+        public void Dispose() => TestDirectory.DeleteQuietly(System.IO.Path.GetDirectoryName(Path));
+    }
+
     private ElPaquetoApplication Start(string connectionString, Action<Dictionary<string, string>> configure = null)
     {
         var app = new ElPaquetoApplication(
@@ -187,12 +201,8 @@ public sealed class PostgreSqlIntegrationTests(PostgreSqlFixture postgres, ITest
         // https://github.com/bagetter/BaGetter/issues/239: databases created by BaGet keep Packages.Version as
         // varchar(64) although FixVersionCaseSensitivity is recorded as applied. Rebuild that state, then start.
         var connectionString = await postgres.CreateDatabaseAsync();
-        string storagePath = null;
-        void SameStorage(Dictionary<string, string> dict)
-        {
-            storagePath ??= dict["Storage:Path"];
-            dict["Storage:Path"] = storagePath;
-        }
+        using var storage = new SharedStorage();
+        void SameStorage(Dictionary<string, string> dict) => storage.Configure(dict);
 
         await using (var first = Start(connectionString, SameStorage))
         {
@@ -401,19 +411,10 @@ public sealed class PostgreSqlIntegrationTests(PostgreSqlFixture postgres, ITest
     public async Task RestartOnAnExistingDatabase_KeepsEveryPackage()
     {
         var connectionString = await postgres.CreateDatabaseAsync();
-        var storageRoot = new Dictionary<string, string>();
-        void Configure(Dictionary<string, string> dict)
-        {
-            // The same package files for both runs: the first host chooses the path, the second one reuses it.
-            if (storageRoot.TryGetValue("path", out var path))
-            {
-                dict["Storage:Path"] = path;
-            }
-            else
-            {
-                storageRoot["path"] = dict["Storage:Path"];
-            }
-        }
+        // The same package files for both runs, in a directory the test owns: disposing the first host deletes
+        // the temporary directories it created, including its default storage path.
+        using var storage = new SharedStorage();
+        void Configure(Dictionary<string, string> dict) => storage.Configure(dict);
 
         await using (var first = Start(connectionString, Configure))
         {
