@@ -7,6 +7,8 @@ using ElPaqueto.Core;
 using ElPaqueto.Gcp;
 using Google;
 using Google.Cloud.Storage.V1;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Xunit;
 using Xunit.Abstractions;
@@ -31,8 +33,8 @@ public sealed class GoogleCloudStorageIntegrationTests(GcsFixture gcs, ITestOutp
         public GoogleCloudStorageOptions Get(string name) => Value;
     }
 
-    private static GoogleCloudStorageService Service(string bucket) =>
-        new(new Snapshot(new GoogleCloudStorageOptions { BucketName = bucket }));
+    private GoogleCloudStorageService Service(string bucket) =>
+        new GcsFixture.EmulatorStorageService(new Snapshot(new GoogleCloudStorageOptions { BucketName = bucket }), gcs);
 
     private static byte[] Bytes(int length)
     {
@@ -121,11 +123,15 @@ public sealed class GoogleCloudStorageIntegrationTests(GcsFixture gcs, ITestOutp
     public async Task Host_PushThenDownload_ThroughTheGoogleCloudStorageType()
     {
         var bucket = await gcs.CreateBucketAsync();
-        await using var app = new ElPaquetoApplication(output, inMemoryConfiguration: dict =>
+        await using var baseApp = new ElPaquetoApplication(output, inMemoryConfiguration: dict =>
         {
             dict["Storage:Type"] = "GoogleCloud";
             dict["Storage:BucketName"] = bucket;
         });
+        // Only the client of the real GoogleCloudStorageService is replaced (it reaches the fake server).
+        using var app = baseApp.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+            services.AddTransient<GoogleCloudStorageService>(provider => new GcsFixture.EmulatorStorageService(
+                provider.GetRequiredService<IOptionsSnapshot<GoogleCloudStorageOptions>>(), gcs))));
         using var client = app.CreateClient();
         var package = TestPackageBuilder.Create("Acme.Gcs", "1.0.0");
 

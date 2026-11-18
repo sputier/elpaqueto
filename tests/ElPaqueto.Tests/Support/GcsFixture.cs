@@ -5,7 +5,9 @@ using System.Net.Sockets;
 using System.Threading.Tasks;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
+using ElPaqueto.Gcp;
 using Google.Cloud.Storage.V1;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace ElPaqueto.Tests;
@@ -33,18 +35,16 @@ public sealed class GcsCollection : ICollectionFixture<GcsFixture>
 
 /// <summary>
 /// One <c>fsouza/fake-gcs-server</c> in a container for every Google Cloud Storage test of the run; each test gets its
-/// own empty bucket. The production code is not given a seam: <c>StorageClient.CreateAsync()</c> honours the
-/// <c>STORAGE_EMULATOR_HOST</c> environment variable (emulator address, no credentials), which this fixture sets for the
-/// process while it lives. That is why the tests of this collection never run in parallel with each other.
+/// own empty bucket. The service under test reaches it through <see cref="EmulatorStorageService"/>, which overrides the
+/// one client factory method of <c>GoogleCloudStorageService</c>.
 /// </summary>
 public sealed class GcsFixture : IAsyncLifetime
 {
     // Pinned: a fake of the GCS JSON API, not a Google image.
     private const string Image = "fsouza/fake-gcs-server:1.52.2";
-    private const string EmulatorHostVariable = "STORAGE_EMULATOR_HOST";
 
     private IContainer _container;
-    private string _previousEmulatorHost;
+    private string _baseUri;
 
     public async Task InitializeAsync()
     {
@@ -69,21 +69,20 @@ public sealed class GcsFixture : IAsyncLifetime
             .Build();
         await _container.StartAsync();
 
-        _previousEmulatorHost = Environment.GetEnvironmentVariable(EmulatorHostVariable);
-        Environment.SetEnvironmentVariable(EmulatorHostVariable, $"http://127.0.0.1:{port}");
+        _baseUri = $"http://127.0.0.1:{port}/storage/v1/";
     }
 
     public async Task DisposeAsync()
     {
-        Environment.SetEnvironmentVariable(EmulatorHostVariable, _previousEmulatorHost);
         if (_container is not null)
         {
             await _container.DisposeAsync();
         }
     }
 
-    /// <summary>A client built the way the production code builds it (ADC / emulator variable).</summary>
-    public async Task<StorageClient> CreateClientAsync() => await StorageClient.CreateAsync();
+    /// <summary>A client for the fake server: no credentials, no Google endpoint.</summary>
+    public async Task<StorageClient> CreateClientAsync() =>
+        await new StorageClientBuilder { BaseUri = _baseUri, UnauthenticatedAccess = true }.BuildAsync();
 
     /// <summary>Creates an empty bucket and returns its name.</summary>
     public async Task<string> CreateBucketAsync()
@@ -92,6 +91,13 @@ public sealed class GcsFixture : IAsyncLifetime
         using var client = await CreateClientAsync();
         await client.CreateBucketAsync("elpaqueto-test", name);
         return name;
+    }
+
+    /// <summary>The production service with its client pointed at the fake server.</summary>
+    public sealed class EmulatorStorageService(IOptionsSnapshot<GoogleCloudStorageOptions> options, GcsFixture fixture)
+        : GoogleCloudStorageService(options)
+    {
+        protected override Task<StorageClient> CreateClientAsync() => fixture.CreateClientAsync();
     }
 
     private static int FreePort()
