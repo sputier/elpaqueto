@@ -235,10 +235,11 @@ jobs:
 
   postgresql:
     # The PostgreSQL package database, for real: the integration tests run the real host against a PostgreSQL 17
-    # container (Testcontainers, tests/ElPaqueto.Tests, Category=PostgreSql), then the production-like Compose
+    # container (Testcontainers, tests/ElPaqueto.Tests, Category=PostgreSql) and the S3 storage provider against an
+    # S3-compatible server container (Category=S3), then the production-like Compose
     # sample (samples/compose-postgres) is brought up and exercised end to end. Docker is available on
     # ubuntu-latest; ELPAQUETO_REQUIRE_DOCKER makes a missing Docker daemon a failure instead of a skip.
-    # The same step runs the Google Cloud Storage provider tests (Category=Gcs, a fake-gcs-server container).
+    # The same step also runs the Google Cloud Storage provider tests (Category=Gcs, a fake-gcs-server container).
     # Needs no secret. See docs/technical/testing.md.
     name: postgresql
     runs-on: ubuntu-latest
@@ -264,12 +265,12 @@ jobs:
       - name: Build
         run: dotnet build --configuration Release --no-restore
 
-      - name: PostgreSQL and Google Cloud Storage integration tests
+      - name: Container integration tests (PostgreSQL, Google Cloud Storage, S3)
         # One invocation per category, each with its own results directory, so that the guard below counts them apart.
         shell: bash
         run: |
           status=0
-          for category in PostgreSql Gcs; do
+          for category in PostgreSql Gcs S3; do
             dotnet test tests/ElPaqueto.Tests --configuration Release --no-build \
               --filter "Category=$category" --logger trx --results-directory "TestResults/$category" || status=1
           done
@@ -281,7 +282,7 @@ jobs:
         run: |
           shopt -s nullglob
           failed=0
-          for category in PostgreSql Gcs; do
+          for category in PostgreSql Gcs S3; do
             executed=0
             for f in "TestResults/$category"/*.trx; do
               n=$(grep -o '<Counters [^>]*>' "$f" | head -n 1 | sed -n 's/.* executed="\([0-9]*\)".*/\1/p')

@@ -8,12 +8,12 @@ using Xunit;
 namespace ElPaqueto.Tests;
 
 /// <summary>
-/// Whether a Docker daemon answers, which the PostgreSQL tests need. The result is computed once per run.
+/// Whether a Docker daemon answers, which the container tests (PostgreSQL, S3) need. The result is computed once per run.
 /// </summary>
 internal static class DockerAvailability
 {
     /// <summary>
-    /// When set to a non-empty value, a missing Docker daemon fails the PostgreSQL tests instead of skipping them.
+    /// When set to a non-empty value, a missing Docker daemon fails the container tests instead of skipping them.
     /// The CI job sets it so that the tests can never be skipped silently there.
     /// </summary>
     public const string RequireVariable = "ELPAQUETO_REQUIRE_DOCKER";
@@ -25,7 +25,7 @@ internal static class DockerAvailability
     public static bool IsRequired => !string.IsNullOrEmpty(Environment.GetEnvironmentVariable(RequireVariable));
 
     public static string SkipMessage =>
-        $"Docker is not available ({Problem.Value}): the container integration tests (PostgreSQL, SQL Server, Google Cloud Storage) need a Docker daemon (Testcontainers). "
+        $"Docker is not available ({Problem.Value}): the container integration tests (PostgreSQL, SQL Server, Google Cloud Storage, S3) need a Docker daemon (Testcontainers). "
         + $"Start Docker, or set {RequireVariable}=1 to make this a failure.";
 
     private static string Probe()

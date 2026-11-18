@@ -12,6 +12,7 @@ namespace ElPaqueto.Aws;
 public class S3StorageService : IStorageService
 {
     private const string Separator = "/";
+    private static readonly TimeSpan DownloadUrlLifetime = TimeSpan.FromHours(1);
     private readonly string _bucket;
     private readonly string _prefix;
     private readonly AmazonS3Client _client;
@@ -57,12 +58,26 @@ public class S3StorageService : IStorageService
         return stream;
     }
 
+    private bool UsesHttp()
+    {
+        var config = _client.Config;
+        return config.UseHttp
+            || (Uri.TryCreate(config.ServiceURL, UriKind.Absolute, out var serviceUrl)
+                && serviceUrl.Scheme == Uri.UriSchemeHttp);
+    }
+
     public Task<Uri> GetDownloadUriAsync(string path, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        // AWS SDK for .NET v4: Expires is nullable and has no default, and a request without it is refused.
         var url = _client.GetPreSignedURL(new GetPreSignedUrlRequest
         {
             BucketName = _bucket,
-            Key = PrepareKey(path)
+            Key = PrepareKey(path),
+            // Follow the client: a service URL in http must not get an https download URL.
+            Protocol = UsesHttp() ? Amazon.S3.Protocol.HTTP : Amazon.S3.Protocol.HTTPS,
+            Expires = DateTime.UtcNow.Add(DownloadUrlLifetime)
         });
 
         return Task.FromResult(new Uri(url));
