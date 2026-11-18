@@ -285,6 +285,14 @@ printf '%s' 'Host=postgres;Port=5432;Database=elpaqueto;Username=elpaqueto;Passw
 - **The security database is not in PostgreSQL.** `Security:Database:ConnectionString` stays a SQLite connection string. Back it up as well ([backup](backup.md#postgresql)).
 - A complete deployment: [Docker with PostgreSQL](docker.md#with-postgresql).
 
+### SQL Server
+
+The SQL Server package database is tested by this project (SQL Server 2022 on Linux, see [known limitations](known-limitations.md#storage-and-data)). Set `Database:Type` to `SqlServer` and `Database:ConnectionString` to a [Microsoft.Data.SqlClient connection string](https://learn.microsoft.com/sql/connect/ado-net/connection-string-syntax), for example `Server=sql;Database=elpaqueto;User Id=elpaqueto;Password=...;Encrypt=True;Max Pool Size=20`. It holds the password: keep it in a secret file or an environment variable, as for PostgreSQL. The database must exist; the server creates and updates the tables at startup (`RunMigrationsAtStartup`).
+
+- **Driver.** The server ships Microsoft.Data.SqlClient 7.1. `Encrypt` defaults to `True` since SqlClient 4, so a server with a self-signed certificate needs a trusted certificate or `TrustServerCertificate=True`. This did not change with version 7.
+- **Microsoft Entra ID authentication.** SqlClient 7 moved it out of its core package. ElPaqueto references the extension package `Microsoft.Data.SqlClient.Extensions.Azure`, so connection strings with `Authentication=Active Directory Default`, `Active Directory Managed Identity`, `Active Directory Service Principal`, `Active Directory Interactive` or `Active Directory Workload Identity` keep working. `Active Directory Password` is deprecated by SqlClient 7: move to one of the others. Only the presence of the provider is tested; a real Entra ID sign-in is not.
+- **The security database is not in SQL Server.** `Security:Database:ConnectionString` stays a SQLite connection string ([backup](backup.md)).
+
 ### Mirror authentication
 
 With `Mirror:Enabled`, ElPaqueto fetches a package it does not have from `Mirror:PackageSource`, the [service index](https://learn.microsoft.com/nuget/api/service-index) of the upstream feed, and stores it ([restoring](restoring.md#mirror)). `Mirror:Authentication` holds the credentials ElPaqueto sends to that upstream feed. It has nothing to do with the users and keys of ElPaqueto itself. Keep the secret values in environment variables or `/run/secrets` files, as for any other secret ([sources and precedence](#sources-and-precedence)).

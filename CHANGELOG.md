@@ -15,6 +15,17 @@ the fork are not listed here.
 
 - On-demand development images of `develop` or `main` on the GitHub Container Registry, tagged with the
   branch and the commit, validated like a release and never tagged `latest` (#135).
+- Integration tests of the SQL Server package database against a SQL Server 2022 container, run by CI.
+
+### Changed
+
+- Microsoft.Data.SqlClient 6.1 to 7.1. Microsoft Entra ID authentication of SQL Server connection strings
+  is kept through the `Microsoft.Data.SqlClient.Extensions.Azure` package.
+
+### Fixed
+
+- SQL Server: a duplicate package version that loses a race at the database is detected (unique index
+  violation, error 2601) and answered as a conflict instead of a 500.
 
 ## [0.1.0] - 2026-11-18
 

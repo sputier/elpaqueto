@@ -295,3 +295,62 @@ jobs:
           path: TestResults/
           retention-days: 7
           if-no-files-found: warn
+
+  sqlserver:
+    # The SQL Server package database, for real: the integration tests run the real host against a SQL Server 2022
+    # container (Testcontainers, tests/ElPaqueto.Tests, Category=SqlServer), with the Microsoft.Data.SqlClient the
+    # server ships. Docker is available on ubuntu-latest; ELPAQUETO_REQUIRE_DOCKER makes a missing Docker daemon a
+    # failure instead of a skip. Needs no secret. See docs/technical/testing.md.
+    name: sqlserver
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      ELPAQUETO_REQUIRE_DOCKER: "1"
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+
+      - name: SQL Server integration tests
+        run: >-
+          dotnet test tests/ElPaqueto.Tests --configuration Release --no-build
+          --filter "Category=SqlServer" --logger trx --results-directory TestResults
+
+      - name: Fail when no SQL Server test was executed
+        if: always()
+        shell: bash
+        run: |
+          shopt -s nullglob
+          executed=0
+          for f in TestResults/*.trx; do
+            n=$(grep -o '<Counters [^>]*>' "$f" | head -n 1 | sed -n 's/.* executed="\([0-9]*\)".*/\1/p')
+            executed=$((executed + ${n:-0}))
+          done
+          echo "### SQL Server tests: $executed executed" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$executed" -eq 0 ]; then
+            echo "No SQL Server test was executed." >&2
+            exit 1
+          fi
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sqlserver-results
+          path: TestResults/
+          retention-days: 7
+          if-no-files-found: warn
