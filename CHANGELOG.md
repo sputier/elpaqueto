@@ -24,8 +24,10 @@ the fork are not listed here.
 
 ### Fixed
 
-- SQL Server: concurrent downloads of one package no longer fail with a 500 when the download counter
-  update conflicts (the counter update is retried, and never fails the download).
+- Concurrent downloads of one package version are all counted: the download counter is incremented in one
+  atomic database update. It used to read, increment and save the package, which lost increments on every
+  database (40 simultaneous downloads counted once on SQLite) and, on SQL Server, failed the losing downloads
+  with a 500 on the row version conflict.
 - SQL Server: the detection of a duplicate package version at the database now also matches error 2601
   (unique index violation), not only 2627 (unique constraint). The package key is a unique index.
 

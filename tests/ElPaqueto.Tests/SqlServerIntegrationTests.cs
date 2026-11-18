@@ -331,8 +331,10 @@ public sealed class SqlServerIntegrationTests(SqlServerFixture sql, ITestOutputH
             Assert.All(results, r => Assert.True(r.StatusCode == HttpStatusCode.OK, $"{r.Url} answered {(int)r.StatusCode}."));
         }
 
-        // 24 downloads of 1.0.1 ran at once on a row-versioned table: the counter is best-effort, but it moved.
+        // The downloads of 1.0.1 ran at once on a row-versioned table, and every one of them is counted: the counter
+        // is incremented atomically in the database, so it neither conflicts on the row version nor loses updates.
+        var downloads = 2 * Enumerable.Range(0, 60).Count(i => urls[i % urls.Length].EndsWith(".nupkg", StringComparison.Ordinal));
         var counted = await sql.ScalarAsync<long>(connectionString, "SELECT [Downloads] FROM [Packages] WHERE [Version] = '1.0.1'");
-        Assert.InRange(counted, 1, 24);
+        Assert.Equal(downloads, counted);
     }
 }
