@@ -1,12 +1,12 @@
 # Upgrading
 
-No release of ElPaqueto is published yet, so there is no image tag or release policy to follow: you upgrade by building a newer commit of this repository. This page describes what happens when you do. To move from BaGetter, read [Upgrading from BaGetter](upgrading-from-bagetter.md) instead.
+Releases are published as container images on `ghcr.io/sputier/elpaqueto` (see [Installation](installation.md#pulling-the-published-image)), tagged by version. You upgrade by pulling a newer version (or digest) and replacing the container. This page describes what happens when you do. A commit built from this repository works the same way. To move from BaGetter, read [Upgrading from BaGetter](upgrading-from-bagetter.md) instead.
 
 ## Procedure
 
-1. Read the changes between your version and the new one (pull requests and commit messages), in particular anything about settings and migrations.
+1. Read the changes between your version and the new one (the [changelog](../../CHANGELOG.md) and the release notes), in particular anything about settings and migrations.
 2. [Back up](backup.md) the volume or the data, with the server stopped.
-3. Build the new image (`docker build -t elpaqueto:<new tag> .`).
+3. Pull the new image (`docker pull ghcr.io/sputier/elpaqueto:<new version>`), or build it (`docker build -t elpaqueto:<new tag> .`).
 4. Replace the container with one from the new image, with the same volume and settings.
 5. Check the startup log, the health check (`docker ps` shows `healthy`) and a restore from a client.
 

@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
@@ -33,6 +35,7 @@ public class ElPaquetoApplication : WebApplicationFactory<Startup>
     private readonly Action<Dictionary<string, string>> _inMemoryConfiguration;
     private readonly bool _seedTestUser;
     private readonly bool _keepHealthChecks;
+    private readonly ConcurrentBag<string> _tempDirectories = new();
 
     public ElPaquetoApplication(ITestOutputHelper output, HttpClient upstreamClient = null, Action<Dictionary<string, string>> inMemoryConfiguration = null, bool seedTestUser = true, bool keepHealthChecks = false)
     {
@@ -42,6 +45,9 @@ public class ElPaquetoApplication : WebApplicationFactory<Startup>
         this._inMemoryConfiguration = inMemoryConfiguration;
         _seedTestUser = seedTestUser;
     }
+
+    /// <summary>The temporary directories created for the hosts of this factory, deleted when it is disposed.</summary>
+    internal IReadOnlyCollection<string> TempDirectories => _tempDirectories.ToArray();
 
     /// <summary>The user name of the test user seeded in the security database.</summary>
     public string TestUserName { get; } = "test-user";
@@ -71,6 +77,42 @@ public class ElPaquetoApplication : WebApplicationFactory<Startup>
     /// </summary>
     public HttpClient CreateAnonymousClient() => TestUserExtensions.CreateAnonymousClient(this);
 
+    protected override void Dispose(bool disposing)
+    {
+        // Stop the hosts first: they hold the databases open.
+        try
+        {
+            base.Dispose(disposing);
+        }
+        finally
+        {
+            if (disposing)
+            {
+                DeleteTempDirectories();
+            }
+        }
+    }
+
+    public override async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await base.DisposeAsync();
+        }
+        finally
+        {
+            DeleteTempDirectories();
+        }
+    }
+
+    private void DeleteTempDirectories()
+    {
+        while (_tempDirectories.TryTake(out var directory))
+        {
+            TestDirectory.DeleteQuietly(directory);
+        }
+    }
+
     protected override void ConfigureClient(HttpClient client)
     {
         base.ConfigureClient(client);
@@ -96,6 +138,7 @@ public class ElPaquetoApplication : WebApplicationFactory<Startup>
         var storagePath = Path.Combine(tempPath, "Packages");
 
         Directory.CreateDirectory(tempPath);
+        _tempDirectories.Add(tempPath);
 
         builder
             .UseStartup<Startup>()

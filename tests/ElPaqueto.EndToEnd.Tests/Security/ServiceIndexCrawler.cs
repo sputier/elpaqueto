@@ -55,6 +55,23 @@ internal static class ServiceIndexCrawler
                     "RegistrationsBaseUrl" or "PackageBaseAddress" => CrawledKind.Prefix,
                     _ => CrawledKind.Read,
                 };
+                if (type.StartsWith("ReadmeUriTemplate/", StringComparison.Ordinal))
+                {
+                    // A URI template (what Visual Studio uses to show a readme): expand its tokens for each package.
+                    var template = resource.GetProperty("@id").GetString()!;
+                    Assert.Contains("{lower_id}", template, StringComparison.Ordinal);
+                    Assert.Contains("{lower_version}", template, StringComparison.Ordinal);
+                    foreach (var package in packages)
+                    {
+                        var expanded = template
+                            .Replace("{lower_id}", package.Id.ToLowerInvariant(), StringComparison.Ordinal)
+                            .Replace("{lower_version}", package.Version.ToLowerInvariant(), StringComparison.Ordinal);
+                        Add(new Uri(expanded), CrawledKind.Read, foundIn + " (expanded)");
+                    }
+
+                    continue;
+                }
+
                 Add(url, kind, foundIn);
 
                 // The URLs a client builds from each resource, as the V3 protocol defines them.
@@ -143,7 +160,9 @@ internal static class ServiceIndexCrawler
 
                 break;
             case JsonValueKind.String:
-                if (Uri.TryCreate(element.GetString(), UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
+                // A URI template ("{lower_id}") is expanded by the resource loop above, never requested as it is.
+                if (element.GetString() is { } text && !text.Contains('{', StringComparison.Ordinal)
+                    && Uri.TryCreate(text, UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
                 {
                     yield return uri;
                 }

@@ -186,13 +186,18 @@ jobs:
           NOTES_SECTION: ${{ needs.verify.outputs.notes-section }}
           GHCR_IMAGE: ${{ needs.verify.outputs.image }}
           DIGEST: ${{ steps.push.outputs.digest }}
+          RELEASE_TAG: ${{ needs.verify.outputs.tag }}
         run: |
           {
             echo "### Release notes (rehearsal)"
             echo
             echo "The digest below is the rehearsal build's; the published build has its own."
             echo
-            bash eng/release/release-notes.sh CHANGELOG.md "$NOTES_SECTION" "$GHCR_IMAGE" "$DIGEST"
+            # A dry run on a branch checks "Unreleased", which is empty right after a release.
+            if ! bash eng/release/release-notes.sh CHANGELOG.md "$NOTES_SECTION" "$GHCR_IMAGE" "$DIGEST"; then
+              if [ -n "$RELEASE_TAG" ] || [ "$NOTES_SECTION" != Unreleased ]; then exit 1; fi
+              echo "No release notes: the Unreleased section is empty."
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
 
   publish:

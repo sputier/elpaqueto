@@ -11,7 +11,12 @@ the fork are not listed here.
 
 ## [Unreleased]
 
-No version of ElPaqueto has been released yet. The first release will contain the changes below.
+## [0.1.0] - 2026-11-18
+
+First release of ElPaqueto: a hardened fork of BaGetter, published as a container image on the GitHub
+Container Registry (`ghcr.io/sputier/elpaqueto`) for `linux/amd64` and `linux/arm64`. Compared with
+BaGetter, every request is authenticated and authorized by default, the container is hardened, and the
+security behaviour is covered by automated tests.
 
 ### Added
 
@@ -33,6 +38,13 @@ No version of ElPaqueto has been released yet. The first release will contain th
 - End-to-end tests with the published server and the real `dotnet` CLI on Linux and Windows (#36–#40,
   #101).
 - Client compatibility page listing the NuGet clients that are tested, and how (#52).
+- User and technical documentation, including the known limitations (#98, #109).
+- End-to-end tests with the real nuget.exe and `msbuild -t:restore` on Windows, client setup for
+  nuget.exe, Visual Studio and Rider, and a manual checklist for the IDEs (#43).
+- The service index advertises `ReadmeUriTemplate/6.13.0`, so that Visual Studio shows the readme of a
+  package (#43; upstream bagetter/BaGetter#289).
+- PostgreSQL package database tested against a real PostgreSQL 17 in CI, and a Compose example with
+  PostgreSQL and Caddy, secrets passed as files (#128).
 
 ### Changed
 
@@ -49,6 +61,9 @@ No version of ElPaqueto has been released yet. The first release will contain th
   itself: a repeated identical failed attempt is counted once, answered without hashing, and logged at
   `Debug`, so the client reports `401` and the right password works right away; distinct wrong passwords
   are still throttled (#99).
+- PostgreSQL: a `Version` column left case-sensitive by an old BaGet database is repaired at startup
+  (upstream bagetter/BaGetter#239), and two servers starting on one empty database no longer apply the
+  same migration twice (#128).
 
 ### Removed
 

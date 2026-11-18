@@ -226,10 +226,14 @@ else
 fi
 
 # --- The repository's own changelog -----------------------------------------------------------------
-if bash "$notes" "$here/../../CHANGELOG.md" Unreleased > /dev/null; then
-  pass "CHANGELOG.md has a non-empty Unreleased section"
+# Unreleased may be empty right after a release; the newest versioned section must then be usable.
+repo_changelog="$here/../../CHANGELOG.md"
+latest=$(sed -n -E 's/^## \[([0-9][^]]*)\].*/\1/p' "$repo_changelog" | head -n 1)
+if bash "$notes" "$repo_changelog" Unreleased > /dev/null 2>&1 \
+  || { [ -n "$latest" ] && bash "$notes" "$repo_changelog" "$latest" > /dev/null 2>&1; }; then
+  pass "CHANGELOG.md has a usable Unreleased or latest version section"
 else
-  fail "CHANGELOG.md has no usable Unreleased section"
+  fail "CHANGELOG.md has no usable Unreleased or latest version section"
 fi
 
 echo

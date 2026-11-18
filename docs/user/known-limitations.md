@@ -4,13 +4,14 @@ What ElPaqueto does not do, or has not validated yet. Read this page before you 
 
 ## Not released yet
 
-- No release, no version tag and no published container image: build the image from this repository ([installation](installation.md)). The release workflow has never published anything.
+- Version `0.1.0` is the first release and is a `0.x` version: settings and behaviour may still change between minor versions; read the [changelog](../../CHANGELOG.md) before upgrading. Releases are published as a container image on `ghcr.io/sputier/elpaqueto` ([installation](installation.md)).
 - The upgrade of a running installation from one ElPaqueto image to the next cannot be tested before a first release.
 
 ## Clients and platforms
 
-- **Validated client: the `dotnet` CLI of the .NET 10 SDK**, on Windows and Linux, by the end-to-end tests (push, add package, restore, build, test, search, unlist, delete, refusals) and by the container smoke test. See [client compatibility](client-compatibility.md).
-- **Not validated:** `nuget.exe` (on Windows or on Mono), Visual Studio, Rider, VS Code, MSBuild-only builds, Paket, PowerShellGet, any client on macOS, and debuggers fetching symbols. They use the same NuGet protocol and configuration, but their prompts, retries and credential storage have not been observed.
+- **Validated clients: the `dotnet` CLI of the .NET 10 SDK**, on Windows and Linux, and **nuget.exe 7.9.0 on Windows**, by the end-to-end tests (push, restore, search, unlist, delete, refusals), and the `msbuild -t:restore` that Visual Studio runs. The `dotnet` CLI is also covered by the container smoke test. See [client compatibility](client-compatibility.md).
+- **Not validated:** the **Visual Studio and Rider interfaces** (a [manual checklist](client-checklist.md) exists, and nobody has run it yet), `nuget.exe` on Mono, VS Code, Paket, PowerShellGet, any client on macOS, and debuggers fetching symbols. They use the same NuGet protocol and configuration, but their prompts, retries and credential storage have not been observed.
+- **`nuget list` shows nothing against a V3 source**, including ElPaqueto: nuget.exe deprecated it. Use `nuget search` or `dotnet package search`.
 - **The `dotnet` CLI does not wait for `Retry-After`.** A throttled (429) or busy (503) restore fails after a few quick retries instead of waiting. See [what the real clients do](../technical/e2e-tests.md#what-the-real-clients-do).
 - **An unlisted version is still chosen by a version range** in restore, as with upstream BaGetter and nuget.org: unlisting only hides a version from search.
 - **TLS is not tested automatically.** CI checks only the syntax of the nginx, Caddy and Traefik samples; no automated test runs a client over HTTPS through a proxy or a tunnel.
