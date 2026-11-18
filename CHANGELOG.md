@@ -24,8 +24,10 @@ the fork are not listed here.
 
 ### Fixed
 
-- SQL Server: a duplicate package version that loses a race at the database is detected (unique index
-  violation, error 2601) and answered as a conflict instead of a 500.
+- SQL Server: concurrent downloads of one package no longer fail with a 500 when the download counter
+  update conflicts (the counter update is retried, and never fails the download).
+- SQL Server: the detection of a duplicate package version at the database now also matches error 2601
+  (unique index violation), not only 2627 (unique constraint). The package key is a unique index.
 
 ## [0.1.0] - 2026-11-18
 
