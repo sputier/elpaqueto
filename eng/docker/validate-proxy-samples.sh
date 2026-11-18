@@ -44,4 +44,13 @@ echo "==> docker compose config (samples/reverse-proxy/traefik/compose.yml)"
 docker compose -f samples/reverse-proxy/traefik/compose.yml config -q
 echo "ok"
 
+echo "==> docker compose config (samples/compose-postgres/compose.yml)"
+PROXY_SUBNET=192.0.2.0/24 docker compose -f samples/compose-postgres/compose.yml -f samples/compose-postgres/compose.bootstrap.yml config -q
+echo "ok"
+
+echo "==> caddy validate (samples/compose-postgres/Caddyfile)"
+docker run --rm -e NUGET_HOST=nuget.example.test \
+  -v "$(host_path "$PWD/samples/compose-postgres/Caddyfile"):/etc/caddy/Caddyfile:ro" \
+  "$CADDY_IMAGE" caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+
 echo "all samples are valid"
