@@ -156,8 +156,10 @@ commands that verify them.
   single maintainer, deployment branches and tags limited to the tag rule
   `v*`. No environment secret is needed.
 - [ ] **Repository variable `RELEASE_REPOSITORY`** (*Settings → Secrets and
-  variables → Actions → Variables*) set to `<owner>/<repository>`. Without it,
-  real releases fail in `verify`; dry runs still work.
+  variables → Actions → Variables*) set to `<owner>/<repository>` exactly as
+  `github.repository` spells it: the comparison is case-sensitive, and this
+  repository is `sputier/elpaqueto` in lower case. Without it, or with another
+  spelling, real releases fail in `verify`; dry runs still work.
 - [ ] **Tag ruleset** on `refs/tags/v*`: only maintainers can create, update
   or delete release tags.
 - [ ] **Workflow permissions**: the default `GITHUB_TOKEN` permissions stay

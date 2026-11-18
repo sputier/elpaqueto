@@ -127,7 +127,9 @@ The release workflow and its procedure are described in
   gh variable get RELEASE_REPOSITORY
   ```
 
-  Expected: `<owner>/<repository>`.
+  Expected: `<owner>/<repository>` with the exact case of `github.repository`
+  (`gh repo view --json nameWithOwner`), here `sputier/elpaqueto`. The release
+  workflow compares them case-sensitively.
 
 - [ ] After the first release, the GHCR package `elpaqueto` is public, linked
   to the repository, and grants the repository's workflows the write role
@@ -197,3 +199,8 @@ Expected: `{"errors":[]}`.
 | 2026-11-12 | Tag ruleset, `CODEOWNERS` | not configured yet |
 | 2026-11-14 | Branch ruleset (`gh api repos/{owner}/{repo}/rulesets`) | unchanged: one ruleset, `refs/heads/main` only, rules `deletion`, `non_fast_forward`, `pull_request` (one approval); no `required_status_checks`; `develop` has no protection |
 | 2026-11-12 | `release` environment, `RELEASE_REPOSITORY`, GHCR package | not configured yet (release workflow added) |
+| 2026-11-18 | `release` environment | required reviewer `sputier`, *Prevent self-review* off, `custom_branch_policies: true` with the single policy `{"name": "v*", "type": "tag"}` |
+| 2026-11-18 | `RELEASE_REPOSITORY` | `sputier/elpaqueto`. The first value, `sputier/ElPaqueto`, failed `verify` of the 0.1.0 run: the comparison with `github.repository` is case-sensitive |
+| 2026-11-18 | Tag ruleset | `release tags`, `refs/tags/v*`, rules `creation`, `update`, `deletion`, bypass for the repository admin role only |
+| 2026-11-18 | GHCR package | first published by the 0.1.0 release (run 44393673230); public: an anonymous registry token pulls `ghcr.io/sputier/elpaqueto:0.1.0`; the provenance attestation verifies with `gh attestation verify`. Link to the repository and *Manage Actions access* not checked (needs `read:packages`) |
+| 2026-11-18 | Workflow token permissions | unchanged: `read`, `can_approve_pull_request_reviews: false` |

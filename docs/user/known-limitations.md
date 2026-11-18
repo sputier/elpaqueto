@@ -2,10 +2,10 @@
 
 What ElPaqueto does not do, or has not validated yet. Read this page before you rely on it. [Client compatibility](client-compatibility.md) lists the NuGet clients that are tested, and how.
 
-## Not released yet
+## Releases
 
 - Version `0.1.0` is the first release and is a `0.x` version: settings and behaviour may still change between minor versions; read the [changelog](../../CHANGELOG.md) before upgrading. Releases are published as a container image on `ghcr.io/sputier/elpaqueto` ([installation](installation.md)).
-- The upgrade of a running installation from one ElPaqueto image to the next cannot be tested before a first release.
+- The upgrade of a running installation from one ElPaqueto image to the next is not tested yet: `0.1.0` is the only release. The test that runs the previous image, then the new one on the same volume, is planned in [#42](https://github.com/sputier/ElPaqueto/issues/42).
 
 ## Clients and platforms
 
