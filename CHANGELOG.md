@@ -33,6 +33,10 @@ No version of ElPaqueto has been released yet. The first release will contain th
 - End-to-end tests with the published server and the real `dotnet` CLI on Linux and Windows (#36–#40,
   #101).
 - Client compatibility page listing the NuGet clients that are tested, and how (#52).
+- End-to-end tests with the real nuget.exe and `msbuild -t:restore` on Windows, client setup for
+  nuget.exe, Visual Studio and Rider, and a manual checklist for the IDEs (#43).
+- The service index advertises `ReadmeUriTemplate/6.13.0`, so that Visual Studio shows the readme of a
+  package (#43; upstream bagetter/BaGetter#289).
 
 ### Changed
 

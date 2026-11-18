@@ -52,7 +52,8 @@ public partial class NuGetClientIntegrationTests : IDisposable
     {
         var index = await _repository.GetResourceAsync<ServiceIndexResourceV3>();
 
-        Assert.Equal(12, index.Entries.Count);
+        Assert.Equal(13, index.Entries.Count);
+        Assert.NotEmpty(index.GetServiceEntries("ReadmeUriTemplate/6.13.0"));
 
         Assert.NotEmpty(index.GetServiceEntries("PackageBaseAddress/3.0.0"));
         Assert.NotEmpty(index.GetServiceEntries("PackagePublish/2.0.0"));
