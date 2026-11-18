@@ -25,7 +25,7 @@ internal static class DockerAvailability
     public static bool IsRequired => !string.IsNullOrEmpty(Environment.GetEnvironmentVariable(RequireVariable));
 
     public static string SkipMessage =>
-        $"Docker is not available ({Problem.Value}): the container integration tests (PostgreSQL, S3) need a Docker daemon (Testcontainers). "
+        $"Docker is not available ({Problem.Value}): the container integration tests (PostgreSQL, SQL Server, S3) need a Docker daemon (Testcontainers). "
         + $"Start Docker, or set {RequireVariable}=1 to make this a failure.";
 
     private static string Probe()

@@ -219,9 +219,10 @@ public class ElPaquetoApplication : WebApplicationFactory<Startup>
                 // See: https://github.com/dotnet/efcore/blob/644d3c8c3a604fd0121d90eaf34f14870e19bcff/src/EFCore.Sqlite.Core/Storage/Internal/SqliteDatabaseCreator.cs#L88-L98
                 using var scope = scopeFactory.CreateScope();
                 var ctx = scope.ServiceProvider.GetRequiredService<IContext>();
-                if (ctx.Database.ProviderName?.Contains("Npgsql", StringComparison.Ordinal) == true)
+                if (ctx.Database.ProviderName?.Contains("Npgsql", StringComparison.Ordinal) == true
+                    || ctx.Database.ProviderName?.Contains("SqlServer", StringComparison.Ordinal) == true)
                 {
-                    // PostgreSQL: the test creates an empty database in its container, and the project's own
+                    // PostgreSQL and SQL Server: the test creates an empty database in its container, and the project's own
                     // migration entry point (the one the server calls at startup) fills it.
                     ctx.RunMigrationsAsync(CancellationToken.None).GetAwaiter().GetResult();
                     return;

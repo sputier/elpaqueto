@@ -99,7 +99,14 @@ public class PackageDatabase : IPackageDatabase
 
     public async Task AddDownloadAsync(string id, NuGetVersion version, CancellationToken cancellationToken)
     {
-        await TryUpdatePackageAsync(id, version, p => p.Downloads += 1, cancellationToken);
+        // One atomic "SET Downloads = Downloads + 1" in the database. Reading the package, incrementing it and saving
+        // it lost increments when downloads of one package ran at once, and on SQL Server, whose row version is a
+        // concurrency token, the losing downloads failed with a DbUpdateConcurrencyException (500).
+        var normalizedVersion = version.ToNormalizedString();
+        await _context.Packages
+            .Where(p => p.Id == id)
+            .Where(p => p.NormalizedVersionString == normalizedVersion)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(p => p.Downloads, p => p.Downloads + 1), cancellationToken);
     }
 
     public async Task<bool> HardDeletePackageAsync(string id, NuGetVersion version, CancellationToken cancellationToken)

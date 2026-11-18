@@ -15,6 +15,21 @@ the fork are not listed here.
 
 - On-demand development images of `develop` or `main` on the GitHub Container Registry, tagged with the
   branch and the commit, validated like a release and never tagged `latest` (#135).
+- Integration tests of the SQL Server package database against a SQL Server 2022 container, run by CI.
+
+### Changed
+
+- Microsoft.Data.SqlClient 6.1 to 7.1. Microsoft Entra ID authentication of SQL Server connection strings
+  is kept through the `Microsoft.Data.SqlClient.Extensions.Azure` package.
+
+### Fixed
+
+- Concurrent downloads of one package version are all counted: the download counter is incremented in one
+  atomic database update. It used to read, increment and save the package, which lost increments on every
+  database (40 simultaneous downloads counted once on SQLite) and, on SQL Server, failed the losing downloads
+  with a 500 on the row version conflict.
+- SQL Server: the detection of a duplicate package version at the database now also matches error 2601
+  (unique index violation), not only 2627 (unique constraint). The package key is a unique index.
 
 ## [0.1.0] - 2026-11-18
 
