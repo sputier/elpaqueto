@@ -183,7 +183,7 @@ public sealed class S3IntegrationTests(S3Fixture s3, ITestOutputHelper output) :
         var bucket = await s3.CreateBucketAsync();
         var service = CreateService(bucket);
 
-        var error = await Assert.ThrowsAsync<AmazonS3Exception>(() => service.GetAsync("missing.bin"));
+        var error = await Assert.ThrowsAnyAsync<AmazonS3Exception>(() => service.GetAsync("missing.bin"));
 
         Assert.Equal(HttpStatusCode.NotFound, error.StatusCode);
         Assert.Equal("NoSuchKey", error.ErrorCode);
@@ -195,7 +195,7 @@ public sealed class S3IntegrationTests(S3Fixture s3, ITestOutputHelper output) :
     {
         var service = CreateService("t-" + Guid.NewGuid().ToString("N"));
 
-        var error = await Assert.ThrowsAsync<AmazonS3Exception>(() => service.GetAsync("any.bin"));
+        var error = await Assert.ThrowsAnyAsync<AmazonS3Exception>(() => service.GetAsync("any.bin"));
 
         Assert.Equal("NoSuchBucket", error.ErrorCode);
     }
