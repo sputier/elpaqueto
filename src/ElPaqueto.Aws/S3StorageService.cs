@@ -58,6 +58,14 @@ public class S3StorageService : IStorageService
         return stream;
     }
 
+    private bool UsesHttp()
+    {
+        var config = _client.Config;
+        return config.UseHttp
+            || (Uri.TryCreate(config.ServiceURL, UriKind.Absolute, out var serviceUrl)
+                && serviceUrl.Scheme == Uri.UriSchemeHttp);
+    }
+
     public Task<Uri> GetDownloadUriAsync(string path, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -67,6 +75,8 @@ public class S3StorageService : IStorageService
         {
             BucketName = _bucket,
             Key = PrepareKey(path),
+            // Follow the client: a service URL in http must not get an https download URL.
+            Protocol = UsesHttp() ? Amazon.S3.Protocol.HTTP : Amazon.S3.Protocol.HTTPS,
             Expires = DateTime.UtcNow.Add(DownloadUrlLifetime)
         });
 

@@ -38,6 +38,7 @@ public sealed class S3StorageServiceTests
 
         var uri = await service.GetDownloadUriAsync("acme.core\\1.0.0\\acme.core.1.0.0.nupkg");
 
+        Assert.Equal("http", uri.Scheme);
         Assert.Equal("127.0.0.1", uri.Host);
         Assert.Equal("/my-bucket/packages/acme.core/1.0.0/acme.core.1.0.0.nupkg", uri.AbsolutePath);
         var query = HttpUtility.ParseQueryString(uri.Query);

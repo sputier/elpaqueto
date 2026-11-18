@@ -272,7 +272,7 @@ public sealed class S3IntegrationTests(S3Fixture s3, ITestOutputHelper output) :
 
         var keys = await s3.KeysAsync(bucket);
         Assert.Contains("feed/packages/acme.core/1.0.0/acme.core.1.0.0.nupkg", keys);
-        Assert.Contains("feed/packages/acme.core/1.0.0/acme.core.1.0.0.nuspec", keys);
+        Assert.Contains("feed/packages/acme.core/1.0.0/acme.core.nuspec", keys);
         Assert.All(keys, key => Assert.StartsWith("feed/", key, StringComparison.Ordinal));
 
         Assert.Equal(package, await client.GetByteArrayAsync("v3/package/acme.core/1.0.0/acme.core.1.0.0.nupkg"));
