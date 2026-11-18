@@ -60,16 +60,28 @@ public sealed class GcsFixture : IAsyncLifetime
 
         // The server puts its own public address in the resumable upload session URLs it returns, so the port the
         // client reaches must be known before it starts: the container listens on the same port as the host.
-        var port = FreePort();
-        _container = new ContainerBuilder(Image)
-            .WithPortBinding(port, port)
-            .WithCommand("-scheme", "http", "-port", port.ToString(CultureInfo.InvariantCulture),
-                "-external-url", $"http://127.0.0.1:{port}", "-backend", "memory")
-            .WithWaitStrategy(Wait.ForUnixContainer().UntilHttpRequestIsSucceeded(r => r.ForPort((ushort)port).ForPath("/storage/v1/b")))
-            .Build();
-        await _container.StartAsync();
-
-        _baseUri = $"http://127.0.0.1:{port}/storage/v1/";
+        // The free port can be taken between FreePort() and the container start: try once more with another port.
+        for (var attempt = 1; ; attempt++)
+        {
+            var port = FreePort();
+            _container = new ContainerBuilder(Image)
+                .WithPortBinding(port, port)
+                .WithCommand("-scheme", "http", "-port", port.ToString(CultureInfo.InvariantCulture),
+                    "-external-url", $"http://127.0.0.1:{port}", "-backend", "memory")
+                .WithWaitStrategy(Wait.ForUnixContainer().UntilHttpRequestIsSucceeded(r => r.ForPort((ushort)port).ForPath("/storage/v1/b")))
+                .Build();
+            try
+            {
+                await _container.StartAsync();
+                _baseUri = $"http://127.0.0.1:{port}/storage/v1/";
+                return;
+            }
+            catch (Exception) when (attempt < 2)
+            {
+                await _container.DisposeAsync();
+                _container = null;
+            }
+        }
     }
 
     public async Task DisposeAsync()

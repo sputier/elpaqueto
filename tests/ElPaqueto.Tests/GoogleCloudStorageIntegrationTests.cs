@@ -100,7 +100,7 @@ public sealed class GoogleCloudStorageIntegrationTests(GcsFixture gcs, ITestOutp
         Assert.Equal(HttpStatusCode.NotFound, e.HttpStatusCode);
     }
 
-    [Fact]
+    [GcsFact]
     public async Task GetDownloadUri_PointsToTheObjectInTheBucket()
     {
         var uri = await Service("my-bucket").GetDownloadUriAsync("a\\b/c.nupkg");
@@ -138,7 +138,8 @@ public sealed class GoogleCloudStorageIntegrationTests(GcsFixture gcs, ITestOutp
 
         Assert.Equal(package, await client.GetByteArrayAsync("v3/package/acme.gcs/1.0.0/acme.gcs.1.0.0.nupkg"));
 
-        using (var duplicate = await client.PutAsync("api/v2/package", Multipart(package)))
+        // This 409 comes from the package database, not from the storage's 412 (ifGenerationMatch) path.
+        using (var duplicate =await client.PutAsync("api/v2/package", Multipart(package)))
         {
             Assert.Equal(HttpStatusCode.Conflict, duplicate.StatusCode);
         }

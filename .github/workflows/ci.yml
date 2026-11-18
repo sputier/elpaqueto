@@ -265,25 +265,35 @@ jobs:
         run: dotnet build --configuration Release --no-restore
 
       - name: PostgreSQL and Google Cloud Storage integration tests
-        run: >-
-          dotnet test tests/ElPaqueto.Tests --configuration Release --no-build
-          --filter "Category=PostgreSql|Category=Gcs" --logger trx --results-directory TestResults
+        # One invocation per category, each with its own results directory, so that the guard below counts them apart.
+        shell: bash
+        run: |
+          status=0
+          for category in PostgreSql Gcs; do
+            dotnet test tests/ElPaqueto.Tests --configuration Release --no-build \
+              --filter "Category=$category" --logger trx --results-directory "TestResults/$category" || status=1
+          done
+          exit $status
 
       - name: Fail when no container test was executed
         if: always()
         shell: bash
         run: |
           shopt -s nullglob
-          executed=0
-          for f in TestResults/*.trx; do
-            n=$(grep -o '<Counters [^>]*>' "$f" | head -n 1 | sed -n 's/.* executed="\([0-9]*\)".*/\1/p')
-            executed=$((executed + ${n:-0}))
+          failed=0
+          for category in PostgreSql Gcs; do
+            executed=0
+            for f in "TestResults/$category"/*.trx; do
+              n=$(grep -o '<Counters [^>]*>' "$f" | head -n 1 | sed -n 's/.* executed="\([0-9]*\)".*/\1/p')
+              executed=$((executed + ${n:-0}))
+            done
+            echo "### $category container tests: $executed executed" >> "$GITHUB_STEP_SUMMARY"
+            if [ "$executed" -eq 0 ]; then
+              echo "No $category container test was executed." >&2
+              failed=1
+            fi
           done
-          echo "### Container tests (PostgreSQL, Google Cloud Storage): $executed executed" >> "$GITHUB_STEP_SUMMARY"
-          if [ "$executed" -eq 0 ]; then
-            echo "No container test was executed." >&2
-            exit 1
-          fi
+          exit $failed
 
       - name: Compose sample with PostgreSQL and Caddy, end to end
         run: bash eng/docker/compose-postgres-smoke.sh
