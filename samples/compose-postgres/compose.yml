@@ -1,0 +1,179 @@
+# Production-like Docker Compose deployment: ElPaqueto with a PostgreSQL package database, behind Caddy.
+# It describes no real environment: adapt the placeholders. Documentation: docs/user/docker.md ("With PostgreSQL").
+#
+#   caddy (80, 443)  -- network "proxy" -->  elpaqueto (8080)  -- network "db" (internal) -->  postgres (5432)
+#
+# What lives where:
+#   package files, security database (auth.db)   volume elpaqueto-data, mounted on /data
+#   package database                             volume pgdata (PostgreSQL)
+#   Caddy certificates                           volume caddy-data
+# Back up all three together: docs/user/backup.md.
+#
+# Secrets (the secrets/ folder is git-ignored): run ./init-secrets.sh once. It writes, owner-only,
+#   secrets/postgres_password            read by PostgreSQL (UID 70) at the first start
+#   secrets/database_connection_string   mounted as /run/secrets/Database__ConnectionString: the server reads it as
+#                                        the setting Database:ConnectionString (a secret file overrides an
+#                                        environment variable), so the password is in no environment variable
+#   secrets/admin_password.txt           password of the first administrator, mounted only by compose.bootstrap.yml, for
+#                                        the one-shot bootstrap: never by the running service
+#
+# Placeholders (environment variables or a .env file next to this file):
+#   NUGET_HOST            public host name of the feed, default nuget.example.test
+#   ELPAQUETO_PUBLIC_URL  the URL NuGet clients use, default https://nuget.example.test
+#   PROXY_SUBNET          required: the subnet of the "proxy" network, the only one trusted for forwarded headers
+#                         (a /24 that is free on your Docker host)
+#   HTTP_PORT, HTTPS_PORT host ports of Caddy, default 80 and 443
+#   ELPAQUETO_IMAGE       the image built from this repository, default elpaqueto:local
+#
+# Usage:
+#   ./init-secrets.sh
+#   docker compose up -d --build --wait
+#   docker compose -f compose.yml -f compose.bootstrap.yml run --rm --no-deps elpaqueto \
+#     admin bootstrap --username admin --password-file /run/secrets/elpaqueto_admin_password
+#   sudo rm secrets/admin_password.txt        # the password is not needed any more
+
+name: elpaqueto-postgres
+
+services:
+  postgres:
+    image: postgres:17.12-alpine
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    # The image's own postgres user (UID 70) from the start: the data volume is created with that owner, so no
+    # capability is needed (the default entrypoint starts as root, then drops to this user).
+    user: "70:70"
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /run/postgresql
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      POSTGRES_DB: elpaqueto
+      POSTGRES_USER: elpaqueto
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets:
+      - postgres_password
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U elpaqueto -d elpaqueto"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - db
+
+  elpaqueto:
+    image: ${ELPAQUETO_IMAGE:-elpaqueto:local}
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    # The server runs its migrations at startup: wait until PostgreSQL accepts connections.
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    # Hardened like the README quick start: read-only root filesystem, no capability, no privilege escalation.
+    # Only /data and /tmp are writable (see docs/user/docker.md).
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 10s
+
+    environment:
+      Database__Type: PostgreSql
+      # Database__ConnectionString comes from the secret file below, not from here.
+      Security__PublicBaseUrl: ${ELPAQUETO_PUBLIC_URL:-https://nuget.example.test}
+      # Trust forwarded headers (scheme, client address) only from the proxy network.
+      Security__ReverseProxy__KnownNetworks__0: ${PROXY_SUBNET:?set PROXY_SUBNET to the subnet of the proxy network, a /24 that is free on this Docker host}
+      # The security database (users, API keys) stays SQLite, on the volume. Image defaults, repeated on purpose:
+      # Security__Database__ConnectionString: "Data Source=/data/db/auth.db"
+      # Storage__Type: FileSystem
+      # Storage__Path: /data
+    secrets:
+      - source: elpaqueto_database_connection_string
+        target: Database__ConnectionString
+    volumes:
+      - elpaqueto-data:/data
+    expose:
+      - "8080"
+    networks:
+      - db
+      - proxy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
+  caddy:
+    image: caddy:2.11.9-alpine
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      elpaqueto:
+        condition: service_healthy
+    environment:
+      NUGET_HOST: ${NUGET_HOST:-nuget.example.test}
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - proxy
+
+volumes:
+  pgdata:
+  elpaqueto-data:
+  caddy-data:
+  caddy-config:
+
+networks:
+  # No route to the outside: PostgreSQL is reachable by the server only.
+  db:
+    internal: true
+  proxy:
+    ipam:
+      config:
+        - subnet: ${PROXY_SUBNET:?set PROXY_SUBNET to the subnet of the proxy network, a /24 that is free on this Docker host}
+
+secrets:
+  postgres_password:
+    file: ${SECRETS_DIR:-./secrets}/postgres_password
+  elpaqueto_database_connection_string:
+    file: ${SECRETS_DIR:-./secrets}/database_connection_string

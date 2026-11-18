@@ -1,0 +1,10 @@
+# Override for the one-shot "admin bootstrap" only; see the usage in compose.yml. It mounts the administrator's
+# password into the container of that single command, so that the long-running elpaqueto service never has it.
+services:
+  elpaqueto:
+    secrets:
+      - elpaqueto_admin_password
+
+secrets:
+  elpaqueto_admin_password:
+    file: ${SECRETS_DIR:-./secrets}/admin_password.txt

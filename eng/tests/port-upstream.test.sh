@@ -123,6 +123,28 @@ else
   fail "commit carries the Upstream-Commit trailer (got: $trailer)"
 fi
 
+# 3b. A file section larger than the pipe buffer (regression: exit 141, SIGPIPE).
+{
+  printf 'From 0123456789abcdef0123456789abcdef01234567 Mon Sep 17 00:00:00 2001\n'
+  printf 'From: A <a@example.com>\nDate: Mon, 1 Jan 2026 00:00:00 +0000\nSubject: [PATCH] big file\n\n---\n'
+  printf 'diff --git a/src/BaGetter.Core/big.js b/src/BaGetter.Core/big.js\n'
+  printf 'new file mode 100644\nindex 0000000..1234567\n--- /dev/null\n+++ b/src/BaGetter.Core/big.js\n'
+  printf '@@ -0,0 +1,20000 @@\n'
+  for ((n = 0; n < 20000; n++)); do printf '+var BaGetter%d = "padding padding padding";\n' "$n"; done
+  printf -- '-- \n2.50.0\n\n'
+} >"$work/big.patch"
+if (cd "$repo" && bash "$script" -o "$work/out" "$work/big.patch") 2>"$work/big.stderr"; then
+  pass "a file section larger than the pipe buffer is mapped"
+else
+  fail "a file section larger than the pipe buffer is mapped (exit $?)"
+  cat "$work/big.stderr"
+fi
+if grep -q '^+var ElPaqueto19999 = ' "$work/out/big.patch" && grep -q '^diff --git a/src/ElPaqueto.Core/big.js' "$work/out/big.patch"; then
+  pass "the large section content and path are mapped"
+else
+  fail "the large section content and path are mapped"
+fi
+
 # 4. A file that is not a format-patch output is rejected.
 printf 'not a patch\n' >"$work/bad.patch"
 if (cd "$repo" && bash "$script" "$work/bad.patch") 2>/dev/null; then

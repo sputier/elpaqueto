@@ -134,8 +134,8 @@ public sealed partial class ThrottledClientTests : EndToEndTest<ThrottledClientT
 
 /// <summary>
 /// What the real <c>dotnet</c> client does with <c>503</c> and <c>Retry-After</c> when the server already runs
-/// as many password checks as it allows: one verification slot, no queue, no verification cache, and a
-/// slow hash kept busy by another user for the whole restore.
+/// as many password checks as it allows: one verification slot, no queue and no verification cache, held for
+/// the whole restore by one sign-in of another user that lasts longer than the restore.
 /// </summary>
 [Trait("Category", "EndToEnd")]
 public sealed partial class BusyServerClientTests : EndToEndTest<BusyServerClientTests.Setup>, IClassFixture<BusyServerClientTests.Setup>
@@ -152,72 +152,106 @@ public sealed partial class BusyServerClientTests : EndToEndTest<BusyServerClien
         var project = client.WriteProject("busy", [(PackageSet.BaseId, "1.0.0")]);
         await client.ClearCachesAsync();
 
-        using var stop = new CancellationTokenSource();
-        // Three loops of slow sign-ins by another user, on another URL than the service index so that the log
-        // tells the client's requests apart: whenever one loop's verification ends, another one is waiting to
-        // take the only slot, so the slot is never free for the client.
-        var blockers = Enumerable.Range(0, 3).Select(_ => Task.Run(async () =>
-        {
-            while (!stop.IsCancellationRequested)
-            {
-                using var response = await Fixture.Api.SendAsync(ServerApi.Request(HttpMethod.Get, Fixture.Api.Url("v3/search"), Fixture.Administrator));
-                if (response.StatusCode != System.Net.HttpStatusCode.OK)
-                {
-                    await Task.Delay(TimeSpan.FromMilliseconds(5));
-                }
-            }
-        })).ToArray();
-        int logStart;
+        // One sign-in, on another URL than the service index so that the log tells the client's requests apart,
+        // whose verification holds the only slot for longer than the client's whole restore (see Setup). The
+        // restore starts once the slot is known to be held by it, and the sign-in must still be in flight when
+        // the restore ends: no request of the client can have found the slot free.
+        var blocking = Stopwatch.StartNew();
+        var blocker = await HoldTheOnlySlotAsync();
+        var logStart = Fixture.Server.Log.Length;
+        var stopwatch = Stopwatch.StartNew();
         CommandResult result;
-        var stopwatch = new Stopwatch();
+        bool heldThroughout;
+        TimeSpan restoreEnded;
         try
         {
-            await WaitForAVerificationAsync();
-            logStart = Fixture.Server.Log.Length;
-            stopwatch.Start();
             result = await client.DotnetAsync(project, ["restore", "--configfile", client.ConfigPath], TimeSpan.FromMinutes(3));
-            stopwatch.Stop();
         }
         finally
         {
-            await stop.CancelAsync();
-            await Task.WhenAll(blockers);
+            stopwatch.Stop();
+            restoreEnded = blocking.Elapsed;
+            heldThroughout = !blocker.IsCompleted;
+
+            // Observed in every case, so that a failed restore does not leave the sign-in running unobserved.
+            using var blocked = await blocker;
+            blocking.Stop();
+            Output.WriteLine($"The blocking sign-in held the slot for {blocking.Elapsed.TotalSeconds:0.0} s, {(blocking.Elapsed - restoreEnded).TotalSeconds:0.0} s beyond the end of the restore, and was answered {(int)blocked.StatusCode}.");
+            Assert.Equal(HttpStatusCode.OK, blocked.StatusCode);
         }
 
         var statuses = IndexAnswer().Matches(Fixture.Server.Log[logStart..]).Select(m => m.Groups[1].Value).ToList();
         var busy = statuses.Count(s => s == "503");
         Output.WriteLine($"Restore against a busy server: {stopwatch.Elapsed.TotalSeconds:0.0} s; index.json answers: {string.Join(", ", statuses)} (Retry-After: 5 s).");
+        Assert.True(heldThroughout, $"The blocking sign-in ({blocking.Elapsed.TotalSeconds:0.0} s) ended before the restore ({restoreEnded.TotalSeconds:0.0} s after the sign-in was sent): the slot was not held for the whole restore, so the test proves nothing. The sign-in already costs the most the settings accept (Setup): this machine hashes too fast for this test, or the client now retries for longer.");
         result.ShouldFail().ShouldContain("503 (Service Unavailable)");
+        Assert.DoesNotContain("200", statuses);
         Assert.True(busy >= 2, $"Expected the client to retry a 503; the server answered 503 {busy} time(s).");
     }
 
-    // Until a blocker's sign-in has been answered once, then a little more: the slot is busy from then on.
-    private async Task WaitForAVerificationAsync()
+    // Sends the blocking sign-in, then probes the slot with an API key (validated in a slot too, and cheaply) until
+    // the probe is refused with 503 while the sign-in is still in flight: nothing else talks to this server, so the
+    // sign-in holds the slot from then on. A sign-in that lost the slot to a probe is refused with 503 and sent again.
+    private async Task<Task<HttpResponseMessage>> HoldTheOnlySlotAsync()
     {
-        var start = Fixture.Server.Log.Length;
+        var probe = Fixture.PublishKey.AsSourceCredential();
         var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(60);
-        while (!Fixture.Server.Log[start..].Contains("/v3/search - 200", StringComparison.Ordinal) && DateTime.UtcNow < deadline)
+        var blocker = SignIn();
+        var lastProbe = "none";
+        while (true)
         {
-            await Task.Delay(50);
+            Assert.True(DateTime.UtcNow < deadline, $"No credential was refused with 503 while the blocking sign-in was in flight (last probe: {lastProbe}).");
+            await Task.Delay(TimeSpan.FromMilliseconds(50));
+            if (blocker.IsCompleted)
+            {
+                using var early = await blocker;
+                Assert.True(early.StatusCode == HttpStatusCode.ServiceUnavailable, $"The blocking sign-in ended with {(int)early.StatusCode} before the restore started (last probe: {lastProbe}): the server did not refuse the other credentials with 503 while it held the only slot.");
+                blocker = SignIn();
+                continue;
+            }
+
+            using var probed = await Fixture.Api.SendAsync(ServerApi.Request(HttpMethod.Get, Fixture.Api.Url("v3/search?q=probe"), probe));
+            lastProbe = ((int)probed.StatusCode).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            if (probed.StatusCode == HttpStatusCode.ServiceUnavailable && !blocker.IsCompleted)
+            {
+                return blocker;
+            }
         }
 
-        await Task.Delay(TimeSpan.FromMilliseconds(300));
+        Task<HttpResponseMessage> SignIn()
+            => Fixture.Api.SendAsync(ServerApi.Request(HttpMethod.Get, Fixture.Api.Url("v3/search"), Fixture.Blocker));
     }
+
     [GeneratedRegex(@"Request finished HTTP/1\.1 GET \S+/v3/index\.json - (\d{3})")]
     private static partial Regex IndexAnswer();
 
     public sealed class Setup : ServerFixture
     {
+        /// <summary>The user whose first sign-in holds the only verification slot.</summary>
+        internal UserCredential Blocker { get; private set; } = null!;
+
         protected override void Configure(IDictionary<string, string?> settings)
         {
             settings["Security__Throttling__MaxConcurrentVerifications"] = "1";
             settings["Security__Throttling__VerificationQueueLimit"] = "0";
             settings["Security__Authentication__VerificationCacheTtl"] = "00:00:00";
-            // A slow hash (about a second or two) keeps the single slot busy.
-            settings["Security__Passwords__IterationCount"] = "2000000";
         }
 
-        protected override Task SeedAsync()
-            => Api.EnsurePushedAsync(PublishKey, Packages.Base100);
+        // Every user is hashed with the harness's cost (100 000 iterations); the server then restarts with the
+        // highest accepted cost. The first sign-in of the blocking user is then the slowest one the settings allow,
+        // all of it inside its verification slot: its cheap hash padded to 10 000 000 iterations, then re-hashed
+        // with 10 000 000 (about 9 s on a recent desktop, longer on a loaded or slower machine). The client gives
+        // up after about 6 s. A hash cannot be interrupted: the slot stays held even if the request is aborted.
+        protected override async Task SeedAsync()
+        {
+            await Api.EnsurePushedAsync(PublishKey, Packages.Base100);
+            Blocker = await Admin.CreateUserAsync("blocker", "reader");
+            Server.ChangeSettings(new Dictionary<string, string?>(StringComparer.Ordinal)
+            {
+                ["Security__Passwords__IterationCount"] = "10000000",
+            });
+            await Server.StopAsync();
+            await Server.StartAsync();
+        }
     }
 }

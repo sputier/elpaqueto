@@ -2,7 +2,9 @@
 
 `tests/ElPaqueto.EndToEnd.Tests` runs the **published server as a child process** and drives it with the **real `dotnet` CLI** (`dotnet nuget push`, `dotnet add package`, `dotnet restore`, `dotnet build`, `dotnet test`, `dotnet nuget delete`, `dotnet package search`), with isolated NuGet folders and cleared caches. It checks what in-process tests cannot: how NuGet reads credentials from `NuGet.Config` or the environment, the plain-HTTP source check, the global packages folder and the HTTP cache, and the client's non-interactive behaviour.
 
-Every test carries `[Trait("Category", "EndToEnd")]`. The `build-test` job of the `CI` workflow excludes them (`--filter "Category!=EndToEnd"`); the `e2e` job runs them on `ubuntu-latest` and `windows-latest`.
+On Windows the same harness also drives the real **nuget.exe** (a pinned release, checked by SHA-256) and MSBuild's restore, as Visual Studio does ([below](#nugetexe-and-msbuild-what-was-observed)).
+
+Every test carries `[Trait("Category", "EndToEnd")]` (the nuget.exe tests also `Client=NuGetExe`, the MSBuild ones `Client=MSBuild`). The `build-test` job of the `CI` workflow excludes them (`--filter "Category!=EndToEnd"`); the `e2e` job runs them on `ubuntu-latest` and `windows-latest`.
 
 ## Running them
 
@@ -17,7 +19,7 @@ The server must be built first, in the same configuration as the tests: the harn
 
 | Part | File | What it does |
 | --- | --- | --- |
-| Server | `Harness/ServerBuild.cs`, `Harness/ServerProcess.cs` | Publishes the server once per run into the run's temporary directory, then starts `dotnet ElPaqueto.dll` with `ASPNETCORE_URLS=http://127.0.0.1:0` and fresh data (security database, package database, storage) in its own temporary directory. The port is read from the `Now listening on:` line; the server is ready when `/health` answers 200. It can be stopped (SIGTERM, see below), killed and restarted on the same port and data. Every setting is an environment variable; variables of the machine that could change the configuration (`Security__*`, `Database__*`, `ASPNETCORE_*`, `NUGET_*`, ...) are removed. |
+| Server | `Harness/ServerBuild.cs`, `Harness/ServerProcess.cs` | Publishes the server once per run into the run's temporary directory, then starts `dotnet ElPaqueto.dll` with `ASPNETCORE_URLS=http://127.0.0.1:0` and fresh data (security database, package database, storage) in its own temporary directory. The port is read from the `Now listening on:` line; the server is ready when `/health` answers 200. It can be stopped (SIGTERM, see below), killed and restarted on the same port and data, with changed settings if needed. Every setting is an environment variable; variables of the machine that could change the configuration (`Security__*`, `Database__*`, `ASPNETCORE_*`, `NUGET_*`, ...) are removed. |
 | Server interface | `Harness/IServerUnderTest.cs` | What the scenarios use, so that a container-backed server (#46) can reuse them. |
 | Identities | `Harness/AdminCli.cs` | Users and API keys are created by the real `admin` commands of the published server (`bootstrap`, `user create`, `user disable`, `user set-permissions`, `key create`, `key revoke`, `key show`, `user list`, `key list`). Passwords are random per run and written to standard input (`--password-stdin`), never passed as arguments; a key is read from the standard output of `admin key create`. |
 | Client | `Harness/NuGetClient.cs` | Each client gets a fresh root holding `HOME`/`USERPROFILE`, `APPDATA`, `LOCALAPPDATA`, `NUGET_PACKAGES`, `NUGET_HTTP_CACHE_PATH`, `NUGET_SCRATCH`, `NUGET_PLUGINS_CACHE_PATH`, `DOTNET_CLI_HOME`, a `NuGet.Config` starting with `<clear />` and a copy of the repository's `global.json`. `NUGET_PLUGIN_PATHS` is empty, `DOTNET_CLI_UI_LANGUAGE=en` keeps the messages the tests read in English, build nodes and the compiler server are disabled so that no process outlives a command. Working directories are below that root, never in the repository. `--interactive` is never passed and standard input is closed. |
@@ -54,6 +56,23 @@ On Linux and macOS a stop is `kill -TERM`, and the test asserts exit code 0 and 
 | #28 | `Security/ReadOnlyModeTests` | The server runs with `IsReadOnlyMode=true`: `dotnet nuget push` of a `.nupkg` and of a `.snupkg` alone, and `dotnet nuget delete`, with a valid Publish key, fail with `401 (Unauthorized)`, without a prompt and without a loop of retries (counted in the server log, see below); nothing is stored. |
 | #40 | `Scenarios/LifecycleTests` (`UnlistTests`, `HardDeleteTests`) | 1–6 unlist with `dotnet nuget delete`, hidden from search but still downloadable and restorable on an exact version and still resolved by a range (see below), relist with a raw `POST`, refusals, 404 only for an authorized caller; 7–8 hard delete with an Admin key removes the files and the restore fails, a Publish-only key gets 403 and the files stay. |
 | #40 | `Scenarios/PersistenceTests` | 9–11 after a stop and a restart on the same data: identical `admin user list` and `admin key list` output, identical storage hashes, the unlisted version still unlisted, restore after a cleared cache, a new push with the Publish key, the revoked key and the disabled user still refused; 12 the same after a kill. |
+| #43 | `Clients/NuGetExeTests`, `Clients/NuGetExeDeleteTests` | The real nuget.exe, Windows only (tagged `Client=NuGetExe`; skipped with the reason on Linux): 1 `sources add` with credentials, DPAPI-encrypted, read back by `search`; 2 the same with `-StorePasswordInClearText`; 3 push with a `Publish` key, symbols included; 4 refused pushes (invalid, revoked, read-only key, no key); 5 409 and `-SkipDuplicate`; 6 `search` with and without `-PreRelease`, and `list`; 7 `install` with the transitive dependency; 8 `restore` of a `packages.config` project; 9 no credentials (`restore`, `search`, with and without `-NonInteractive`); 10 a wrong password, then `sources update`; 11 credentials from `NuGetPackageSourceCredentials_elpaqueto`; `delete` with a read-only key (403) and a `Publish` key. |
+| #43 | `Clients/MSBuildRestoreTests` | What Visual Studio runs (tagged `Client=MSBuild`): `msbuild -t:restore` through `dotnet msbuild` with clear-text credentials (all OSes) and with a password encrypted by nuget.exe (Windows), through the `MSBuild.exe` of the Visual Studio that `vswhere` finds (skipped with the reason when there is none), and without credentials. |
+| #43 | `Clients/NuGetExePinTests`, `Scenarios/ReadmeTemplateTests` | A nuget.exe whose SHA-256 differs from the pin is rejected (any OS); the service index advertises `ReadmeUriTemplate/6.13.0` and its expansion serves the readme to a reader and 401 to anyone else. |
+
+### nuget.exe and MSBuild: what was observed
+
+nuget.exe 7.9.0 is downloaded from `dist.nuget.org/win-x86-commandline/v7.9.0/nuget.exe` once per run into the run's temporary directory, and its SHA-256 is compared with the value hard-coded in `Harness/NuGetExe.cs` **before** it is started; a mismatch fails every nuget.exe test with a message that says so. To move to another release, download it, check it, and change `Version` and `Sha256` together. The version is written to the output of each test. Every command runs in the isolated client environment (own `%APPDATA%`, `NUGET_PACKAGES`, HTTP cache and `NuGet.Config`) with `-NonInteractive` and `-ForceEnglishOutput` (the messages follow the language of Windows otherwise).
+
+- A plain-HTTP source needs `-AllowInsecureConnections` on `sources add`; `sources update` drops it unless it is repeated.
+- `nuget sources add` without `-StorePasswordInClearText` writes `Password` (DPAPI, for the current Windows user); with it, `ClearTextPassword`. `nuget.exe`, the .NET SDK's MSBuild and Visual Studio's MSBuild all read the encrypted form.
+- Every request is sent anonymously first and again with the credentials after the `401`, as the `dotnet` CLI does.
+- Refused credentials (none, or a wrong password): about 12 s for `search`, 17 s for `restore`, with four `credential provider could not acquire credentials` warnings, then exit code 1 and `401 (Unauthorized)`. No prompt, with or without `-NonInteractive`; the test closes standard input and fails on a timeout.
+- Refused pushes: exit code 1; the `PUT` is sent several times (401 for an invalid or revoked key, 403 for a read-only key or no key). Nothing is registered or stored.
+- A duplicate push fails with `409 (Conflict)`; `-SkipDuplicate` exits 0.
+- `nuget list` against a V3 source prints that it is deprecated and does not support listing, and exits 0 with no package; `nuget search` works and shows the latest version, with `-PreRelease` for prerelease versions. `search` has no `-ConfigFile`.
+- `nuget delete` sends `DELETE` and the server unlists the version (it stays downloadable); `nuget restore` of a `packages.config` downloads the packages to the `packages` folder and to the global packages folder.
+- `nuget.exe` is not run through Mono: **not verified**. The Visual Studio interface is not driven (see the [manual checklist](../user/client-checklist.md)).
 
 ### The crawl
 
@@ -72,7 +91,7 @@ Observed with the .NET SDK that `global.json` selects, on Linux and Windows (the
 | `403` | Fails with `403 (Forbidden)` in the output (`NU1301` for restore). Push with Basic credentials and no `--api-key` first warns `No API Key was provided`, then gets `403`. |
 | `409` on push | Fails with `409 (Conflict)` and suggests `--skip-duplicate`; with it, exits 0 and reports that the package `already exists at feed`. |
 | `429` | Fails with `429 (Too Many Requests)` after the same 6 attempts, about 8 seconds in all: **`Retry-After` (60 s) is not honoured**. The test trips the pair with five *distinct* wrong passwords sent with raw HTTP, then restores with the right password. Before [#99](https://github.com/sputier/ElPaqueto/issues/99), one restore with a stale password tripped the default `PairFailureLimit` (5) by itself, because its six identical attempts were counted one by one. |
-| `503` with `Retry-After: 5` (no free verification slot) | Retries 6 times within about 6 seconds, without waiting for `Retry-After`, then fails with `503 (Service Unavailable)`. |
+| `503` with `Retry-After: 5` (no free verification slot) | Retries 6 times within about 6 seconds, without waiting for `Retry-After`, then fails with `503 (Service Unavailable)`. The server runs with one verification slot, no queue and no verification cache, and one sign-in of another user holds the slot for the whole restore: the user was hashed with 100 000 iterations and the server restarted with 10 000 000, so that sign-in pads and re-hashes the password (about 9 seconds on a recent desktop). The test starts the restore once an API key sent meanwhile is refused with `503`, and fails if that sign-in ends before the restore, or if any credentialed request of the client gets `200`. |
 
 Other facts the tests rely on:
 
@@ -84,6 +103,6 @@ Other facts the tests rely on:
 
 ## Not covered
 
-- `nuget.exe` and Visual Studio (#43): only the `dotnet` CLI is exercised.
+- `nuget.exe` on Mono, the Visual Studio and Rider interfaces (#43): see the [manual checklist](../user/client-checklist.md).
 - TLS (see above), containers (#46), and upgrades of the databases (#42).
 - The symbol server download endpoints are reached by the crawl only when advertised; no debugger is exercised.

@@ -186,6 +186,24 @@ jobs:
           --filter "Category=EndToEnd" --logger trx --results-directory TestResults
           --blame-hang --blame-hang-timeout 20m --blame-hang-dump-type none
 
+      # nuget.exe and MSBuild scenarios (docs/technical/e2e-tests.md, #43) run in the step above on Windows and
+      # are reported as skipped elsewhere. A skip on Windows would hide a missing client: count the passes.
+      - name: Check that the nuget.exe and MSBuild scenarios passed
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          shopt -s nullglob
+          nugetexe=0; msbuild=0
+          for f in TestResults/*.trx; do
+            nugetexe=$((nugetexe + $(grep -c 'testName="[^"]*Clients\.NuGetExe[A-Za-z]*\.[^"]*" [^>]*outcome="Passed"' "$f" || true)))
+            msbuild=$((msbuild + $(grep -c 'testName="[^"]*Clients\.MSBuildRestoreTests\.[^"]*" [^>]*outcome="Passed"' "$f" || true)))
+          done
+          echo "### Windows clients: $nugetexe nuget.exe scenarios and $msbuild MSBuild restore scenarios passed" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$nugetexe" -lt 17 ] || [ "$msbuild" -lt 3 ]; then
+            echo "Expected at least 17 nuget.exe and 3 MSBuild scenarios to pass, got $nugetexe and $msbuild." >&2
+            exit 1
+          fi
+
       - name: Fail when no test was executed
         if: always()
         shell: bash
@@ -207,6 +225,69 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: e2e-results-${{ matrix.os }}
+          path: TestResults/
+          retention-days: 7
+          if-no-files-found: warn
+
+  postgresql:
+    # The PostgreSQL package database, for real: the integration tests run the real host against a PostgreSQL 17
+    # container (Testcontainers, tests/ElPaqueto.Tests, Category=PostgreSql), then the production-like Compose
+    # sample (samples/compose-postgres) is brought up and exercised end to end. Docker is available on
+    # ubuntu-latest; ELPAQUETO_REQUIRE_DOCKER makes a missing Docker daemon a failure instead of a skip.
+    # Needs no secret. See docs/technical/testing.md.
+    name: postgresql
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    env:
+      ELPAQUETO_REQUIRE_DOCKER: "1"
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+
+      - name: PostgreSQL integration tests
+        run: >-
+          dotnet test tests/ElPaqueto.Tests --configuration Release --no-build
+          --filter "Category=PostgreSql" --logger trx --results-directory TestResults
+
+      - name: Fail when no PostgreSQL test was executed
+        if: always()
+        shell: bash
+        run: |
+          shopt -s nullglob
+          executed=0
+          for f in TestResults/*.trx; do
+            n=$(grep -o '<Counters [^>]*>' "$f" | head -n 1 | sed -n 's/.* executed="\([0-9]*\)".*/\1/p')
+            executed=$((executed + ${n:-0}))
+          done
+          echo "### PostgreSQL tests: $executed executed" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$executed" -eq 0 ]; then
+            echo "No PostgreSQL test was executed." >&2
+            exit 1
+          fi
+
+      - name: Compose sample with PostgreSQL and Caddy, end to end
+        run: bash eng/docker/compose-postgres-smoke.sh
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: postgresql-results
           path: TestResults/
           retention-days: 7
           if-no-files-found: warn

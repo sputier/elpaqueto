@@ -2,9 +2,38 @@
 
 ElPaqueto runs as a Linux container (recommended) or as a .NET application. In both cases it listens on plain HTTP and expects a TLS-terminating reverse proxy or tunnel in front of it for any client on another machine: see [Running behind a reverse proxy or tunnel](reverse-proxy.md).
 
-No release and no container image are published yet: build the image or the application from this repository.
+Releases (from `0.1.0`) are published as a container image on the GitHub Container Registry, `ghcr.io/sputier/elpaqueto`, for `linux/amd64` and `linux/arm64`. You can also build the image or the application from this repository.
 
-## Docker
+## Pulling the published image
+
+```bash
+docker pull ghcr.io/sputier/elpaqueto:0.1.0
+```
+
+The `latest` tag follows the newest stable release only; a prerelease (`X.Y.Z-rc.1`) is never tagged `latest`. On a server, use an exact version, and preferably its digest, which cannot change under you:
+
+```bash
+docker buildx imagetools inspect ghcr.io/sputier/elpaqueto:0.1.0   # prints the Digest of the multi-platform image
+docker pull ghcr.io/sputier/elpaqueto@sha256:<digest>
+```
+
+The release notes on the [GitHub Releases](https://github.com/sputier/ElPaqueto/releases) page give the digest and the verification commands. To check the build provenance before you run the image:
+
+```bash
+gh attestation verify oci://ghcr.io/sputier/elpaqueto@sha256:<digest> --repo sputier/ElPaqueto
+```
+
+If the package is private (the first push of a package is private until the maintainer makes it public), log in first with a personal access token (classic) that has only the `read:packages` scope:
+
+```bash
+echo "$GHCR_TOKEN" | docker login ghcr.io -u <github-user> --password-stdin
+```
+
+Put the token in a file or a secret store rather than on the command line, and keep it on the server only. In `docker-compose.example.yml` or a `docker run` command, replace `elpaqueto:local` with `ghcr.io/sputier/elpaqueto@sha256:<digest>` (or the version tag); the options below do not change.
+
+## Docker (build and run)
+
+Build the image from a checkout, and run it. To run the published image instead, use its name in place of `elpaqueto:local`.
 
 ```bash
 docker build -t elpaqueto:local .

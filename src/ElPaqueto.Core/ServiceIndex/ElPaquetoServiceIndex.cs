@@ -40,6 +40,11 @@ public class ElPaquetoServiceIndex : IServiceIndexService
         resources.AddRange(BuildResource("PackageBaseAddress", _url.GetPackageContentResourceUrl(), "3.0.0"));
         resources.AddRange(BuildResource("SearchAutocompleteService", _url.GetAutocompleteResourceUrl(), "", "3.0.0-rc", "3.0.0-beta"));
 
+        // The readme of a version is served below the package content resource (route "v3/package/{id}/{version}/readme").
+        // Without this resource, Visual Studio 2022 17.13+ and later do not show a readme tab for the package
+        // (https://learn.microsoft.com/nuget/api/readme-template-resource). The tokens are expanded by the client.
+        resources.AddRange(BuildResource("ReadmeUriTemplate", _url.GetPackageContentResourceUrl() + "{lower_id}/{lower_version}/readme", "6.13.0"));
+
         var result = new ServiceIndexResponse
         {
             Version = "3.0.0",
