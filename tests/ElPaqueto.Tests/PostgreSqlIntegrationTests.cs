@@ -483,6 +483,12 @@ public sealed class PostgreSqlIntegrationTests(PostgreSqlFixture postgres, ITest
             // The pool bounds this at 5; "more than one" shows that the requests really ran on several connections.
             Assert.InRange(open, 2, pool);
         }
+
+        // Every concurrent download of 1.0.1 is counted: the counter is incremented atomically in the database.
+        var downloads = 2 * Enumerable.Range(0, 120).Count(i => urls[i % urls.Length].EndsWith(".nupkg", StringComparison.Ordinal));
+        Assert.Equal(downloads, await postgres.ScalarAsync<long>(
+            connectionString,
+            "SELECT \"Downloads\" FROM \"Packages\" WHERE \"Version\" = '1.0.1'"));
     }
 
     [PostgreSqlFact]

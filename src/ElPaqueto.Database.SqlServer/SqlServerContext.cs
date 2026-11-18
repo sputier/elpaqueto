@@ -15,6 +15,12 @@ public class SqlServerContext : AbstractContext<SqlServerContext>
     /// </summary>
     private const int UniqueConstraintViolationErrorCode = 2627;
 
+    /// <summary>
+    /// The SQL Server error code for when a unique index is violated. The unique key of a package (id and version)
+    /// is a unique index (<c>IX_Packages_Id_Version</c>), not a constraint, so this is the code a duplicate raises.
+    /// </summary>
+    private const int UniqueIndexViolationErrorCode = 2601;
+
     public SqlServerContext(DbContextOptions<SqlServerContext> efOptions, IOptionsSnapshot<ElPaquetoOptions> elpaquetoOptions)
         : base(efOptions)
     {
@@ -32,7 +38,7 @@ public class SqlServerContext : AbstractContext<SqlServerContext>
         {
             return sqlException.Errors
                 .OfType<SqlError>()
-                .Any(error => error.Number == UniqueConstraintViolationErrorCode);
+                .Any(error => error.Number is UniqueConstraintViolationErrorCode or UniqueIndexViolationErrorCode);
         }
 
         return false;
