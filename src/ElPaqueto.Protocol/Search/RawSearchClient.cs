@@ -68,8 +68,8 @@ public class RawSearchClient : ISearchClient
     // See: https://github.com/aspnet/AspNetCore/blob/8c02467b4a218df3b1b0a69bceb50f5b64f482b1/src/Http/WebUtilities/src/QueryHelpers.cs#L63
     private static string AddQueryString(string uri, Dictionary<string, string> queryString)
     {
-        if (uri.IndexOf('#') != -1) throw new InvalidOperationException("URL anchors are not supported");
-        if (uri.IndexOf('?') != -1) throw new InvalidOperationException("Adding query strings to URL with query strings is not supported");
+        if (uri.Contains('#')) throw new InvalidOperationException("URL anchors are not supported");
+        if (uri.Contains('?')) throw new InvalidOperationException("Adding query strings to URL with query strings is not supported");
 
         var builder = new StringBuilder(uri);
         var hasQuery = false;

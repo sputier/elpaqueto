@@ -61,7 +61,7 @@ public class NuGetClient
     /// <param name="clientFactory">The factory used to create NuGet clients.</param>
     public NuGetClient(NuGetClientFactory clientFactory)
     {
-        if (clientFactory == null) throw new ArgumentNullException(nameof(clientFactory));
+        ArgumentNullException.ThrowIfNull(clientFactory);
 
         _contentClient = clientFactory.CreatePackageContentClient();
         _metadataClient = clientFactory.CreatePackageMetadataClient();

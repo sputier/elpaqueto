@@ -58,7 +58,7 @@ public class RawPackageContentClient : IPackageContentClient
             return null;
         }
 
-        return await response.Content.ReadAsStreamAsync();
+        return await response.Content.ReadAsStreamAsync(cancellationToken);
     }
 
     /// <inheritdoc />
@@ -79,6 +79,6 @@ public class RawPackageContentClient : IPackageContentClient
             return null;
         }
 
-        return await response.Content.ReadAsStreamAsync();
+        return await response.Content.ReadAsStreamAsync(cancellationToken);
     }
 }

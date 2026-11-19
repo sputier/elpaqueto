@@ -29,7 +29,7 @@ internal static class HttpClientExtensions
         // this does not validate that the response's content type indicates JSON content.
         response.EnsureSuccessStatusCode();
 
-        using var stream = await response.Content.ReadAsStreamAsync();
+        using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         return await JsonSerializer.DeserializeAsync<TResult>(stream, cancellationToken: cancellationToken);
     }
 
@@ -57,7 +57,7 @@ internal static class HttpClientExtensions
 
         response.EnsureSuccessStatusCode();
 
-        using var stream = await response.Content.ReadAsStreamAsync();
+        using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         return await JsonSerializer.DeserializeAsync<TResult>(stream, cancellationToken: cancellationToken);
     }
 }
