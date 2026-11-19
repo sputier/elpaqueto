@@ -96,6 +96,9 @@ public abstract class AbstractContext<TContext> : DbContext, IContext where TCon
             .HasConversion(StringArrayToJsonConverter.Instance)
             .Metadata.SetValueComparer(StringArrayComparer.Instance);
 
+        package.Property(p => p.Published)
+            .HasConversion(UtcDateTimeConverter.Instance);
+
         package.Property(p => p.Description).HasMaxLength(DefaultMaxStringLength);
         package.Property(p => p.Language).HasMaxLength(MaxPackageLanguageLength);
         package.Property(p => p.MinClientVersion).HasMaxLength(MaxPackageMinClientVersionLength);
