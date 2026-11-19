@@ -1,4 +1,3 @@
-using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
@@ -97,12 +96,8 @@ public abstract class AbstractContext<TContext> : DbContext, IContext where TCon
             .HasConversion(StringArrayToJsonConverter.Instance)
             .Metadata.SetValueComparer(StringArrayComparer.Instance);
 
-        // The date is stored in UTC. SQLite hands it back with an unspecified kind, which the registration API then
-        // took for local time and shifted by the server's UTC offset.
         package.Property(p => p.Published)
-            .HasConversion(
-                value => value.Kind == DateTimeKind.Local ? value.ToUniversalTime() : value,
-                value => DateTime.SpecifyKind(value, DateTimeKind.Utc));
+            .HasConversion(UtcDateTimeConverter.Instance);
 
         package.Property(p => p.Description).HasMaxLength(DefaultMaxStringLength);
         package.Property(p => p.Language).HasMaxLength(MaxPackageLanguageLength);

@@ -33,6 +33,5 @@ public sealed class PublishedDateIntegrationTests(ITestOutputHelper output)
 
         Assert.Equal(DateTimeKind.Utc, published.Kind);
         Assert.Equal(new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc), published);
-        Assert.Equal(TimeSpan.Zero, new DateTimeOffset(published).Offset);
     }
 }
