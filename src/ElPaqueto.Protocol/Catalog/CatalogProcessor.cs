@@ -55,10 +55,13 @@ public class CatalogProcessor
     public async Task<bool> ProcessAsync(CancellationToken cancellationToken = default)
     {
         var minCommitTimestamp = await GetMinCommitTimestamp(cancellationToken);
-        _logger.LogInformation(
-            "Using time bounds {min:O} (exclusive) to {max:O} (inclusive).",
-            minCommitTimestamp,
-            _options.MaxCommitTimestamp);
+        if (_logger.IsEnabled(LogLevel.Information))
+        {
+            _logger.LogInformation(
+                "Using time bounds {min:O} (exclusive) to {max:O} (inclusive).",
+                minCommitTimestamp,
+                _options.MaxCommitTimestamp);
+        }
 
         return await ProcessIndexAsync(minCommitTimestamp, cancellationToken);
     }
@@ -70,10 +73,13 @@ public class CatalogProcessor
         var pageItems = index.GetPagesInBounds(
             minCommitTimestamp,
             _options.MaxCommitTimestamp);
-        _logger.LogInformation(
-            "{pages} pages were in the time bounds, out of {totalPages}.",
-            pageItems.Count,
-            index.Items.Count);
+        if (_logger.IsEnabled(LogLevel.Information))
+        {
+            _logger.LogInformation(
+                "{pages} pages were in the time bounds, out of {totalPages}.",
+                pageItems.Count,
+                index.Items.Count);
+        }
 
         var success = true;
         for (var i = 0; i < pageItems.Count; i++)
@@ -103,11 +109,14 @@ public class CatalogProcessor
             minCommitTimestamp,
             _options.MaxCommitTimestamp,
             _options.ExcludeRedundantLeaves);
-        _logger.LogInformation(
-            "On page {page}, {leaves} out of {totalLeaves} were in the time bounds.",
-            pageItem.CatalogPageUrl,
-            leafItems.Count,
-            page.Items.Count);
+        if (_logger.IsEnabled(LogLevel.Information))
+        {
+            _logger.LogInformation(
+                "On page {page}, {leaves} out of {totalLeaves} were in the time bounds.",
+                pageItem.CatalogPageUrl,
+                leafItems.Count,
+                page.Items.Count);
+        }
 
         DateTimeOffset? newCursor = null;
         var success = true;

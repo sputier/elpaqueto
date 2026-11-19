@@ -30,7 +30,10 @@ public class FileCursor : ICursor
         {
             using var file = File.OpenRead(_path);
             var data = await JsonSerializer.DeserializeAsync<Data>(file, options: null, cancellationToken);
-            _logger.LogDebug("Read cursor value {cursor:O} from {path}.", data.Value, _path);
+            if (_logger.IsEnabled(LogLevel.Debug))
+            {
+                _logger.LogDebug("Read cursor value {cursor:O} from {path}.", data.Value, _path);
+            }
             return data.Value;
         }
         catch (Exception e) when (e is FileNotFoundException || e is JsonException)
@@ -44,7 +47,10 @@ public class FileCursor : ICursor
         var data = new Data { Value = value };
         var jsonString = JsonSerializer.Serialize(data);
         File.WriteAllText(_path, jsonString);
-        _logger.LogDebug("Wrote cursor value {cursor:O} to {path}.", data.Value, _path);
+        if (_logger.IsEnabled(LogLevel.Debug))
+        {
+            _logger.LogDebug("Wrote cursor value {cursor:O} to {path}.", data.Value, _path);
+        }
         return Task.CompletedTask;
     }
 
